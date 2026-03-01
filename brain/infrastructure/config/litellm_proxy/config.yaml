@@ -1,0 +1,109 @@
+# LiteLLM Proxy 配置
+# 按 agent_type 分组，同一 agent_type 共用 API base
+
+agent_types:
+  # ============================================================
+  # agent_type: claude
+  # ============================================================
+  claude:
+    cli_type: [claude]
+    api_base: "https://api.anthropic.com"
+    api_key_env: "ANTHROPIC_API_KEY"
+    models:
+      - "opus"
+      - "sonnet"
+      - "haiku"
+    effort:
+      - [high, medium, low]
+
+  # ============================================================
+  # agent_type: codex
+  # ============================================================
+  codex:
+    cli_type: [claude, codex]
+    api_base: "https://api.openai.com/v1"
+    api_key_env: "OPENAI_API_KEY"
+    models:
+      - "gpt-5.3-codex"
+      - "gpt-5.2-codex"
+      - "gpt-5.1-codex-max"
+      - "gpt-5.2"
+      - "gpt-5.1-codex-mini"
+    effort:
+      - [high, medium, low]
+
+  # ============================================================
+  # agent_type: kimi
+  # ============================================================
+  kimi:
+    cli_type: [claude]
+    api_base: "https://api.moonshot.cn/v1"
+    api_key_env: "KIMI_API_KEY"
+    models:
+      - "kimi-k2.5"
+      - "kimi-k2-thinking"
+      - "kimi-code/kimi-for-coding"
+    effort:
+      - [high, medium, low]
+
+  # ============================================================
+  # agent_type: minimax
+  # ============================================================
+  minimax:
+    cli_type: [claude]
+    api_base: "https://api.minimax.chat/v1"
+    api_key_env: "MINIMAX_API_KEY"
+    models:
+      - "MiniMax-M2.5"
+      - "abab5.5-chat"
+    effort:
+      - [high, medium, low]
+
+  # ============================================================
+  # agent_type: qwen
+  # ============================================================
+  qwen:
+    cli_type: [claude]
+    api_base: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    api_key_env: "QWEN_API_KEY"
+    models:
+      - "qwen3.5-plus"
+      - "qwen3-max-2026-01-23"
+      - "qwen3-coder-next"
+      - "qwen3-coder-plus"
+      - "glm-4.7"
+    effort:
+      - [high, medium, low]
+
+  # ============================================================
+  # agent_type: bytedance
+  # ============================================================
+  bytedance:
+    cli_type: [claude]
+    api_base: "https://ark.cn-beijing.volces.com/api/v3"
+    api_key_env: "BYTEDANCE_API_KEY"
+    models:
+      - "doubao-seed-2.0-code"
+      - "doubao-seed-code"
+      - "glm-4.7"
+      - "deepseek-v3.2"
+      - "kimi-k2-thinking"
+      - "kimi-k2.5"
+    effort:
+      - [high, medium, low]
+
+# ============================================================
+# LiteLLM 通用设置
+# ============================================================
+general_settings:
+  master_key: "sk-brain-litellm-2026"
+
+litellm_settings:
+  drop_params: true
+  success_callback: ["llm_quota_callback"]
+  failure_callback: ["llm_quota_failure_callback"]
+
+router_settings:
+  routing_strategy: "simple-shuffle"
+  num_retries: 3
+  timeout: 600

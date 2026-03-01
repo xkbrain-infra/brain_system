@@ -1,0 +1,263 @@
+standard:
+  id: "STD-INFRA-CPP-SERVICE"
+  name: "C++ Service Directory Structure Standard"
+  version: "1.0"
+  description: |
+    Brain 系统内 C++ 微服务的目录组织规范。
+    基于 brain_task_manager (BS-026) 实践总结。
+    适用于所有部署在 /brain/infrastructure/service/ 下的 C++ 服务。
+
+# ============================================================
+# 1. 项目根目录布局
+# ============================================================
+directory_layout:
+  root: "/brain/infrastructure/service/{service_name}/"
+  tree:
+    src/:
+      description: "源码目录，按功能模块分子目录"
+      modules:
+        core/: "入口(main.cpp)、配置加载、类型定义、日志"
+        ipc/: "IPC 通信层（client、router、listener）"
+        store/: "持久化存储层（JSON/SQLite/文件存储）"
+        engine/: "业务引擎（FSM、调度器、守卫逻辑）"
+        health/: "健康检查 HTTP 端点"
+      note: "模块划分按职责，一个模块对应一个关注点"
+
+    include/{project_name}/:
+      description: "公开头文件，镜像 src/ 的模块结构"
+      convention: "include/{project_name}/{module}/*.h"
+      example: "include/brain_task_manager/store/task_store.h"
+      note: "编译时通过 -Iinclude 引入，形成 #include <brain_task_manager/store/task_store.h>"
+
+    config/:
+      description: "配置文件（symlink 到外部配置目录）"
+      external_path: "/brain/infrastructure/config/{service_name}/"
+      convention: "服务目录内的 config/ 为 symlink 或空目录，实际配置存放在外部路径"
+      formats: ["YAML", "JSON", "TOML"]
+
+    data/:
+      description: "运行时持久化数据（symlink 到外部数据目录）"
+      external_path: "/brain/runtime/data/{service_name}/"
+      convention: "服务目录内的 data/ 为 symlink 或空目录，实际数据存放在外部路径"
+      persistence: "JSON 文件使用 atomic write（.tmp + rename）保证崩溃安全"
+
+    bin/:
+      description: "编译产出的可执行文件"
+      convention: "bin/{service_name}"
+
+    build/:
+      description: "编译中间文件（.o 文件）"
+      convention: "build/{source_name}.o"
+      gitignore: true
+
+    third_party/:
+      description: "header-only 第三方依赖"
+      convention: "直接放置头文件或子目录"
+      examples:
+        - "third_party/nlohmann/json.hpp"
+        - "third_party/httplib.h"
+      note: "系统级依赖（pthread 等）不放此处，通过编译标志引入"
+
+    tests/:
+      description: "单元测试和集成测试"
+      convention: "test_{module_name}.cpp"
+
+    scripts/:
+      description: "辅助脚本（部署、迁移、数据工具）"
+
+    releases/:
+      description: "版本发布包（可选）"
+      convention: "releases/{version}/"
+
+    Makefile:
+      description: "构建入口文件"
+      location: "项目根目录"
+      alternative: "CMakeLists.txt"
+
+# ============================================================
+# 2. 源码分层规则
+# ============================================================
+source_layering:
+  description: "源码按关注点分层，依赖方向自上而下"
+  layers:
+    - name: "core"
+      role: "入口、配置、类型、日志"
+      depends_on: []
+      typical_files: ["main.cpp", "config_loader.h", "types.h", "logger.h"]
+
+    - name: "ipc"
+      role: "外部通信（IPC daemon 交互、消息路由）"
+      depends_on: ["core", "store", "engine"]
+      typical_files: ["ipc_client.cpp", "message_router.cpp", "notify_listener.cpp"]
+
+    - name: "store"
+      role: "数据持久化（CRUD、查询、文件读写）"
+      depends_on: ["core"]
+      typical_files: ["task_store.cpp", "spec_store.cpp", "project_dep_store.cpp"]
+
+    - name: "engine"
+      role: "业务逻辑（状态机、调度、守卫）"
+      depends_on: ["core", "store"]
+      typical_files: ["fsm_engine.cpp", "dispatch_guard.cpp", "scheduler.cpp"]
+
+    - name: "health"
+      role: "可观测性（HTTP 健康检查端点）"
+      depends_on: ["core"]
+      typical_files: ["health_server.cpp"]
+
+  dependency_rule: |
+    禁止循环依赖。store 不得依赖 ipc，engine 不得依赖 ipc。
+    ipc 层（message_router）协调 store 和 engine。
+
+# ============================================================
+# 3. 头文件组织
+# ============================================================
+header_organization:
+  structure: "include/{project_name}/{module}/{file}.h"
+  include_flag: "-Iinclude"
+  usage: '#include <{project_name}/{module}/{file}.h>'
+  guard: "#pragma once"
+  include_order:
+    - "对应的头文件（如 task_store.h）"
+    - "项目内头文件"
+    - "第三方头文件"
+    - "C++ 标准库"
+    - "C 系统头文件"
+
+# ============================================================
+# 4. 配置与数据分离
+# ============================================================
+config_data_separation:
+  principle: |
+    配置和运行时数据不得存放在服务源码目录内。
+    服务目录内的 config/ 和 data/ 为 symlink 指向外部路径，
+    确保源码目录可以 git clean 而不丢失运行时状态。
+
+  config:
+    internal: "{service_root}/config/"
+    external: "/brain/infrastructure/config/{service_name}/"
+    content: "静态配置（端口、超时、特性开关等）"
+
+  data:
+    internal: "{service_root}/data/"
+    external: "/brain/runtime/data/{service_name}/"
+    content: "运行时持久化数据（JSON 状态文件、SQLite 数据库等）"
+    write_pattern: |
+      使用 atomic write 保证崩溃安全：
+      1. 写入 {file}.tmp
+      2. rename({file}.tmp, {file})
+      3. 确保 rename 是原子操作（同一文件系统）
+
+# ============================================================
+# 5. 构建系统
+# ============================================================
+build_system:
+  primary: "Makefile"
+  alternative: "CMakeLists.txt"
+
+  compiler_standard: "C++20"
+  compiler_flags:
+    common: ["-std=c++20", "-Wall", "-Wextra", "-pthread"]
+    release: ["-O2"]
+    debug: ["-g", "-O0", "-fsanitize=address"]
+
+  include_paths:
+    - "-Iinclude"
+    - "-isystem third_party"
+
+  output:
+    objects: "build/*.o"
+    binary: "bin/{service_name}"
+
+  targets:
+    all: "编译全部源文件并链接"
+    clean: "删除 build/ 和 bin/ 下的产物"
+    test: "编译并运行测试（可选）"
+
+  makefile_convention: |
+    使用 wildcard 或显式列出源文件。
+    编译命令格式：
+      g++ $(CXXFLAGS) -c -o build/{name}.o src/{module}/{name}.cpp
+    链接命令格式：
+      g++ $(LDFLAGS) -o bin/{service_name} build/*.o
+
+# ============================================================
+# 6. 示例：brain_task_manager
+# ============================================================
+example:
+  service_name: "brain_task_manager"
+  tree: |
+    /brain/infrastructure/service/brain_task_manager/
+    +-- Makefile
+    +-- bin/
+    |   +-- brain_task_manager          # 可执行文件
+    +-- build/
+    |   +-- *.o                         # 编译中间文件
+    +-- include/
+    |   +-- brain_task_manager/
+    |       +-- core/
+    |       |   +-- config_loader.h
+    |       |   +-- logger.h
+    |       |   +-- types.h
+    |       +-- engine/
+    |       |   +-- dispatch_guard.h
+    |       |   +-- fsm_engine.h
+    |       |   +-- scheduler.h
+    |       +-- health/
+    |       |   +-- health_server.h
+    |       +-- ipc/
+    |       |   +-- ipc_client.h
+    |       |   +-- message_router.h
+    |       |   +-- notify_listener.h
+    |       +-- store/
+    |           +-- project_dep_store.h
+    |           +-- spec_store.h
+    |           +-- task_store.h
+    +-- src/
+    |   +-- core/
+    |   |   +-- main.cpp
+    |   +-- engine/
+    |   |   +-- dispatch_guard.cpp
+    |   |   +-- fsm_engine.cpp
+    |   |   +-- scheduler.cpp
+    |   +-- health/
+    |   |   +-- health_server.cpp
+    |   +-- ipc/
+    |   |   +-- ipc_client.cpp
+    |   |   +-- message_router.cpp
+    |   |   +-- notify_listener.cpp
+    |   +-- store/
+    |       +-- project_dep_store.cpp
+    |       +-- spec_store.cpp
+    |       +-- task_store.cpp
+    +-- third_party/
+    |   +-- httplib.h
+    |   +-- nlohmann/
+    |       +-- json.hpp
+    +-- config/  -> /brain/infrastructure/config/brain_task_manager/
+    +-- data/    -> /brain/runtime/data/brain_task_manager/
+    +-- tests/
+    +-- scripts/
+    +-- releases/
+
+  config_path: "/brain/infrastructure/config/brain_task_manager/"
+  data_path: "/brain/runtime/data/brain_task_manager/"
+  data_files:
+    - "tasks.json"
+    - "specs.json"
+    - "project_dependencies.json"
+    - "project_dispatch_guard.json"
+
+# ============================================================
+# 7. 引用
+# ============================================================
+references:
+  - id: "STD-CODE-CPP-001"
+    name: "C++ Coding Standards"
+    relation: "编码风格规范，本文档为目录结构规范"
+  - id: "STD-INFRA-DOCKER"
+    name: "Docker Deployment Standard"
+    relation: "容器化部署时的目录映射参考"
+  - project: "BS-026"
+    name: "brain_task_manager"
+    relation: "本标准的实践来源"

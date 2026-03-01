@@ -1,0 +1,251 @@
+# IPC Message Priority Policy
+# 消息优先级规范 - 期望回复速度标记
+
+id: POLICY-IPC-PRIORITY-001
+version: "1.1"
+created: "2026-02-04"
+updated: "2026-02-04"
+status: active
+
+# ============================================================
+# 核心概念
+# ============================================================
+# Priority 是发送方对接收方的"期望回复速度"标记
+# - 不影响消息队列存储顺序
+# - 接收方根据 priority 字段决定处理优先级
+# - 是一种协作约定，不是强制机制
+# ============================================================
+
+# ============================================================
+# 优先级定义
+# ============================================================
+priority_levels:
+  critical:
+    value: 0
+    description: "紧急中断 - 立即处理"
+    expected_response: "< 30s"
+    notification: "强制弹出，中断当前工作"
+    color: "red"
+
+  high:
+    value: 1
+    description: "高优先 - 尽快处理"
+    expected_response: "< 2min"
+    notification: "显著提示"
+    color: "orange"
+
+  normal:
+    value: 2
+    description: "普通 - 队列处理"
+    expected_response: "< 10min"
+    notification: "普通提示"
+    color: "blue"
+    default: true
+
+  low:
+    value: 3
+    description: "低优先 - 空闲时处理"
+    expected_response: "无硬性要求"
+    notification: "静默入队"
+    color: "gray"
+
+# ============================================================
+# Critical 优先级使用条件 (必须 match 其一)
+# ============================================================
+critical_conditions:
+  - id: "CRIT-001"
+    name: "生产事故"
+    match:
+      keywords: ["生产事故", "prod down", "服务宕机", "数据丢失"]
+      context: "生产环境出现影响业务的故障"
+    example: "生产 Redis 宕机，交易信号无法传递"
+
+  - id: "CRIT-002"
+    name: "资金风险"
+    match:
+      keywords: ["资金风险", "止损失败", "爆仓", "异常订单"]
+      context: "涉及资金安全的紧急情况"
+    example: "止损订单未触发，持续亏损"
+
+  - id: "CRIT-003"
+    name: "安全事件"
+    match:
+      keywords: ["安全漏洞", "密钥泄露", "未授权访问"]
+      context: "系统安全受到威胁"
+    example: "发现 API 密钥被泄露到公开仓库"
+
+  - id: "CRIT-004"
+    name: "阻塞性依赖"
+    match:
+      keywords: ["blocking", "阻塞等待", "无法继续"]
+      context: "发送方完全阻塞，无法进行任何工作"
+      additional_rule: "必须是真正的阻塞，不是普通等待"
+    example: "部署流程卡在审批步骤，用户在线等待"
+
+# ============================================================
+# High 优先级使用条件
+# ============================================================
+high_conditions:
+  - id: "HIGH-001"
+    name: "用户在线等待"
+    match:
+      context: "用户正在等待结果，但不是完全阻塞"
+    example: "用户问了一个问题，需要其他 agent 协助回答"
+
+  - id: "HIGH-002"
+    name: "时间敏感"
+    match:
+      keywords: ["开盘前", "收盘前", "deadline"]
+      context: "有明确的时间窗口限制"
+    example: "开盘前 10 分钟需要完成信号计算"
+
+  - id: "HIGH-003"
+    name: "决策阻塞"
+    match:
+      context: "需要对方做出决策才能继续"
+    example: "需要确认是否启用某个功能"
+
+# ============================================================
+# Normal 优先级 (默认)
+# ============================================================
+normal_conditions:
+  - id: "NORM-001"
+    name: "一般协作"
+    match:
+      context: "日常工作协作，不紧急"
+    example: "请帮忙 review 这段代码"
+
+  - id: "NORM-002"
+    name: "信息同步"
+    match:
+      context: "通知对方某件事已完成"
+    example: "FutuTrader 崩溃问题已修复"
+
+  - id: "NORM-003"
+    name: "咨询问题"
+    match:
+      context: "请教问题，可以异步回答"
+    example: "这个 DSL task 是谁禁用的？"
+
+# ============================================================
+# Low 优先级使用条件
+# ============================================================
+low_conditions:
+  - id: "LOW-001"
+    name: "FYI 通知"
+    match:
+      keywords: ["FYI", "供参考", "不急"]
+      context: "纯信息通知，不需要回复"
+    example: "FYI: 今天更新了 spec 文档"
+
+  - id: "LOW-002"
+    name: "非阻塞建议"
+    match:
+      context: "建议或想法，对方空闲时考虑"
+    example: "建议后续可以优化一下这个模块"
+
+# ============================================================
+# 使用示例
+# ============================================================
+usage_example:
+  ipc_send:
+    description: "已实现 - priority 作为 payload 字段传递"
+    example: |
+      # MCP Tool 调用
+      ipc_send(
+        to="codex",
+        message="生产 Redis 宕机，需要紧急处理",
+        message_type="request",
+        priority="critical",              # critical/high/normal/low
+        priority_reason="CRIT-001 生产事故"  # 可选说明
+      )
+
+      # 接收方收到的消息
+      {
+        "from": "claude@main:%1",
+        "payload": {
+          "content": "生产 Redis 宕机，需要紧急处理",
+          "priority": "critical",
+          "priority_reason": "CRIT-001 生产事故"
+        },
+        "message_type": "request"
+      }
+
+  sender_checklist:
+    - "是否符合 critical_conditions 中的任一条件？→ 用 critical"
+    - "如果不符合，是否符合 high_conditions？→ 用 high"
+    - "不确定时，使用 normal（默认）"
+    - "纯 FYI 使用 low"
+    - "禁止滥用 critical，必须有正当理由"
+
+# ============================================================
+# 接收方行为 (Agent 必读)
+# ============================================================
+receiver_behavior:
+  how_to_check: |
+    收到消息后，读取 payload.priority 字段：
+    - 如果是 "critical" → 立即响应
+    - 如果是 "high" → 尽快响应
+    - 如果是 "normal" 或缺失 → 正常处理
+    - 如果是 "low" → 空闲时处理
+
+  critical:
+    expected_response: "< 30 秒"
+    action:
+      - "立即暂停当前工作"
+      - "处理完毕后恢复原工作"
+      - "如无法处理，立即回复说明原因"
+    note: "仅用于生产事故、资金风险、安全事件等紧急情况"
+
+  high:
+    expected_response: "< 2 分钟"
+    action:
+      - "在当前步骤完成后优先处理"
+      - "不需要中断当前工作"
+
+  normal:
+    expected_response: "< 10 分钟"
+    action:
+      - "按正常节奏处理"
+      - "可批量处理多条消息"
+    note: "这是默认级别"
+
+  low:
+    expected_response: "无硬性要求"
+    action:
+      - "空闲时处理"
+      - "可选择性忽略 FYI 类消息"
+
+# ============================================================
+# 滥用防护
+# ============================================================
+abuse_prevention:
+  rules:
+    - "critical 必须匹配 critical_conditions 之一"
+    - "频繁发送 critical 但不符合条件，可被标记为滥用"
+    - "接收方可对滥用者降级处理"
+
+  monitoring:
+    - "记录每个 agent 的 critical 消息频率"
+    - "不符合条件的 critical 消息会被 log"
+
+# ============================================================
+# 实现状态
+# ============================================================
+implementation:
+  status: "implemented"
+  date: "2026-02-04"
+
+  code_changes:
+    - file: "/brain/runtime/engine/src/mcp/brain_ipc_mcp_server.py"
+      change: "ipc_send tool 添加 priority 和 priority_reason 参数"
+
+  how_it_works: |
+    1. 发送方调用 ipc_send(priority="high", ...)
+    2. MCP Server 将 priority 放入 payload
+    3. Daemon 透传消息（不改变队列逻辑）
+    4. 接收方从 payload.priority 读取优先级
+    5. 接收方根据优先级决定响应速度
+
+  backward_compatible: true
+  note: "priority 字段可选，缺失时视为 normal"

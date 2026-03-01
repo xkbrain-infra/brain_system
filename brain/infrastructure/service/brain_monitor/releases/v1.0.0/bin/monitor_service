@@ -1,0 +1,8 @@
+#!/bin/bash
+# Brain System Monitor Service - Main entry point
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+MONITOR_ROOT="$(dirname "$SCRIPT_DIR")"
+SRC_DIR="$MONITOR_ROOT/src"
+
+exec python3 "$SRC_DIR/monitor_service.py" "$@"

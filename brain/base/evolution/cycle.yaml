@@ -1,0 +1,156 @@
+# /brain/base/evolution/cycle.yaml
+# 演进评估周期：触发 → 多 Agent 协同评估 → 产出 Upgrade Proposal
+
+evolution_cycle:
+  id: "EVO-CYCLE-001"
+  version: "0.1"
+  intent: "定义 Evolution 的触发条件、评估流程和角色分工"
+
+# ============================================
+# 触发条件
+# ============================================
+triggers:
+  - id: "EVO-TRG-VERSION"
+    name: "版本完成触发"
+    condition: "Project → RELEASED 且 PMO 判断版本目标达成"
+    initiator: "pmo"
+    rule: "每个版本 release 后必须触发一轮 evolution 评估"
+
+  - id: "EVO-TRG-PERIODIC"
+    name: "周期触发"
+    condition: "定时周期到达 (如每两周/每月)"
+    initiator: "service_timer → pmo"
+    rule: "即使没有版本发布，也必须定期评估系统演进方向"
+
+  - id: "EVO-TRG-ARCHITECT"
+    name: "Architect 提议"
+    condition: "Architect 在日常工作中发现架构改进机会"
+    initiator: "architect → pmo"
+    rule: "Architect 提交改进提议，PMO 决定是否启动 evolution 评估"
+
+  - id: "EVO-TRG-QA"
+    name: "QA 提议"
+    condition: "QA 在测试中发现系统性质量问题或自动化机会"
+    initiator: "qa → pmo"
+    rule: "QA 提交质量改进提议，PMO 决定是否启动 evolution 评估"
+
+  - id: "EVO-TRG-KNOWLEDGE"
+    name: "Knowledge 驱动"
+    condition: "故障复盘或经验沉淀中发现系统性改进机会"
+    initiator: "任意 agent → pmo"
+    rule: "Knowledge 中的 lessons_learned 如果指向系统性问题，应触发 evolution"
+
+  - id: "EVO-TRG-RESEARCH"
+    name: "Researcher 调研驱动"
+    condition: "Researcher 日常调研发现高价值的外部新技术/理论/方案"
+    initiator: "researcher → pmo → evolution 评估"
+    rule: "Researcher 调研报告经 PMO 拉会讨论后，认为值得引入 → 触发 evolution 评估"
+    flow: "调研报告 → PMO 评估 → 拉会讨论 → 生成 Upgrade Proposal"
+
+# ============================================
+# 评估流程 (PMO 发起，多 Agent 协同)
+# ============================================
+assessment_flow:
+  summary: |
+    PMO 发起 Evolution 评估，不是 PMO 自己评估。
+    每个角色从自己的专业视角输出评估，PMO 汇总整合。
+
+  phases:
+    # ─── Phase 1: PMO 发起 ───
+    E1_initiate:
+      owner: "pmo"
+      action: "发起 Evolution 评估会议"
+      steps:
+        - "确定评估范围 (全局 / 特定 group / 特定 project)"
+        - "召集参与 agent: architect, qa, dev(常驻), devops"
+        - "下发评估议题和当前状态摘要"
+      output: "evolution 评估启动通知"
+
+    # ─── Phase 2: 多角色并行评估 ───
+    E2_parallel_assessment:
+      participants:
+        architect:
+          focus: "架构评估"
+          evaluates:
+            - "当前架构的瓶颈与技术债"
+            - "架构改进建议 (模块拆分/合并/替换)"
+            - "新技术引入可行性"
+          output: "architecture_review"
+
+        qa:
+          focus: "质量评估"
+          evaluates:
+            - "测试覆盖率与质量缺口"
+            - "反复出现的问题模式"
+            - "测试自动化机会"
+          output: "quality_review"
+
+        dev:
+          focus: "实现成本评估"
+          evaluates:
+            - "当前代码的可维护性"
+            - "开发效率瓶颈"
+            - "工具链改进机会"
+          output: "dev_review"
+
+        devops:
+          focus: "运维评估"
+          evaluates:
+            - "部署流程的自动化程度"
+            - "监控与告警覆盖度"
+            - "基础设施改进机会"
+          output: "ops_review"
+
+      rule: "各角色并行评估，独立输出，避免互相影响判断"
+
+    # ─── Phase 3: 汇总讨论 ───
+    E3_consolidation:
+      owner: "pmo"
+      action: "组织 Evolution 汇总会议"
+      steps:
+        - "各角色汇报评估结论"
+        - "交叉讨论: architect 的方案 vs dev 的成本 vs qa 的质量要求"
+        - "识别冲突与权衡 (如: 大重构 vs 渐进改进)"
+        - "达成共识: 哪些改进纳入提案"
+      output: "consolidated_assessment"
+
+    # ─── Phase 4: 生成 Upgrade Proposal ───
+    E4_propose:
+      owner: "architect (主笔) + pmo (审核结构)"
+      action: "将评估结论转化为 Upgrade Proposal"
+      rule: "Architect 写技术内容，PMO 确保提案格式完整、可追踪"
+      output: "upgrade_proposal (→ 详见 proposal.yaml)"
+
+    # ─── Phase 5: 上报 User + 纳入 Roadmap ───
+    E5_report_and_roadmap:
+      owner: "pmo (决策，可酌情上报 user)"
+      action: "PMO 汇总评估结论，自行决定哪些提案纳入下一轮（重大变更可上报 user）"
+      steps:
+        - "PMO 整理所有提案 + 各角色评估意见 → PMO 审批决策"
+        - "如有分歧无法调和 → PMO 综合各方观点裁决（可上报 user）"
+        - "PMO 审批通过的提案 → 按优先级排入 roadmap"
+        - "高优先级提案 → 启动 spec design workflow (S1-S8)"
+        - "低优先级提案 → 放入 backlog，下次 evolution 评估时重审"
+        - "被拒提案 → 记录 PMO 决策原因，归档"
+      output: "PMO 审批记录 + updated roadmap + 新 spec 启动"
+
+# ============================================
+# 与 Runtime 的集成
+# ============================================
+runtime_integration:
+  periodic_trigger:
+    bind_to: "service_timer"
+    emit: "evolution.tick.assessment_due"
+    target: "pmo"
+    action: "PMO 启动 E1_initiate"
+
+  version_trigger:
+    bind_to: "project.released"
+    emit: "evolution.event.version_complete"
+    target: "pmo"
+    action: "PMO 评估是否启动 evolution 评估"
+
+  agent_proposal_trigger:
+    bind_to: "ipc.message(type=EVOLUTION_PROPOSAL)"
+    target: "pmo"
+    action: "PMO 收到提议，评估是否启动 evolution 评估"

@@ -1,0 +1,47 @@
+gate_id: G-GATE-USERSPACE
+name: Userspace Separation
+applies_to: [write]
+rule: 用户内容 → userspace/，Agent 整理后 → spec/
+block: false
+
+enforcement:
+  stage: pre_tool_use
+  method: python_inline
+  priority: LOW
+  note: "推荐性检查 - 不阻塞"
+
+  triggers:
+    tools: [Write]
+
+  rules:
+    separation_suggestion:
+      description: "建议用户内容先放 userspace，整理后放 spec"
+      userspace_patterns:
+        - "/brain/groups/**/userspace/**"
+      spec_patterns:
+        - "/brain/groups/**/spec/**"
+
+  warn_message: |
+    💡 建议使用 userspace (G-USERSPACE)
+
+    文件: {file_path}
+
+    工作流建议：
+    1. 用户提供的原始内容 → userspace/
+    2. Agent 整理加工后 → spec/
+
+    这有助于：
+    - 保留用户原始输入
+    - Agent 有空间整理和标准化
+    - 区分原始内容和规范文档
+
+    这是推荐性检查，不阻塞操作。
+
+    参考：/brain/base/spec/core/lep.yaml (G-USERSPACE)
+bindings:
+  hooks:
+    stage: pre_tool_use
+    trigger_tools: [Bash]
+    patterns: [write_to_userspace]
+  mcp_tools: []
+  related_skills: []

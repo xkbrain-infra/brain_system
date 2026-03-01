@@ -1,0 +1,43 @@
+gate_id: G-GATE-VERIFICATION
+name: Code Verification
+applies_to: [write, git]
+rule: 代码必须编译通过 + 测试通过
+
+enforcement:
+  stage: pre_git_commit
+  method: test_runner
+  priority: HIGH
+  note: "当前为推荐性检查，不强制阻塞"
+
+  checks:
+    - type: build
+      command: "make build"
+      required: true
+
+    - type: test
+      command: "make test"
+      required: true
+
+    - type: lint
+      command: "make lint"
+      required: false
+
+  config:
+    block_on_failure: false
+    timeout: 300
+
+  warn_message: |
+    ⚠️ 代码验证建议 (G-VERIFICATION)
+
+    建议在提交前运行：
+    1. 构建检查: make build
+    2. 测试检查: make test
+    3. 代码检查: make lint
+
+    参考：/brain/base/spec/standards/workflow/verification.yaml
+bindings:
+  hooks:
+    stage: post_tool_use
+    trigger_tools: [Write, Edit, Bash]
+  mcp_tools: []
+  related_skills: []

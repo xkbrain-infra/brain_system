@@ -1,0 +1,82 @@
+# Database Operations Policy
+# 数据库操作安全规范
+
+id: POL-DB-OPERATIONS
+version: "1.0"
+
+core_principle: 先备份，再操作 (Backup First, Then Operate)
+
+# 适用范围
+scope:
+  applies: [版本升级, Schema变更, 数据迁移, 索引重建, 分区操作, 批量删除/更新]
+  excludes: [只读查询, 明确标记 disposable 的测试库]
+
+# 强制规则
+mandatory_rules:
+  DB-MIGRATION-001:
+    rule: 数据库迁移必须新老并存
+    enforcement: BLOCKING
+    correct_flow:
+      1: 创建新容器 (不同名称/端口)
+      2: 新老并存运行
+      3: 逐步切换服务配置
+      4: 验证期 1-2 周
+      5: 确认稳定后清理旧容器
+    forbidden:
+      - 停止旧容器后立即创建同名新容器
+      - 重命名旧容器为 *-old 并复用原名
+
+  DB-BACKUP-001:
+    rule: 操作前必须完成备份
+    enforcement: BLOCKING
+    steps: [生成备份计划, 执行备份, 验证完整性, 记录路径, PMO确认]
+
+  DB-BACKUP-002:
+    rule: 备份验证
+    verify: [文件存在, size > 0, SQL末尾有 "Dump completed", 记录 checksum]
+
+  DB-ROLLBACK-001:
+    rule: 提供回滚方案
+    include: [如何恢复, 预计时间, 数据丢失窗口]
+
+# 标准流程
+workflow:
+  1_risk_assessment: 确定操作类型、影响范围、环境
+  2_backup_plan: 生成脚本、确定路径、预估大小
+  3_execute_backup: 执行、验证、记录、等待PMO确认
+  4_execute_change: 执行变更、监控日志
+  5_verify: 检查表结构、数据完整性、应用连接
+  6_cleanup: 记录日志、更新文档、保留备份 7 天
+
+# 备份命令
+backup_commands:
+  postgresql:
+    full: docker exec ${CONTAINER} pg_dump -U ${USER} -d ${DB} -F p -f /tmp/backup.sql
+    compressed: docker exec ${CONTAINER} pg_dump -U ${USER} -d ${DB} -F c -f /tmp/backup.dump
+    schema_only: docker exec ${CONTAINER} pg_dump -U ${USER} -d ${DB} -s -f /tmp/schema.sql
+  timescaledb:
+    note: 先停止写入应用，再执行标准 pg_dump
+
+# 备份路径
+backup_paths:
+  dev: /opt/xkquant/dev/backups/{db}/
+  prod: /opt/xkquant/prod/backups/{db}/
+  naming: "{db}_{timestamp}_{operation}.sql"
+
+# 环境策略
+environments:
+  dev: {backup: required, retention: 7d}
+  staging: {backup: required, retention: 14d}
+  prod: {backup: required, retention: 90d, downtime: false, multi_location: true}
+
+# 异常处理
+error_handling:
+  backup_failed: ABORT, 修复后重新开始
+  backup_corrupted: ABORT, 重新执行备份
+  migration_failed: ROLLBACK, 从备份恢复
+
+# Checklist
+checklist:
+  before: [备份脚本, 执行备份, 验证完整性, 记录路径, PMO确认, 回滚方案]
+  during: [监控连接, 记录执行时间, 检查错误日志]
+  after: [验证结构, 验证数据, 测试连接, 更新文档, 保留备份]

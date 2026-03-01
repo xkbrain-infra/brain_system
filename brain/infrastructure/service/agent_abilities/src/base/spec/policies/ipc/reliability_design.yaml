@@ -1,0 +1,130 @@
+# IPC Reliability Design
+# Purpose: Define timeout/ack/retry reliability mechanism for IPC messaging
+
+id: IPC-RELIABILITY-DESIGN
+name: IPC Message Reliability Mechanism
+status: implemented
+owner: devops
+version: v1.0
+last_updated: 2026-02-06
+implementation_date: 2026-02-06
+
+background:
+  problem: IPC flow lacks timeout/ack/retry; messages can be sent without any response and no automatic re-trigger.
+  motivation: Improve delivery assurance and observability without large-scale code changes; reuse service_timer.
+
+goals:
+  - Provide timeout detection for unacked messages.
+  - Enable automatic retry with backoff and max attempts.
+  - Track message state transitions for visibility and ops.
+  - Minimize invasive changes; prefer incremental adoption.
+
+non_goals:
+  - Redesign IPC protocol or replace daemon transport.
+  - Provide exactly-once delivery; target at-least-once with dedupe guidance.
+  - Enforce changes on all existing message senders immediately.
+
+design_overview:
+  approach: Use service_timer to periodically scan pending IPC messages and trigger retries or failover notifications.
+  components:
+    - sender_state_store: Persistent state for message_id, target, status, timestamps, retry counters.
+    - timer_sweeper: Interval/cron job that checks overdue messages and triggers retry actions.
+    - retry_dispatch: Re-send IPC with updated attempt count and next_retry_at.
+    - observability: Log state transitions and expose metrics for ops dashboards.
+
+state_model:
+  states: [sent, acked, timeout, retried, failed]
+  transitions:
+    - sent -> acked: ack received within timeout
+    - sent -> timeout: timeout reached without ack
+    - timeout -> retried: retry dispatched
+    - retried -> acked: ack received after retry
+    - retried -> failed: max_retries exceeded or retry_window expired
+
+retry_policy:
+  timeout_seconds: 30
+  max_retries: 3
+  retry_backoff_seconds: 10
+  retry_window_seconds: 300
+  notes: Use exponential backoff if needed; cap at retry_window_seconds.
+
+trigger_flow:
+  - sender writes state: message_id, target, status=sent, sent_at, deadline_at
+  - timer_sweeper scans for status in [sent, retried] with now >= deadline_at
+  - on timeout: update status=timeout; if retries remain, enqueue retry
+  - retry_dispatch sends IPC, updates attempt_count, status=retried, next deadline_at
+  - on ack: update status=acked and stop future retries
+
+observability:
+  logs:
+    - state_transition: message_id, from_state, to_state, timestamp, reason
+    - retry_event: message_id, attempt, target, next_deadline
+  metrics:
+    - ipc_pending_count
+    - ipc_timeout_count
+    - ipc_retry_count
+    - ipc_failed_count
+  alerts:
+    - high_timeout_rate
+    - repeated_failures_on_target
+
+compatibility_risks:
+  - Duplicate delivery possible on retries; receivers should be idempotent or dedupe by message_id.
+  - Requires minimal sender changes to persist message state.
+  - Timer sweep interval too large may delay retries.
+
+implementation_steps:
+  - Define sender_state_store schema and storage location.
+  - Add sender-side write on IPC send (message_id, deadline_at).
+  - Implement timer job to scan and dispatch retries via existing IPC.
+  - Add ack listener to update state to acked.
+  - Add logs/metrics and validation scripts.
+
+acceptance_criteria:
+  - Timeout detection triggers retries within configured bounds.
+  - Max retries honored; failed state recorded after exhaustion.
+  - Logs and metrics emitted for all state transitions.
+  - No breaking change to existing IPC consumers.
+
+implementation_details:
+  completed_date: 2026-02-06
+  implementer: agent_system_devops
+  files_created:
+    - /brain/runtime/engine/src/timer/ipc_reliability.py
+    - /brain/runtime/engine/src/timer/test_reliability.py
+  files_modified:
+    - /brain/runtime/engine/src/timer/daemon_client.py
+    - /brain/runtime/engine/src/timer/service_timer.py
+  storage:
+    type: SQLite
+    path: /brain/runtime/data/ipc_state.db
+  features:
+    - MessageStateStore class with SQLite backend
+    - States: sent, acked, timeout, retried, failed
+    - Exponential backoff retry (base * 2^attempt)
+    - tracked_send() method for automatic state tracking
+    - Reliability sweeper integrated into service_timer
+    - Health endpoint exposes ipc_reliability stats
+  defaults:
+    timeout_seconds: 30
+    max_retries: 3
+    retry_backoff_seconds: 10
+    retry_window_seconds: 300
+    sweep_interval_seconds: 5
+  usage:
+    basic_send: |
+      # Use tracked_send for reliability
+      from timer.daemon_client import DaemonClient
+      from timer.ipc_reliability import MessageStateStore
+
+      store = MessageStateStore()
+      client = DaemonClient()
+      msg_id, resp = client.tracked_send(
+          from_agent="sender",
+          to_agent="receiver",
+          payload={"data": "value"},
+          state_store=store,
+      )
+    ack_message: |
+      # Receivers should ack messages
+      store.mark_acked(msg_id, "processed successfully")

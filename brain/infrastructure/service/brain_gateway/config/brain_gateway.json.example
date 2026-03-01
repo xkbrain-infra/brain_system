@@ -1,0 +1,53 @@
+{
+  "service": {
+    "name": "service-brain_gateway",
+    "host": "0.0.0.0",
+    "port": 8200,
+    "log_level": "INFO"
+  },
+  "ipc": {
+    "socket_path": "/tmp/brain_ipc.sock",
+    "poll_interval_ms": 100,
+    "heartbeat_interval_s": 10,
+    "reconnect_interval_s": 5,
+    "max_retries": -1
+  },
+  "routing": {
+    "platforms": {
+      "telegram": "agent_system_frontdesk"
+    },
+    "chat_types": {
+      "private": "agent_system_frontdesk",
+      "channel": "agent_system_pmo"
+    },
+    "keywords": [
+      {"pattern": "(?i)(bug|crash)", "target": "agent_system_qa"},
+      {"pattern": "(?i)(deploy|release)", "target": "agent_system_devops"}
+    ],
+    "default": "agent_system_frontdesk",
+    "reply_targets": {
+      "telegram": "service-telegram_api"
+    },
+    "bot_service_map": {
+      "XKAgentBot": "service-telegram_api",
+      "XKQuantBot": "service-telegram_api_bot2"
+    }
+  },
+  "permissions": {
+    "telegram": {
+      "allowed_users": []
+    }
+  },
+  "rate_limit": {
+    "tokens_per_minute": 10
+  },
+  "stats": {
+    "enabled": true,
+    "flush_interval_s": 60
+  },
+  "cluster": {
+    "enabled": false,
+    "node_id": "node-1",
+    "nodes": []
+  }
+}

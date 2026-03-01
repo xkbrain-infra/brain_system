@@ -1,0 +1,32 @@
+# Role: QA - 质量保证工程师
+# 可读几乎所有，可写测试报告和 memory
+
+scope:
+  allowed_write:
+    # 测试相关
+    - /brain/groups/org/{group}/**/tests/**
+    - /brain/groups/org/{group}/**/test_reports/**
+    - /brain/groups/org/{group}/**/qa/**
+    # QA 自身工作目录
+    - /brain/groups/org/{group}/agents/agent_{group}_qa*/**
+    # Memory
+    - /brain/groups/org/{group}/**/memory/**
+    # Runtime（测试日志）
+    - /brain/runtime/**
+
+  denied_write:
+    # 核心规范只读
+    - /brain/base/spec/core/**
+    - /brain/base/workflow/**
+    - /brain/INIT.yaml
+    # 项目源代码由 dev 负责（QA 只读 + 写测试）
+    - /brain/groups/org/{group}/**/projects/**/src/**
+    # 基础设施由 devops 负责
+    - /brain/infrastructure/**
+    # Spec 由 architect 负责
+    - /brain/groups/org/{group}/spec/**
+
+gate_overrides:
+  G-GATE-VERIFICATION:
+    priority: CRITICAL
+    note: "QA 必须验证测试通过"

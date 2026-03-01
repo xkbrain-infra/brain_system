@@ -1,0 +1,262 @@
+# Creation Index
+# Brain 系统中各类"创建"操作的索引入口
+#
+# Creation 是指创建新的空间（Space）、规格（Spec）、资源（Resource）等。
+# 本索引组织所有创建相关的规范文档。
+
+metadata:
+  id: CORE-CREATION-INDEX
+  version: "1.0"
+  created_at: "2026-02-11"
+  owner: base_architect
+  description: "创建操作的统一索引和规范入口"
+
+# ============================================
+# 核心概念
+# ============================================
+concepts:
+  creation: |
+    Creation（创建）是指在 Brain 系统中建立新的组织单元、项目空间或规格说明。
+    创建操作通常包含：
+    1. 定义（WHAT）- 描述要创建什么
+    2. 审批（APPROVAL）- 获取必要的批准
+    3. 执行（HOW）- 实际创建目录、文件、注册
+    4. 同步（SYNC）- 更新全局索引和注册表
+
+  分类:
+    space: "空间创建 - 创建 Group、Project 等组织空间"
+    spec: "规格创建 - 创建 Spec 设计文档（S1-S8）"
+    resource: "资源创建 - 创建 Agent、Service 等资源"
+
+# ============================================
+# Space（空间）创建
+# ============================================
+space_creation:
+  description: |
+    Space（空间）是 Brain 系统中的组织单元，包括：
+    - Group: 项目组（团队组织单元）
+    - Project: 具体项目（软件系统/服务）
+
+  文档位置:
+    group: "./space/group.yaml"
+    project: "./space/project.yaml"
+
+  核心内容:
+    - "路径定义（paths）: 空间在文件系统中的位置"
+    - "依赖引用（dependencies）: 空间依赖的 spec 和配置"
+    - "元数据（metadata）: 空间的描述、属性、团队等"
+    - "全局注册（registration）: 如何更新全局索引"
+
+  创建流程:
+    1: "定义 Space Spec - 描述要创建的空间属性"
+    2: "审批 - Group PMO/Architect 批准"
+    3: "执行创建 - 创建目录结构和配置文件"
+    4: "全局注册 - 更新全局索引（局部 → 全局）"
+
+# ============================================
+# Spec（规格）创建
+# ============================================
+spec_creation:
+  description: |
+    Spec（规格）是设计文档，描述"要做什么"和"怎么做"。
+    Spec 类型：
+    - Feature Spec: 功能开发/改进（S1-S8 流程）
+    - Infrastructure Spec: 基础设施改进
+    - Research Spec: 技术调研报告
+
+  文档位置:
+    feature_spec: "../workflow.yaml"  # S1-S8 流程
+    # 其他 Spec 类型待补充
+
+  核心内容:
+    - "S1-S8 阶段文档"
+    - "设计决策和权衡"
+    - "任务分解和验收"
+
+# ============================================
+# Resource（资源）创建
+# ============================================
+resource_creation:
+  description: |
+    Resource（资源）是系统中的可操作实体，包括：
+    - Agent: 智能代理
+    - Service: 后台服务
+    - Database: 数据库实例
+
+  文档位置:
+    agent: "待补充"
+    service: "待补充"
+    database: "待补充"
+
+# ============================================
+# 创建操作的通用原则
+# ============================================
+universal_principles:
+  principle_1:
+    title: "先定义，后执行"
+    description: |
+      所有创建操作必须先有明确的定义（Spec/规格说明），
+      经过审批后再执行实际的创建操作。
+
+  principle_2:
+    title: "局部 → 全局同步"
+    description: |
+      创建局部空间/资源后，必须更新全局索引和注册表，
+      确保系统的一致性和可发现性。
+
+  principle_3:
+    title: "路径、依赖、描述"
+    description: |
+      创建 Spec 必须明确定义：
+      - 路径（WHERE）: 在哪里创建
+      - 依赖（DEPS）: 依赖哪些 spec/配置
+      - 描述（WHAT）: 创建什么、为什么
+
+  principle_4:
+    title: "审批门控"
+    description: |
+      所有创建操作必须经过相应层级的审批：
+      - Group 创建: Base PMO + Base Architect
+      - Project 创建: Group PMO + Group Architect
+      - Spec 创建: Group PMO
+
+  principle_5:
+    title: "可追溯性"
+    description: |
+      所有创建操作必须记录：
+      - 创建时间（created_at）
+      - 创建者（owner）
+      - 审批记录（approval）
+      - 变更历史（changelog）
+
+# ============================================
+# 全局注册机制
+# ============================================
+global_registration:
+  description: |
+    创建局部空间/资源后，必须更新全局注册表，
+    实现"局部 → 全局"的双向同步。
+
+  group_registration:
+    files_to_update:
+      - file: "/brain/groups/spec/index.yaml"
+        section: "groups"
+        action: "添加 Group 条目（group_id, root, spec_root, entrypoints）"
+
+      - file: "/brain/groups/spec/organization.yaml"
+        section: "business_groups"
+        action: "注册 Group 详细信息（mission, scope, members, projects）"
+
+  project_registration:
+    files_to_update:
+      - file: "{group_root}/spec/projects.yaml"
+        section: "projects"
+        action: "添加 Project 条目（project_id, name, paths, deployment）"
+
+      - file: "/brain/groups/spec/projects_index.yaml"
+        section: "projects"
+        action: "（可选）全局注册 Project（重要项目）"
+
+  spec_registration:
+    files_to_update:
+      - file: "{group_root}/spec/index.yaml"
+        section: "specs"
+        action: "添加 Spec 条目（spec_id, title, status, owner, path）"
+
+# ============================================
+# ID 命名规范
+# ============================================
+id_conventions:
+  group_id:
+    format: "{domain_name}"
+    pattern: "^[a-z][a-z0-9_]*$"
+    examples:
+      - "brain_system"
+      - "xkquant"
+      - "commerce"
+    notes: "小写字母开头，可包含字母、数字、下划线"
+
+  project_id:
+    format: "PRJ-{GROUP_PREFIX}-{SHORT_NAME}"
+    pattern: "^PRJ-[A-Z]{2,3}-[A-Z0-9_-]+$"
+    examples:
+      - "PRJ-BRAIN-AGENT-ORCHESTRATOR"
+      - "PRJ-XKQUANT-CXX-SERVICE"
+      - "PRJ-COM-ORDER-SYSTEM"
+    notes: "大写，GROUP_PREFIX 2-3 字符"
+
+  spec_id:
+    format: "{GROUP_PREFIX}-{SEQ}-{SHORT_NAME}"
+    pattern: "^[A-Z]{2,3}-\\d{3,4}-[a-z0-9-]+$"
+    examples:
+      - "BS-010-agentctl-naming-unification"
+      - "XQ-001-docker-stack"
+      - "COM-001-payment-gateway"
+    notes: "GROUP_PREFIX + 3-4 位序号 + 短名称"
+
+  group_prefix:
+    mapping:
+      brain_system: "BS"
+      xkquant: "XQ"
+      commerce: "COM"
+    notes: "每个 Group 有唯一的前缀，用于 Spec ID 和 Project ID"
+
+# ============================================
+# 路径约定
+# ============================================
+path_conventions:
+  brain_layer:
+    description: "Brain 层（管理层），存储配置、规格、记忆"
+    group_root: "/brain/groups/org/{group_id}"
+    project_root: "/brain/groups/org/{group_id}/projects/{project_name}"
+    spec_root: "/brain/groups/org/{group_id}/spec/{spec_id}"
+
+  body_layer:
+    description: "Body 层（代码层），存储实际源代码"
+    typical_location: "/app/domain/{project_name}"
+    exceptions:
+      - "/brain/infrastructure/..."  # Brain 基础设施
+      - "/brain/runtime/..."          # Brain 运行时
+
+# ============================================
+# 快速开始
+# ============================================
+quick_start:
+  create_group:
+    step_1: "阅读 ./space/group.yaml 了解 Group 创建规范"
+    step_2: "定义 Group Spec（路径、依赖、描述）"
+    step_3: "获取 Base PMO + Base Architect 审批"
+    step_4: "执行创建流程"
+    step_5: "更新全局注册（index.yaml, organization.yaml）"
+
+  create_project:
+    step_1: "阅读 ./space/project.yaml 了解 Project 创建规范"
+    step_2: "定义 Project Spec（路径、依赖、描述）"
+    step_3: "获取 Group PMO + Group Architect 审批"
+    step_4: "执行创建流程"
+    step_5: "更新 Group 注册（projects.yaml）"
+
+  create_spec:
+    step_1: "阅读 ../workflow.yaml 了解 S1-S8 流程"
+    step_2: "PMO 创建 Spec 目录和 00_index.yaml"
+    step_3: "执行 S1-S8 各阶段"
+    step_4: "更新 Group spec/index.yaml"
+
+# ============================================
+# 相关文档
+# ============================================
+related_docs:
+  space_creation:
+    - "./space/group.yaml"          # Group Space 创建
+    - "./space/project.yaml"        # Project Space 创建
+
+  spec_creation:
+    - "../workflow.yaml"            # S1-S8 Spec 工作流
+
+  global_registries:
+    - "/brain/groups/spec/index.yaml"           # Group 索引
+    - "/brain/groups/spec/organization.yaml"    # 组织架构
+    - "/brain/groups/spec/projects_index.yaml"  # Project 索引
+
+  templates:
+    - "/brain/base/spec/templates/spec_dsl.yaml"  # Spec 模板

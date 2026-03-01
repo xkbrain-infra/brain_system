@@ -1,0 +1,8 @@
+services:
+  task_manager_test:
+    build:
+      context: ..
+      dockerfile: tests/Dockerfile.test
+    image: task-manager-test:latest
+    working_dir: /brain/infrastructure/service/task-manager
+    command: ["bash", "tests/compose_test_runner.sh"]

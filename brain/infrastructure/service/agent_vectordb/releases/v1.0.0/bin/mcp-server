@@ -1,0 +1,4 @@
+#!/bin/bash
+# Wrapper for MCP Server
+cd /xkagent_infra/brain/infrastructure/service/agent_vectordb
+exec python3 mcp_server.py "$@"

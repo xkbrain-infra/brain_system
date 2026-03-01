@@ -1,0 +1,13 @@
+# Service Task Manager Configuration for supervisord
+# Managed by Brain System Refactoring
+
+[program:task_manager]
+command=/brain/infrastructure/service/task_manager/bin/service-task_manager /brain/infrastructure/service/task_manager/config/task_manager.yaml
+directory=/brain/infrastructure/service/task_manager
+autostart=false
+autorestart=true
+startsecs=5
+stopasgroup=true
+killasgroup=true
+stdout_logfile=/brain/runtime/logs/service-task_manager.log
+stderr_logfile=/brain/runtime/logs/service-task_manager_error.log

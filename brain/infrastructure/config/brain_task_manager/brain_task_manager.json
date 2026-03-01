@@ -1,0 +1,28 @@
+{
+  "service": {
+    "name": "service-brain_task_manager",
+    "socket_path": "/tmp/brain_ipc.sock",
+    "notify_socket_path": "/tmp/brain_ipc_notify.sock",
+    "health_port": 8091,
+    "data_dir": "/xkagent_infra/brain/runtime/data/brain_task_manager/",
+    "log_level": "INFO"
+  },
+  "scheduler": {
+    "heartbeat_interval_s": 60,
+    "deadline_reminder_interval_s": 300,
+    "stale_task_interval_s": 3600,
+    "stale_spec_interval_s": 3600,
+    "deadline_warning_hours": 24,
+    "stale_task_hours": 48,
+    "stale_spec_hours": 72
+  },
+  "ipc": {
+    "recv_batch_size": 10,
+    "reconnect_interval_s": 5,
+    "fallback_poll_interval_s": 5
+  },
+  "validation": {
+    "check_owner_online": true,
+    "allowed_priorities": ["critical", "high", "normal", "low"]
+  }
+}

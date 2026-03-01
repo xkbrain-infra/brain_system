@@ -1,0 +1,61 @@
+{
+    "permissions": {
+        "defaultMode": "bypassPermissions",
+        "allow": [
+            "WebSearch",
+            "Bash(docker logs *)",
+            "Bash(docker exec *)",
+            "Bash(docker compose *)",
+            "Bash(docker restart *)",
+            "Bash(docker cp *)",
+            "Bash(docker stop *)",
+            "Bash(docker rm *)",
+            "Bash(docker build *)",
+            "Bash(docker run *)",
+            "Bash(python3 -m compileall *)",
+            "Bash(pipenv --version)",
+            "Bash(ls *)",
+            "Bash(grep *)"
+        ]
+    },
+    "hooks": {
+        "PreToolUse": [
+            {
+                "matcher": "Bash|Edit|Glob|Grep|Read|Write",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "/brain/infrastructure/service/agent_abilities/bin/hooks/current/pre_tool_use",
+                        "timeout": 5000,
+                        "description": "LEP Engine - root PreToolUse",
+                        "env": {
+                            "BRAIN_AGENT_NAME": "root",
+                            "BRAIN_AGENT_ROLE": "default",
+                            "BRAIN_AGENT_GROUP": "",
+                            "BRAIN_SCOPE_PATH": "/brain"
+                        }
+                    }
+                ]
+            }
+        ],
+        "PostToolUse": [
+            {
+                "matcher": "Bash|Edit|Glob|Grep|Read|Write",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "/brain/infrastructure/service/agent_abilities/bin/hooks/current/post_tool_use",
+                        "timeout": 5000,
+                        "description": "LEP Engine - root PostToolUse audit",
+                        "env": {
+                            "BRAIN_AGENT_NAME": "root",
+                            "BRAIN_AGENT_ROLE": "default",
+                            "BRAIN_AGENT_GROUP": "",
+                            "BRAIN_SCOPE_PATH": "/brain"
+                        }
+                    }
+                ]
+            }
+        ]
+    }
+}

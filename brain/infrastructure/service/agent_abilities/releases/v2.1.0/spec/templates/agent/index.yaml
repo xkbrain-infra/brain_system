@@ -1,0 +1,59 @@
+# Agent 创建模板索引
+# 用途: add_agent.py --create-dir 时自动渲染 CLAUDE.md / .mcp.json / .codex/config.toml
+
+version: "1.0"
+description: "标准化 Agent 创建模板体系"
+
+templates:
+  base: base_template.md
+  mcp: mcp_template.json
+  codex: codex_template.toml
+
+roles:
+  pmo:
+    template: roles/pmo.md
+    description: "项目管理 - 审批、排期、进度跟踪"
+  architect:
+    template: roles/architect.md
+    description: "架构设计 - 技术选型、方案评审"
+  developer:
+    template: roles/developer.md
+    description: "代码实现 - 编码、调试、优化"
+  qa:
+    template: roles/qa.md
+    description: "质量保证 - 测试、Review、验收"
+  devops:
+    template: roles/devops.md
+    description: "运维部署 - 基础设施、监控、发布"
+  researcher:
+    template: roles/researcher.md
+    description: "研究调研 - 数据分析、技术调研"
+  frontdesk:
+    template: roles/frontdesk.md
+    description: "消息中枢 - IPC 路由、平台网关"
+
+variables:
+  - name: "{{name}}"
+    source: "spec['name']"
+    example: "agent-system_pmo"
+  - name: "{{description}}"
+    source: "spec['description']"
+    example: "brain_system 的 pmo Agent"
+  - name: "{{path}}"
+    source: "spec['path']"
+    example: "/brain/groups/org/brain_system/agents/agent-system_pmo"
+  - name: "{{scope_path}}"
+    source: "derived from group"
+    example: "/brain/groups/org/brain_system"
+  - name: "{{agent_name}}"
+    source: "spec['name']"
+    example: "agent-system_pmo"
+  - name: "{{group}}"
+    source: "group parameter"
+    example: "brain_system"
+  - name: "{{role}}"
+    source: "role parameter"
+    example: "pmo"
+  - name: "{{capabilities_list}}"
+    source: "spec['capabilities'] formatted"
+    example: "- project_management\n- task_coordination"

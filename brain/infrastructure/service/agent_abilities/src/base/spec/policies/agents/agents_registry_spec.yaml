@@ -1,0 +1,450 @@
+# Agents Registry Specification
+# agents_registry.yaml 的结构约束和验证规则
+
+spec:
+  id: "SPEC-AGENTS-REGISTRY"
+  version: "1.0"
+  status: "Active"
+  owner: "brain_system"
+
+# Schema 定义
+schema:
+  agents_registry:
+    version: string           # 格式版本
+    updated: string           # 最后更新日期 (YYYY-MM-DD)
+
+  agent_spec:
+    required:
+      - name                  # Agent 唯一标识符
+      - agent_type            # CLI 类型: claude | codex | gemini | custom
+      - tmux_session          # tmux session 名称
+      - cwd                   # 工作目录
+    optional:
+      - description           # Agent 描述
+      - scope                 # group | project
+      - group                 # 所属 group
+      - project               # 所属 project
+      - path                  # Agent 目录路径
+      - model                 # 模型: sonnet | opus | haiku | gpt-5.2-codex | ...
+      - cli_args              # CLI 启动参数 list[string]
+      - env                   # 环境变量 - inline 格式 (VAR=val cmd)
+      - export_cmd            # 环境变量 - export 格式 (export VAR=val && cmd)
+      - config:               # 配置路径
+          config_home: string
+          mcp_config: string
+      - mcp_servers           # 额外 MCP servers 配置
+      - hooks                 # Hook 配置 list[string] 或 omit (使用默认)
+      - gateway_bindings      # 绑定的 gateway 列表 list[string]
+      - required              # 是否必须运行 (默认: false)
+      - desired_state         # running | stopped (默认: running)
+      - status                # active | inactive (默认: active)
+      - capabilities          # Agent 能力列表 list[string]
+      - tags                  # 标签 list[string]
+
+  gateway_binding:
+    description: "Agent 可绑定的 gateway 服务，用于接收外部平台消息"
+    valid_values:
+      - service_gateway_telegram
+      - service_gateway_slack
+      - service_gateway_lark
+    note: "绑定后，gateway 收到消息会根据 routing_mode 发给 agent"
+
+# Gateway 路由配置
+gateway_routing:
+  description: "Gateway 消息路由策略"
+  location: "agents_registry.yaml 顶层"
+
+  schema:
+    gateway_name:
+      routing_mode: enum          # broadcast | single | rules
+      default_target: string      # routing_mode=single 时的默认目标
+      rules: list[routing_rule]   # routing_mode=rules 时的规则列表
+
+  routing_modes:
+    broadcast:
+      description: "广播模式 - 发给所有绑定的 agent"
+      use_case: "多个 agent 都需要收到消息"
+
+    single:
+      description: "单一入口模式 - 只发给 default_target"
+      use_case: "统一入口，内部路由"
+      default: true
+
+    rules:
+      description: "规则路由模式 - 根据规则匹配目标"
+      use_case: "按用户/命令/群组路由"
+
+  routing_rule:
+    match:
+      user_id: string             # 匹配用户 ID
+      chat_id: string             # 匹配群组 ID
+      text_prefix: string         # 匹配消息前缀
+      text_regex: string          # 匹配消息正则
+    target: string                # 目标 agent
+
+  example:
+    service_gateway_telegram:
+      routing_mode: single
+      default_target: agent_system_frontdesk
+      # rules 仅 routing_mode=rules 时生效
+      rules:
+        - match: { text_prefix: "/quant" }
+          target: agent_xkquant_pmo
+        - match: { user_id: "123456" }
+          target: agent_vip_handler
+
+  agent_type_values: [claude, codex, gemini, custom]
+  desired_state_values: [running, stopped]
+  status_values: [active, inactive]
+  scope_values: [group, project]
+
+# Group 类型定义
+group_types:
+  personal:
+    description: "个人助理类 - 邮件、日程、待办、生活事务管理"
+    default_agents: [pmo, assistant, operator]
+    default_tools: [email, calendar, tasks, notes]
+    capabilities: [email_management, scheduling, reminders, personal_planning, summarization]
+    
+  coding:
+    description: "软件开发类 - 代码编写、架构设计、DevOps"
+    default_agents: [pmo, architect, devops]
+    default_tools: [git, docker, ide, terminal]
+    capabilities: [code_review, testing, deployment, debugging]
+
+  writing:
+    description: "文字编辑类 - 文档、文案、翻译、内容创作"
+    default_agents: [pmo, editor, reviewer]
+    default_tools: [markdown, notion, docs]
+    capabilities: [writing, editing, proofreading, translation]
+
+  video:
+    description: "视频编辑类 - 视频剪辑、特效、后期制作"
+    default_agents: [pmo, editor, vfx]
+    default_tools: [ffmpeg, premiere, davinci]
+    capabilities: [video_editing, color_grading, vfx, audio_mixing]
+
+  data:
+    description: "数据分析类 - 数据处理、分析、可视化"
+    default_agents: [pmo, analyst, engineer]
+    default_tools: [python, sql, jupyter, tableau]
+    capabilities: [data_analysis, etl, visualization, ml]
+
+  research:
+    description: "研究类 - 调研、分析、报告"
+    default_agents: [pmo, researcher, analyst]
+    default_tools: [search, browser, docs]
+    capabilities: [research, analysis, summarization, reporting]
+
+  automation:
+    description: "自动化类 - 流程自动化、RPA、集成"
+    default_agents: [pmo, developer, operator]
+    default_tools: [n8n, zapier, scripts]
+    capabilities: [workflow_automation, integration, scheduling]
+
+  hybrid:
+    description: "混合类 - 多种类型组合"
+    default_agents: [pmo]
+    default_tools: []
+    capabilities: []
+
+# 层级结构
+hierarchy:
+  groups:
+    description: "Group 级别 Agents"
+    format: "{ group_name: [agent_spec...] }"
+    required_fields:
+      - type                  # group 类型 (coding | writing | video | data | research | automation | hybrid)
+    constraints:
+      - each_group_must_have_pmo
+      - type_must_be_valid
+
+  projects:
+    description: "Project 级别 Agents"
+    format: "{ 'group/project': [agent_spec...] }"
+
+# 约束规则
+constraints:
+  # C1: 每个 group 必须有一个 PMO agent
+  each_group_must_have_pmo:
+    rule: "每个 group 必须至少有一个 role=pmo 或 name 包含 'pmo' 的 agent"
+    enforcement: "创建 group 时自动创建 PMO agent"
+    template: "agent_{group}_pmo"
+    default_config:
+      agent_type: claude
+      model: Sonnet
+      capabilities: [project_management, task_coordination, progress_tracking]
+      tags: ["#pmo", "#coordinator"]
+
+  # C2: Agent name 唯一性
+  unique_agent_name:
+    rule: "所有 agent name 在整个 registry 中必须唯一"
+    scope: global
+
+  # C3: tmux_session 唯一性
+  unique_tmux_session:
+    rule: "所有 tmux_session 在整个 registry 中必须唯一"
+    scope: global
+
+  # C4: 路径一致性
+  path_consistency:
+    rule: "agent 的 cwd 和 path 必须存在或可创建"
+    validation: "启动前检查目录"
+
+# PMO Agent 模板
+pmo_template:
+  naming: "agent_{group}_pmo"
+  description: "{group} 的项目管理 Agent - 负责任务协调、进度跟踪、资源调度"
+  scope: group
+  agent_type: claude
+  model: Sonnet
+  cli_args:
+    - "--dangerously-skip-permissions"
+  env:
+    IS_SANDBOX: 1
+  export_cmd:
+    BRAIN_AGENT_NAME: "agent_{group}_pmo"
+  required: false
+  desired_state: "stopped"
+  status: "inactive"
+  capabilities:
+    - project_management
+    - task_coordination
+    - progress_tracking
+    - resource_allocation
+    - risk_assessment
+  tags:
+    - "#pmo"
+    - "#coordinator"
+    - "#manager"
+
+# 自动化规则
+automation:
+  on_group_create:
+    - action: create_pmo_agent
+      template: pmo_template
+      variables:
+        group: "{new_group_name}"
+        path: "/brain/groups/org/{group}/agents/agent_{group}_pmo"
+        cwd: "/brain/groups/org/{group}/agents/agent_{group}_pmo"
+        tmux_session: "agent_{group}_pmo"
+
+# 验证检查点
+validation:
+  on_load:
+    - check_required_fields
+    - check_unique_names
+    - check_unique_sessions
+    - check_pmo_exists_per_group
+
+  on_save:
+    - validate_schema
+    - validate_constraints
+
+# 示例
+examples:
+  minimal_group_agent:
+    name: "agent_mygroup_pmo"
+    agent_type: claude
+    model: Sonnet
+    tmux_session: "agent_mygroup_pmo"
+    cwd: "/brain/groups/org/mygroup/agents/agent_mygroup_pmo"
+    capabilities: [project_management]
+    tags: ["#pmo"]
+
+  full_group_agent:
+    name: "agent_brain_system_devops"
+    description: "Agent Brain 专用 devops Agent"
+    scope: group
+    group: brain_system
+    path: "/brain/groups/org/brain_system/agents/agent_system_devops"
+    agent_type: claude
+    model: Sonnet
+    tmux_session: "agent_system_devops"
+    cwd: "/brain/groups/org/brain_system/agents/agent_system_devops"
+    cli_args:
+      - "--dangerously-skip-permissions"
+    env:
+      IS_SANDBOX: 1
+    export_cmd:
+      BRAIN_AGENT_NAME: "agent_system_devops"
+    hooks:
+      - pre_tool_use
+      - post_tool_use
+      - session_start
+    required: false
+    desired_state: "stopped"
+    status: "inactive"
+    capabilities: [deployment, infrastructure, monitoring, troubleshooting]
+    tags: ["#devops", "#ops", "#infra"]
+
+# Hooks 配置规范
+hooks_config:
+  description: "Agent 级别的 Hook 配置，由 agentctl 管理并部署"
+
+  field_definition:
+    name: hooks
+    type: list[string]
+    optional: true
+    default: "根据 agent role 自动选择"
+
+  available_hooks:
+    pre_tool_use:
+      description: "工具调用前拦截（Write/Edit/Bash等）"
+      priority: P0
+      use_cases:
+        - SPEC 路径验证 (G-SPEC-LOCATION)
+        - Agent 生命周期保护 (G-AGENT-LIFECYCLE)
+        - 删除保护 (G-DELETE-BACKUP)
+        - 权限检查
+
+    post_tool_use:
+      description: "工具调用成功后处理"
+      priority: P1
+      use_cases:
+        - 审计日志
+        - 格式化代码
+        - 索引更新
+        - 触发 CI/CD
+
+    session_start:
+      description: "会话启动/恢复时"
+      priority: P1
+      use_cases:
+        - 加载规范索引
+        - 启动守护进程
+        - 设置环境
+
+    session_end:
+      description: "会话结束时"
+      priority: P2
+      use_cases:
+        - 清理资源
+        - 保存状态
+        - 写审计日志
+
+    user_prompt_submit:
+      description: "用户提交 prompt 前"
+      priority: P2
+      use_cases:
+        - 添加上下文
+        - 检测关键词
+        - 触发规则
+
+  # 按角色的默认 hooks
+  role_defaults:
+    pmo:
+      hooks:
+        - pre_tool_use      # LEP 门控
+        - post_tool_use     # 审计日志
+        - session_start     # 规范加载
+        - session_end       # 状态保存
+      rationale: "PMO 需要完整的 LEP 门控和审计"
+
+    architect:
+      hooks:
+        - pre_tool_use      # SPEC 路径验证
+        - post_tool_use     # 审计日志
+        - session_start     # 架构规范加载
+      rationale: "Architect 需要 SPEC 路径验证"
+
+    devops:
+      hooks:
+        - pre_tool_use      # Agent 生命周期保护
+        - post_tool_use     # 部署审计
+        - session_start
+      rationale: "DevOps 需要 Agent 生命周期保护"
+
+    developer:
+      hooks:
+        - pre_tool_use      # SPEC 路径验证
+        - session_start     # 代码规范加载
+      rationale: "Developer 需要基本的路径验证"
+
+    qa:
+      hooks:
+        - pre_tool_use      # 路径验证
+        - post_tool_use     # 测试审计
+        - session_start
+      rationale: "QA 需要完整的审计日志"
+
+    researcher:
+      hooks:
+        - session_start     # 只需要规范加载
+      rationale: "Researcher 不需要 LEP 门控"
+
+    custom:
+      hooks: []
+      rationale: "自定义 agent 手动指定 hooks"
+
+  # 部署机制
+  deployment:
+    managed_by: agentctl
+
+    process:
+      1_registry_read:
+        description: "agentctl 读取 agents_registry.yaml"
+        action: "读取 agent.hooks 字段"
+        fallback: "如果未指定，使用 role_defaults"
+
+      2_hook_copy:
+        description: "从 hook 源复制到 agent 目录"
+        source: "/brain/infrastructure/hooks/bin/current/"
+        target: "{agent.path}/.claude/hooks/"
+        method: "硬链接 (ln -f)"
+
+      3_validation:
+        description: "验证 hooks 可用性"
+        checks:
+          - "源 hook 文件存在"
+          - "目标目录可写"
+          - "硬链接创建成功"
+
+  # 约束规则
+  constraints:
+    C1_valid_hooks:
+      rule: "hooks 列表中的值必须在 available_hooks 中"
+      validation: "agentctl 启动前检查"
+      error: "Invalid hook: {hook_name}"
+
+    C2_hook_files_exist:
+      rule: "hooks 对应的文件必须存在于 /brain/infrastructure/hooks/bin/current/"
+      validation: "部署前检查"
+      error: "Hook file not found: {hook_name}"
+
+    C3_no_duplicate_hooks:
+      rule: "hooks 列表中不能有重复项"
+      validation: "registry 加载时检查"
+      error: "Duplicate hook: {hook_name}"
+
+  # 示例
+  examples:
+    explicit_hooks:
+      name: "agent_example_pmo"
+      hooks:
+        - pre_tool_use
+        - post_tool_use
+        - session_start
+      note: "显式指定 hooks"
+
+    default_hooks:
+      name: "agent_example_dev"
+      # hooks 字段省略
+      note: "使用 role=developer 的默认 hooks"
+
+    no_hooks:
+      name: "agent_example_readonly"
+      hooks: []
+      note: "明确不使用任何 hooks"
+
+  # 升级路径
+  migration:
+    from: "全局 hooks（所有 agents 使用相同 hooks）"
+    to: "Agent 级别配置（每个 agent 独立配置）"
+
+    steps:
+      1: "在 agents_registry_spec.yaml 添加 hooks 字段规范（本文档）"
+      2: "更新 agentctl 读取和部署 hooks 配置"
+      3: "为现有 agents 添加默认 hooks（基于 role）"
+      4: "验证所有 agents 的 hooks 正确部署"
+      5: "移除旧的全局 hooks 部署机制"

@@ -1,0 +1,22 @@
+[Unit]
+Description=Brain IPC - Agent IPC Service
+After=network.target
+Documentation=file:///brain/runtime/engine/docs/agent_ipc_guide.md
+
+[Service]
+Type=simple
+ExecStart=/brain/bin/brain_ipc
+Restart=always
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+
+# Environment
+Environment=BRAIN_IPC_SOCKET=/tmp/brain_ipc.sock
+Environment=BRAIN_IPC_LOG=/brain/runtime/logs/brain_ipc.log
+
+# Security
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

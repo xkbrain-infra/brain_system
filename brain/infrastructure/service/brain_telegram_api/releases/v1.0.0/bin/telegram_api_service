@@ -1,0 +1,16 @@
+#!/usr/bin/env python3
+"""Telegram API Service Entry Point."""
+
+import sys
+import os
+
+# Add src directory to path
+sys.path.insert(0, '/xkagent_infra/brain/infrastructure/service/brain_telegram_api/src')
+
+# Import and run main
+try:
+    from main import main
+    main()
+except Exception as e:
+    print(f"Error: {e}", file=sys.stderr)
+    sys.exit(1)

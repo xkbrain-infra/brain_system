@@ -1,0 +1,53 @@
+gate_id: G-GATE-MEMORY-TIMELINE
+name: Timeline Integrity
+applies_to: [write, delete]
+rule: timeline.md 只追加，永不覆盖
+
+enforcement:
+  stage: pre_tool_use
+  method: python_inline
+  priority: HIGH
+
+  triggers:
+    tools: [Write, Edit, Bash]
+    patterns:
+      - "**/timeline.md"
+      - "**/TIMELINE.md"
+
+  rules:
+    append_only:
+      description: "timeline.md 必须只追加，不覆盖"
+      forbidden_operations:
+        - "Write (完全覆盖)"
+        - "Bash: echo > timeline.md"
+        - "Bash: cat > timeline.md"
+      allowed_operations:
+        - "Edit (追加新条目)"
+        - "Bash: echo >> timeline.md (追加)"
+
+  block_message: |
+    🚫 Timeline 完整性保护 (G-MEMORY-TIMELINE)
+
+    文件: {file_path}
+    操作: {operation}
+
+    timeline.md 是时间线记录，必须保持完整性：
+
+    ❌ 禁止：
+    - Write 工具（会覆盖全部内容）
+    - echo > timeline.md（覆盖）
+    - cat > timeline.md（覆盖）
+
+    ✅ 允许：
+    - Edit 工具追加新条目
+    - echo >> timeline.md（追加）
+
+    时间线是项目历史记录，不可篡改或删除。
+
+    参考：/brain/base/spec/core/lep.yaml (G-MEMORY-TIMELINE)
+bindings:
+  hooks:
+    stage: post_tool_use
+    trigger_tools: [Write]
+  mcp_tools: []
+  related_skills: []

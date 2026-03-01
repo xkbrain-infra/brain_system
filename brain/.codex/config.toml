@@ -1,0 +1,41 @@
+model = "gpt-5.3-codex"
+profile = "yolo"
+suppress_unstable_features_warning = true
+
+[projects."/root"]
+trust_level = "trusted"
+
+[projects."/brain"]
+trust_level = "trusted"
+
+[profiles.yolo]
+approval_policy = "never"
+sandbox_mode    = "danger-full-access"
+model = "gpt-5.3-codex"
+personality = "pragmatic"
+
+[features]
+unified_exec = true
+shell_snapshot = true
+steer = true
+multi_agent = true
+
+[mcp_servers.mcp-brain_ipc_c]
+enabled = true
+command = "/brain/bin/mcp/mcp-brain_ipc_c"
+args = []
+
+[mcp_servers.mcp-brain_ipc_c.env]
+BRAIN_AGENT_NAME = "brain_codex"
+BRAIN_TMUX_SESSION = "system-tmp_codex"
+
+[mcp_servers.brain_doc_db]
+enabled = true
+command = "python3"
+args = ["-m", "agent_vectordb.mcp_server"]
+cwd = "/brain/infrastructure/service"
+
+[mcp_servers.brain_doc_db.env]
+DATABASE_URL = "postgresql+asyncpg://postgres:postgres@system-graph-db:5432/brain_docs"
+EMBEDDING_URL = "http://lml-embedding:8001/v1/embeddings"
+EMBEDDING_MODEL = "bge-m3"

@@ -1,0 +1,75 @@
+{
+  "version": "1.0",
+  "rules": [
+    {
+      "agent_id": "*",
+      "account_id": "*",
+      "api_scope": "tasks",
+      "resource_tag": "*",
+      "permission": "read"
+    },
+    {
+      "agent_id": "*",
+      "account_id": "*",
+      "api_scope": "slides",
+      "resource_tag": "*",
+      "permission": "read"
+    },
+    {
+      "agent_id": "*",
+      "account_id": "*",
+      "api_scope": "docs",
+      "resource_tag": "*",
+      "permission": "read"
+    },
+    {
+      "agent_id": "agent_system_dev",
+      "account_id": "*",
+      "api_scope": "tasks",
+      "resource_tag": "*",
+      "permission": "write"
+    },
+    {
+      "agent_id": "agent_system_dev",
+      "account_id": "*",
+      "api_scope": "slides",
+      "resource_tag": "*",
+      "permission": "write"
+    },
+    {
+      "agent_id": "agent_system_dev",
+      "account_id": "*",
+      "api_scope": "docs",
+      "resource_tag": "*",
+      "permission": "write"
+    },
+    {
+      "agent_id": "*",
+      "account_id": "*",
+      "api_scope": "drive",
+      "resource_tag": "*",
+      "permission": "write"
+    },
+    {
+      "agent_id": "*",
+      "account_id": "*",
+      "api_scope": "gmail",
+      "resource_tag": "inbox",
+      "permission": "read"
+    },
+    {
+      "agent_id": "agent_system_dev",
+      "account_id": "*",
+      "api_scope": "drive",
+      "resource_tag": "*",
+      "permission": "write"
+    },
+    {
+      "agent_id": "service-timer",
+      "account_id": "*",
+      "api_scope": "gmail",
+      "resource_tag": "send",
+      "permission": "write"
+    }
+  ]
+}

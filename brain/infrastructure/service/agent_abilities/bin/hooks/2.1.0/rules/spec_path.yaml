@@ -1,0 +1,128 @@
+# ⚠️ DEPRECATED - 此文件已废弃
+# 规则已迁移到: /brain/base/spec/core/lep.yaml (G-SPEC-LOCATION)
+# 当前仅作为 fallback 兼容性保留，将在 48h 监控后删除
+# 迁移日期: 2026-02-13
+# 删除计划: 2026-02-15
+
+# SPEC 路径强制规则
+# 防止在错误位置创建 SPEC 文件
+
+version: "1.0-deprecated"
+description: "[DEPRECATED] SPEC 位置门控规则 - 请使用 lep.yaml"
+
+rules:
+  - id: G-SPEC-LOCATION
+    name: "SPEC 位置门控"
+    priority: CRITICAL
+    description: "强制 SPEC 文件必须在指定的 group spec 目录中"
+
+    # 禁止路径模式（使用 glob 语法）
+    forbidden_patterns:
+      - "**/.claude/plans/**"          # Claude CLI 默认计划目录
+      - "/brain/docs/plans/**"         # 非规范计划落盘目录
+      - "**/tmp/**"                    # 临时目录
+      - "/root/**"                     # Root 用户目录
+      - "**/.local/**"                 # 本地配置目录
+      - "/home/**"                     # 用户 home 目录
+      - "**/.cache/**"                 # 缓存目录
+
+    # 允许路径模式（SPEC 必须在这些位置之一）
+    allowed_patterns:
+      - "/brain/groups/**/spec/**"                   # 任意 group 的 spec (双星号匹配多级)
+      - "/brain/groups/org/brain_system/spec/**"    # Brain System SPEC
+      - "/brain/groups/org/xkquant/spec/**"         # XKQuant SPEC
+      - "/brain/groups/org/commerce/spec/**"        # Commerce SPEC
+      - "/brain/base/spec/**"                        # Base SPEC (只读参考)
+
+    # 内容触发器（文件内容包含这些关键词时触发检查）
+    content_triggers:
+      - "spec_id:"
+      - "alignment:"
+      - "requirements:"
+      - "## Context"
+      - "实施计划："
+      - "## 实施步骤"
+      - "Phase 1:"
+      - "Phase 2:"
+
+    # 错误消息模板
+    block_message: |
+      🚫 SPEC 路径违规 (G-SPEC-LOCATION)
+
+      文件路径: {file_path}
+      违规原因: {reason}
+
+      ❌ 禁止在 {forbidden_location} 创建 SPEC 文件
+      ✅ 正确路径格式: /brain/groups/org/{group}/spec/{spec_id}/
+
+      SPEC 文件必须遵循 S1-S8 流程：
+      1. 创建 SPEC 目录: /brain/groups/org/{group}/spec/BS-{seq}-{short_name}/
+      2. 写入标准文件:
+         - 00_index.yaml       (元信息)
+         - 01_alignment.yaml   (S1: 目标范围)
+         - 02_requirements.yaml (S2: 需求定义)
+         - 03_research.yaml    (S3: 技术调研)
+         - 04_analysis.yaml    (S4: 方案对比)
+         - 05_solution.yaml    (S5: 详细设计)
+         - 06_tasks.yaml       (S6: 任务分解)
+         - 07_verification.yaml (S7: 验收测试)
+         - 08_complete.yaml    (S8: 归档总结)
+      3. 经 PMO 审批后实施
+
+      参考文档:
+      - Workflow: /brain/base/spec/core/workflow.yaml
+      - Templates: /brain/base/spec/templates/
+      - 现有示例: /brain/groups/org/brain_system/spec/
+
+  - id: G-PLAN-MODE-SPEC
+    name: "Plan Mode 必须在 SPEC 目录"
+    priority: CRITICAL
+    description: "Plan Mode 只能在正确的 SPEC 目录中使用"
+
+    triggers:
+      - tool: EnterPlanMode
+        action: warn
+        condition: "current_dir not in allowed_spec_dirs"
+        message: |
+          ⚠️ Plan Mode 检测到可能的路径问题
+
+          当前目录: {current_dir}
+
+          建议：
+          1. 如果是新功能/项目，请先创建 SPEC 目录
+          2. SPEC 路径: /brain/groups/org/{group}/spec/{spec_id}/
+          3. 然后在 SPEC 目录中使用 Plan Mode
+
+          或者：
+          - 如果是简单修改，可以不使用 Plan Mode，直接编辑
+          - 如果是探索性工作，可以在当前目录继续
+
+          参考: /brain/base/spec/core/workflow.yaml
+
+# 示例路径（合规）
+examples:
+  valid_paths:
+    - "/brain/groups/org/brain_system/spec/BS-012-frontdesk-add-agent/01_alignment.yaml"
+    - "/brain/groups/org/xkquant/spec/XQ-005-executor-log-dual-write/02_requirements.yaml"
+    - "/brain/groups/org/commerce/spec/CM-001-inventory-system/03_research.yaml"
+
+  invalid_paths:
+    - "/root/.claude/plans/my-plan.md"                    # ❌ Claude CLI 默认路径
+    - "/brain/docs/plans/2026-02-17-brain-google-api.md" # ❌ docs/plans 目录
+    - "/tmp/spec/BS-001-test.yaml"                        # ❌ 临时目录
+    - "/brain/groups/org/brain_system/BS-001-test.yaml"  # ❌ 不在 spec/ 子目录
+    - "/home/user/projects/plan.md"                       # ❌ 用户目录
+
+# 配置选项
+config:
+  # 是否启用内容检查（检查文件内容是否包含 SPEC 关键词）
+  enable_content_check: true
+
+  # 是否在 warning 模式下阻止操作（false 只警告不阻止）
+  block_on_warning: false
+
+  # 日志级别
+  log_level: INFO
+
+  # 审计日志路径
+  audit_log: "/brain/runtime/logs/hooks_audit.jsonl"

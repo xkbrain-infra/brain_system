@@ -1,0 +1,8 @@
+#!/bin/bash
+# Brain System All-in-One Monitor - Entry point
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+MONITOR_ROOT="$(dirname "$SCRIPT_DIR")"
+SRC_DIR="$MONITOR_ROOT/src"
+
+exec bash "$SRC_DIR/monitor_all.sh" "$@"

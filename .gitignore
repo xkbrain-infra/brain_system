@@ -1,0 +1,28 @@
+# IDE / local
+.vscode/
+
+# Python caches
+**/__pycache__/
+**/*.pyc
+
+# Environments
+**/.env
+**/.env.*
+
+# Runtime / generated data
+tmp/
+brain/runtime/
+brain/platform/docker/docker-data/
+
+# Secrets: ignore all by default, keep only safe metadata/templates
+**/secrets/**
+!**/secrets/**/
+!**/secrets/.gitignore
+!**/secrets/README.md
+!**/secrets/index.yaml
+!**/secrets/**/*.template
+!**/secrets/**/*.example
+!**/secrets/**/SETUP_GUIDE.md
+
+# Keep GitHub example but never commit real token file
+brain/secrets/system/github/github.env

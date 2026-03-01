@@ -1,0 +1,13 @@
+#!/usr/bin/env python3
+"""pre_tool_use Hook - v2 入口 (自动生成)"""
+import sys
+import os
+print("gfghjkl_v2", file=sys.stderr)
+
+HOOK_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.join(HOOK_ROOT, "src", "handlers", "tool_validation", "current", "python"))
+
+from handler import handle_pre_tool_use
+
+if __name__ == "__main__":
+    handle_pre_tool_use()

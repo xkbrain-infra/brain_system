@@ -1,0 +1,4 @@
+#!/bin/bash
+# Wrapper for sync-docs
+cd /xkagent_infra/brain/infrastructure/service/agent_vectordb
+exec python3 sync_docs.py "$@"

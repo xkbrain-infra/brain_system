@@ -1,0 +1,1426 @@
+# LEP - Linear Expression Protocol
+# 门控规则，约束所有修改操作
+# 逻辑：command → command_mapping 识别 action 类型 → 匹配 applies_to 的 gates
+
+actions:
+  read: [open, search, summarize, analyze]
+  write: [create, update, append, patch]
+  delete: [remove, truncate]
+  move: [rename, relocate]
+  git: [commit, push, checkout, merge, rebase]
+  log: [audit, trace, snapshot]
+
+# applies_to 语义扩展（供解释器使用）
+# - applies_to: all
+# - applies_to: "*"
+# - applies_to: ["*"]
+
+command_mapping:
+  read:
+    bash: [cat, head, tail, less, grep, rg, find, ls, tree]
+    tool: [Read, Glob, Grep]
+  write:
+    bash: [echo >, tee, sed -i, awk]
+    tool: [Write, Edit, NotebookEdit]
+  delete:
+    bash: [rm, rm -rf, rmdir, unlink, shred]
+  move:
+    bash: [mv, rename]
+  git:
+    bash: [git add, git commit, git push, git pull, git checkout, git merge, git rebase]
+  log:
+    target: "**/memory/**/*.jsonl"
+
+modes:
+  STRICT: 默认，操作限制在 scope 内
+  PASS-ALL: 需显式授权，允许超出 scope
+
+gates:
+  G-GATE-NAWP:
+    name: No Action Without Plan
+    applies_to: [write, delete, move, git]
+    rule: 修改操作需要 Plan + PMO 批准
+    exception: /brain/**/memory/**
+    enforcement: 先提 Plan → PMO 审批 → 再执行（PASS-ALL 模式除外）
+
+    enforcement:
+      stage: pre_tool_use
+      method: plan_mode_check
+      priority: CRITICAL
+      note: "需要 Plan mode 集成 - 当前为推荐性检查"
+
+      triggers:
+        tools: [Write, Edit, Bash]
+        protected_areas:
+          - "/brain/base/spec/**"
+          - "/brain/base/workflow/**"
+          - "/brain/infrastructure/service/**"
+
+      exceptions:
+        - "/brain/**/memory/**"
+        - "/brain/runtime/tmp/**"
+        - "/brain/runtime/logs/**"
+
+      config:
+        check_plan_file: true
+        plan_dir: "/root/.claude/plans/"
+        require_pmo_approval: true
+
+      warn_message: |
+        💡 建议先创建 Plan (G-NAWP)
+
+        操作: {operation}
+        文件: {file_path}
+
+        修改核心系统需要先创建 Plan 并获得 PMO 批准：
+        1. 使用 EnterPlanMode 创建 Plan
+        2. 在 Plan 中详细描述修改内容
+        3. 使用 ExitPlanMode 提交 Plan
+        4. 等待 PMO 批准
+
+        保护区域：
+        - /brain/base/spec/** (核心规范)
+        - /brain/infrastructure/** (基础设施)
+
+        例外：memory/, tmp/, logs/ 目录不需要 Plan
+
+        这是推荐性检查（需要 Plan mode 集成）。
+
+        参考：/brain/base/spec/core/lep.yaml (G-NAWP)
+
+  G-GATE-ATOMIC:
+    name: Atomic Plan
+    applies_to: [write, delete, move, git]
+    rule: Plan 必须原子化（具体到文件/行号/动作）
+
+    enforcement:
+      stage: plan_mode
+      method: plan_validator
+      priority: HIGH
+      note: "需要 Plan mode 集成 - 检查 Plan 内容"
+
+      rules:
+        atomic_requirements:
+          - "Plan 必须包含具体的文件路径"
+          - "Plan 必须包含具体的修改内容"
+          - "Plan 必须包含验证步骤"
+          - "Plan 不能有模糊描述（'等'、'之类'）"
+
+      config:
+        check_file_list: true
+        check_action_details: true
+        reject_vague_terms: true
+
+      warn_message: |
+        ⚠️ Plan 原子化要求 (G-ATOMIC)
+
+        Plan 必须具体到文件级别：
+        - ✅ 正确: "修改 /brain/base/spec/core/lep.yaml 第 100 行"
+        - ❌ 错误: "修改一些配置文件"
+
+        必须包含：
+        1. 具体文件路径列表
+        2. 每个文件的修改内容
+        3. 验证步骤
+
+        这是推荐性检查（需要 Plan mode 集成）。
+
+        参考：/brain/base/spec/core/lep.yaml (G-ATOMIC)
+
+  G-GATE-SCOP:
+    name: Scope Locking
+    applies_to: [write, delete, move, git]
+    rule: 操作必须在允许的路径内
+    protected: /brain/base/**
+
+    enforcement:
+      stage: pre_tool_use
+      method: c_binary
+      binary: lep_check
+      priority: CRITICAL
+
+      triggers:
+        tools: [Write, Edit, Bash]
+        check_type: protected
+
+      protected_paths:
+        - /brain/base/spec/core/
+        - /brain/base/spec/schema/
+        - /brain/INIT.yaml
+
+      block_message: |
+        🚫 保护路径禁止修改 (G-SCOP)
+        路径: {file_path}
+        保护原因: 核心配置文件
+
+        如需修改核心规范，请先提 Plan 并经 PMO 批准。
+
+        参考：/brain/base/spec/core/lep.yaml (G-NAWP)
+
+  G-GATE-DELETE-BACKUP:
+    name: Delete with Backup
+    applies_to: [delete]
+    rule: 删除前必须先备份
+    exception: [/tmp/**, build/, __pycache__/]
+
+    enforcement:
+      stage: pre_tool_use
+      method: python_inline
+      priority: MEDIUM
+
+      triggers:
+        tools: [Bash]
+
+      patterns:
+        delete_important_files:
+          - pattern: "rm\\s+(?!.*(?:/tmp/|build/|__pycache__|node_modules|.git/objects)).*\\.(?:yaml|yml|py|js|ts|cpp|hpp|c|h|sql|sh|md|json|toml)"
+            message: "删除重要文件（代码/配置）"
+          - pattern: "rm\\s+-rf?\\s+(?!.*(?:/tmp/|build/|__pycache__|node_modules)).*(?:/brain/|/groups/|/spec/)"
+            message: "删除重要目录"
+
+      warn_message: |
+        ⚠️ 删除操作需要先备份 (G-DELETE-BACKUP)
+
+        {message}
+
+        建议操作：
+        1. 先备份: cp {file_path} /brain/.archived/
+        2. 再删除: rm {file_path}
+
+        或使用 git 追踪文件（可通过 git 恢复）
+
+        参考：/brain/base/spec/core/lep.yaml
+
+  G-GATE-DB-MIGRATION:
+    name: Database Migration Parallel
+    applies_to: [write, delete, move]
+    rule: 数据库迁移必须新老并存，不直接替换
+
+    enforcement:
+      stage: pre_tool_use
+      method: python_inline
+      priority: HIGH
+
+      triggers:
+        tools: [Bash]
+
+      patterns:
+        migration_commands:
+          - pattern: "pg_dump"
+            message: "检测到 pg_dump 操作"
+          - pattern: "pg_restore"
+            message: "检测到 pg_restore 操作"
+          - pattern: "psql.*CREATE\\s+TABLE"
+            message: "检测到 CREATE TABLE 操作"
+          - pattern: "psql.*ALTER\\s+TABLE"
+            message: "检测到 ALTER TABLE 操作"
+          - pattern: "psql.*DROP\\s+TABLE"
+            message: "检测到 DROP TABLE 操作"
+          - pattern: "alembic\\s+upgrade"
+            message: "检测到 alembic upgrade 操作"
+          - pattern: "django.*migrate"
+            message: "检测到 django migrate 操作"
+
+      warn_message: |
+        ⚠️ 数据库迁移需要新老并存 (G-DB-MIGRATION)
+
+        {message}
+
+        建议迁移步骤：
+        1. 创建新表/列（不删除旧的）
+        2. 双写：同时写入新旧表
+        3. 验证数据一致性（24-48h）
+        4. 切流量到新表
+        5. 废弃旧表（保留备份）
+
+      block_message: |
+        ⚠️ 数据库迁移规范 (G-DB-MIGRATION)
+
+        命令: {command}
+
+        原则：新老并存，逐步切换
+
+        禁止：
+        - ❌ 直接 DROP TABLE
+        - ❌ 直接 ALTER TABLE DROP COLUMN
+        - ❌ 不经验证的结构变更
+
+        推荐：
+        1. 创建新表 table_v2
+        2. 双写模式（写 table + table_v2）
+        3. 验证 24h
+        4. 切流量到 table_v2
+        5. 归档 table
+
+        参考：/brain/base/spec/core/lep.yaml (G-DB-MIGRATION)
+
+  G-GATE-DB-BACKUP:
+    name: Database Backup First
+    applies_to: [write, delete, move]
+    rule: 数据库操作前必须先备份
+
+    enforcement:
+      stage: pre_tool_use
+      method: python_inline
+      priority: CRITICAL
+
+      triggers:
+        tools: [Bash]
+
+      patterns:
+        dangerous_operations:
+          - pattern: "pg_restore"
+            message: "检测到 pg_restore 操作"
+          - pattern: "psql.*DROP"
+            message: "检测到数据库 DROP 操作"
+          - pattern: "psql.*TRUNCATE"
+            message: "检测到 TRUNCATE 操作"
+          - pattern: "psql.*DELETE\\s+FROM"
+            message: "检测到 DELETE FROM 操作"
+          - pattern: "psql.*UPDATE.*WHERE"
+            message: "检测到 UPDATE 操作"
+          - pattern: "mysql.*DROP"
+            message: "检测到 MySQL DROP 操作"
+          - pattern: "redis-cli\\s+FLUSHDB"
+            message: "检测到 Redis FLUSHDB 操作"
+          - pattern: "redis-cli\\s+FLUSHALL"
+            message: "检测到 Redis FLUSHALL 操作"
+
+      block_message: |
+        🚫 数据库操作需要先备份 (G-DB-BACKUP)
+
+        命令: {command}
+
+        必须先执行备份：
+        ```bash
+        # PostgreSQL
+        pg_dump -Fc dbname > /brain/.archived/db_backup_$(date +%Y%m%d_%H%M%S).dump
+
+        # Redis
+        redis-cli SAVE
+        cp /var/lib/redis/dump.rdb /brain/.archived/redis_$(date +%Y%m%d_%H%M%S).rdb
+        ```
+
+        然后再执行原命令。
+
+        参考：/brain/base/spec/core/lep.yaml (G-DB-BACKUP)
+
+  G-GATE-VERIFICATION:
+    name: Code Verification
+    applies_to: [write, git]
+    rule: 代码必须编译通过 + 测试通过
+
+    enforcement:
+      stage: pre_git_commit  # 需要 git hooks 支持
+      method: test_runner
+      priority: HIGH
+      note: "当前为推荐性检查，不强制阻塞"
+
+      checks:
+        - type: build
+          command: "make build"
+          required: true
+
+        - type: test
+          command: "make test"
+          required: true
+
+        - type: lint
+          command: "make lint"
+          required: false  # 可选
+
+      config:
+        block_on_failure: false  # 当前不阻塞，仅警告
+        timeout: 300  # 5 分钟
+
+      warn_message: |
+        ⚠️ 代码验证建议 (G-VERIFICATION)
+
+        建议在提交前运行：
+        1. 构建检查: make build
+        2. 测试检查: make test
+        3. 代码检查: make lint
+
+        参考：/brain/base/spec/standards/workflow/verification.yaml
+
+  G-GATE-CODE-STYLE:
+    name: Code Style
+    applies_to: [write, git]
+    rule: 代码遵循项目规范
+
+    enforcement:
+      stage: pre_tool_use
+      method: linter
+      priority: LOW
+      note: "当前为推荐性检查，不强制阻塞"
+
+      linters:
+        python:
+          - tool: black
+            auto_fix: false
+          - tool: pylint
+            auto_fix: false
+
+        javascript:
+          - tool: prettier
+            auto_fix: false
+          - tool: eslint
+            auto_fix: false
+
+        c:
+          - tool: clang-format
+            auto_fix: false
+
+      config:
+        block_on_failure: false  # 不阻塞
+        show_warnings: true
+
+      warn_message: |
+        ℹ️ 代码风格建议 (G-CODE-STYLE)
+
+        建议运行代码格式化工具：
+        - Python: black {file_path}
+        - JavaScript: prettier --write {file_path}
+        - C/C++: clang-format -i {file_path}
+
+        参考：/brain/base/spec/standards/coding/
+
+    block: false
+
+  G-GATE-KVCACHE-FIRST:
+    name: Query Registry Before Read/Write
+    applies_to: [read, write]
+    rule: |
+      必须优先使用索引系统（registry.yaml）查找文档，禁止盲目搜索。
+      - 查找文档时：先读 registry.yaml，在 quick_lookup 中搜索关键词，获取路径后再读取
+      - 创建文件时：先查询 index.yaml 了解目录结构，避免重复或冲突
+      - 索引系统是设计好的快速定位机制，绕过索引等同于规范失效
+
+    enforcement:
+      stage: pre_tool_use
+      method: python_inline
+      priority: HIGH
+      note: "强制性检查 - 必须优先使用 registry.yaml 索引系统"
+
+      triggers:
+        tools: [Read, Write, Edit, Grep, Glob]
+        # 检测是否在查找/创建文件时先读取了 registry 或 index
+        context_check:
+          description: "检查会话历史中是否查询过 registry.yaml 或 index.yaml"
+          lookback_messages: 10  # 最近 10 条消息
+
+      rules:
+        require_registry_first:
+          message: "必须先查询 registry.yaml 快速定位文档"
+          registry_files:
+            - "/brain/base/spec/registry.yaml"      # SPEC 域索引 (35 文档)
+            - "/brain/base/workflow/registry.yaml"  # WORKFLOW 域索引
+            - "/brain/base/knowledge/registry.yaml" # KNOWLEDGE 域索引
+            - "/brain/base/evolution/registry.yaml" # EVOLUTION 域索引
+          index_files:
+            - "/brain/base/index.yaml"              # 全局索引
+            - "/brain/groups/spec/index.yaml"       # 组索引
+            - "/brain/groups/**/projects/**/index.yaml"  # 项目索引
+
+      warn_message: |
+        ⚠️ 必须优先使用索引系统 (G-KVCACHE-FIRST)
+
+        当前操作: {operation}
+        目标文件: {file_path}
+
+        ❌ 禁止行为：
+        - 盲目使用 Read/Grep/Glob 搜索文档
+        - 直接猜测文件路径
+
+        ✅ 正确流程：
+        1. 查找文档时：
+           - 读取 /brain/base/{domain}/registry.yaml
+           - 在 quick_lookup 中搜索关键词
+           - 获取文档 ID 和路径后再读取
+        2. 创建文件时：
+           - 读取相关 index.yaml 了解目录结构
+           - 避免重复或冲突
+
+        索引文件：
+        - /brain/base/spec/registry.yaml (SPEC 域, 35 文档, 71 关键词)
+        - /brain/base/workflow/registry.yaml (WORKFLOW 域)
+        - /brain/base/knowledge/registry.yaml (KNOWLEDGE 域)
+        - /brain/base/evolution/registry.yaml (EVOLUTION 域)
+        - /brain/base/index.yaml (全局索引)
+
+        参考：/brain/base/spec/core/lep.yaml (G-KVCACHE-FIRST)
+        原因：如果设计者都不用索引系统，索引就失效了。
+
+  G-GATE-PROJECT-REF:
+    name: Project Dual Reference
+    applies_to: [write]
+    rule: 子项目必须有 parent ref
+    block: false
+
+    enforcement:
+      stage: pre_tool_use
+      method: python_inline
+      priority: LOW
+      note: "推荐性检查 - 不阻塞"
+
+      triggers:
+        tools: [Write, Edit]
+        patterns:
+          - "**/projects/**/index.yaml"
+          - "**/projects/**/00_index.yaml"
+
+      rules:
+        parent_ref_required:
+          description: "子项目必须引用父项目"
+          required_fields:
+            - "parent_project"
+            - "parent_group"
+
+      warn_message: |
+        💡 建议添加 parent ref (G-PROJECT-REF)
+
+        文件: {file_path}
+
+        子项目应该引用父项目：
+        ```yaml
+        parent_project: parent_project_name
+        parent_group: group_name
+        ```
+
+        这有助于：
+        - 追溯项目依赖关系
+        - 理解项目层级结构
+        - 便于项目管理
+
+        这是推荐性检查，不阻塞操作。
+
+        参考：/brain/base/spec/core/lep.yaml (G-PROJECT-REF)
+
+  G-GATE-MEMORY-TIMELINE:
+    name: Timeline Integrity
+    applies_to: [write, delete]
+    rule: timeline.md 只追加，永不覆盖
+
+    enforcement:
+      stage: pre_tool_use
+      method: python_inline
+      priority: HIGH
+
+      triggers:
+        tools: [Write, Edit, Bash]
+        patterns:
+          - "**/timeline.md"
+          - "**/TIMELINE.md"
+
+      rules:
+        append_only:
+          description: "timeline.md 必须只追加，不覆盖"
+          forbidden_operations:
+            - "Write (完全覆盖)"
+            - "Bash: echo > timeline.md"
+            - "Bash: cat > timeline.md"
+          allowed_operations:
+            - "Edit (追加新条目)"
+            - "Bash: echo >> timeline.md (追加)"
+
+      block_message: |
+        🚫 Timeline 完整性保护 (G-MEMORY-TIMELINE)
+
+        文件: {file_path}
+        操作: {operation}
+
+        timeline.md 是时间线记录，必须保持完整性：
+
+        ❌ 禁止：
+        - Write 工具（会覆盖全部内容）
+        - echo > timeline.md（覆盖）
+        - cat > timeline.md（覆盖）
+
+        ✅ 允许：
+        - Edit 工具追加新条目
+        - echo >> timeline.md（追加）
+
+        时间线是项目历史记录，不可篡改或删除。
+
+        参考：/brain/base/spec/core/lep.yaml (G-MEMORY-TIMELINE)
+
+  G-GATE-USERSPACE:
+    name: Userspace Separation
+    applies_to: [write]
+    rule: 用户内容 → userspace/，Agent 整理后 → spec/
+    block: false
+
+    enforcement:
+      stage: pre_tool_use
+      method: python_inline
+      priority: LOW
+      note: "推荐性检查 - 不阻塞"
+
+      triggers:
+        tools: [Write]
+        # 检测用户直接提供的内容（非 Agent 生成）
+
+      rules:
+        separation_suggestion:
+          description: "建议用户内容先放 userspace，整理后放 spec"
+          userspace_patterns:
+            - "/brain/groups/**/userspace/**"
+          spec_patterns:
+            - "/brain/groups/**/spec/**"
+
+      warn_message: |
+        💡 建议使用 userspace (G-USERSPACE)
+
+        文件: {file_path}
+
+        工作流建议：
+        1. 用户提供的原始内容 → userspace/
+        2. Agent 整理加工后 → spec/
+
+        这有助于：
+        - 保留用户原始输入
+        - Agent 有空间整理和标准化
+        - 区分原始内容和规范文档
+
+        这是推荐性检查，不阻塞操作。
+
+        参考：/brain/base/spec/core/lep.yaml (G-USERSPACE)
+
+  G-GATE-NONBLOCKING-CMDS:
+    name: Non-blocking Runtime Commands
+    applies_to: [read, log]
+    rule: |
+      - 禁止使用 `docker exec ... cat /proc/*/fd/*` 抓日志（可能无限阻塞/卡死 Agent）
+      - 所有可能长时间运行的命令必须可终止（优先加 `timeout`），例如：
+        - redis-cli SUBSCRIBE
+        - tail -f
+        - docker exec 读取流式输出
+      - 需要订阅/监控时必须遵循：启动→等待→停止（禁止遗留常驻后台订阅）
+    ref: /brain/base/spec/standards/infra/docker/deployment.yaml
+
+    enforcement:
+      stage: pre_tool_use
+      method: python_inline
+      priority: HIGH
+
+      triggers:
+        tools: [Bash]
+
+      patterns:
+        blocking_commands:
+          - pattern: "tail -f"
+            message: "禁止使用 'tail -f'（会无限阻塞）"
+            suggestion: "使用 'tail -n 100' 或 'timeout 5 tail -f'"
+
+          - pattern: "docker exec.*cat /proc/.*/fd/"
+            message: "禁止使用 'docker exec ... cat /proc/*/fd/*'（可能无限阻塞）"
+            suggestion: "使用 docker logs 或限时读取"
+
+          - pattern: "redis-cli.*SUBSCRIBE"
+            message: "禁止使用 'redis-cli SUBSCRIBE'（会持续订阅）"
+            suggestion: "使用 timeout 或在后台任务中运行"
+
+          - pattern: "nc -l"
+            message: "禁止使用 'nc -l'（会监听等待连接）"
+            suggestion: "使用 timeout 或在测试脚本中运行"
+
+      warn_message: |
+        ⚠️ 可能阻塞的命令 (G-NONBLOCKING-CMDS)
+
+        命令: {command}
+        问题: {message}
+
+        建议: {suggestion}
+
+        原则：
+        - 所有长时间运行的命令必须可终止
+        - 优先使用 timeout 包装
+        - 禁止遗留常驻后台订阅
+
+        参考：/brain/base/spec/core/lep.yaml (G-NONBLOCKING-CMDS)
+
+  G-GATE-TOOL-CONVENTIONS:
+    name: Tool & Command Usage Conventions
+    applies_to: [write, deploy, run]
+    rule: |
+      强制执行工具和命令的使用规范：
+      1. Docker Compose 文件必须命名为 compose.yaml（不是 docker-compose.yaml）
+      2. 使用 docker compose（子命令）而不是 docker-compose（旧连字符命令）
+      3. Docker 部署必须指定环境变量（--env-file 或 -e）
+
+    enforcement:
+      stage: pre_tool_use
+      method: python_inline
+
+      triggers:
+        tools: [Bash, Write, Edit]
+
+      patterns:
+        # BLOCK - docker-compose 已弃用，必须使用 docker compose
+        docker_compose_command:
+          - pattern: "docker-compose\\s"
+            priority: CRITICAL
+            action: block
+            message: "禁止使用 'docker-compose'（已弃用），必须使用 'docker compose'（子命令）"
+            suggestion: "将 docker-compose 替换为 docker compose"
+
+        # WARN - 提醒性规范
+        docker_compose_naming:
+          - pattern: "docker-compose\\.(yaml|yml|json)"
+            priority: MEDIUM
+            action: warn
+            message: "Compose 文件应命名为 compose.yaml，不是 docker-compose.yaml"
+            suggestion: "Docker Compose V2 推荐使用 compose.yaml"
+
+        docker_deploy_env:
+          - pattern: "docker compose up(?!.*--env-file)(?!.*-e )"
+            priority: MEDIUM
+            action: warn
+            message: "docker compose up 应指定环境变量"
+            suggestion: "添加 --env-file .env 或在 compose.yaml 中配置 env_file"
+
+          - pattern: "docker run (?!.*--env-file)(?!.*-e )(?!.*--env )"
+            priority: MEDIUM
+            action: warn
+            message: "docker run 应指定环境变量"
+            suggestion: "添加 --env-file .env 或 -e VAR=value"
+
+      block_message: |
+        🚫 命令规范违规 (G-TOOL-CONVENTIONS)
+
+        {message}
+
+        正确用法: docker compose <子命令>
+        建议: {suggestion}
+
+        参考：/brain/base/spec/core/lep.yaml (G-TOOL-CONVENTIONS)
+
+      warn_message: |
+        ⚠️ 工具使用规范 (G-TOOL-CONVENTIONS)
+
+        {message}
+
+        建议: {suggestion}
+
+        参考：/brain/base/spec/core/lep.yaml (G-TOOL-CONVENTIONS)
+
+  G-GATE-IPC-TARGET:
+    name: IPC Target Validation
+    applies_to: [ipc_send]
+    rule: |
+      发送 IPC 消息前必须确认目标 agent 存在：
+      - 调用 ipc_list_agents 查询在线 agent 列表
+      - 目标不在列表中时，不发送并报错
+      - Daemon 层强制执行：未注册 agent 拒绝接收消息
+    enforcement: daemon
+
+    enforcement:
+      stage: daemon_layer
+      method: daemon_validation
+      priority: CRITICAL
+      note: "需要 daemon 支持 - 当前为推荐性检查"
+
+      triggers:
+        mcp_tool: "ipc_send"
+
+      rules:
+        target_validation:
+          description: "检查目标 agent 是否在线"
+          validation_steps:
+            - "调用 ipc_list_agents 获取在线 agent"
+            - "检查 target 是否在列表中"
+            - "不在列表则拒绝发送"
+
+      config:
+        check_online_status: true
+        allow_offline_agents: false
+
+      block_message: |
+        🚫 IPC 目标不存在 (G-IPC-TARGET)
+
+        目标 Agent: {target}
+
+        错误：目标 agent 未注册或不在线
+
+        请先确认：
+        1. 使用 ipc_list_agents 查询在线 agent
+        2. 确认目标 agent 名称正确
+        3. 确认目标 agent 已启动
+
+        可用的 agent:
+        {available_agents}
+
+        这是推荐性检查（需要 daemon 集成）。
+
+        参考：/brain/base/spec/core/lep.yaml (G-IPC-TARGET)
+
+  G-GATE-VERSION-UPGRADE:
+    name: Version Upgrade Protocol
+    applies_to: [write, delete, move]
+    rule: 升级必须版本化，保留回退方案
+    enforcement: v1 保留 → v2 新建 → 验证 → v1 归档
+
+    enforcement:
+      stage: pre_tool_use
+      method: python_inline
+      priority: HIGH
+
+      triggers:
+        tools: [Write, Edit, Bash]
+        patterns:
+          version_files:
+            - "**/v1/**"
+            - "**/v2/**"
+            - "**/version*.yaml"
+            - "**/*_v[0-9]+.*"
+          upgrade_commands:
+            - "mv.*v1.*v2"
+            - "rm.*v1"
+            - "cp -r.*v1.*v2"
+
+      rules:
+        version_parallel:
+          description: "版本升级必须保持新老共存"
+          steps:
+            - "1. 保留 v1 不动"
+            - "2. 创建 v2 新目录/文件"
+            - "3. 验证 v2 功能（24-48h）"
+            - "4. 逐步切流量到 v2"
+            - "5. v1 归档（不删除）"
+
+      block_message: |
+        ⚠️ 版本升级规范 (G-VERSION-UPGRADE)
+
+        操作: {operation}
+        文件: {file_path}
+
+        禁止：
+        - ❌ 直接删除或覆盖 v1
+        - ❌ 直接 mv v1 v2（会导致回退困难）
+
+        正确流程：
+        1. 保留 v1 目录/文件
+        2. 创建全新的 v2
+        3. 切流量测试 v2
+        4. 验证 24-48h
+        5. 确认稳定后归档 v1 到 .archived/
+
+        示例：
+        ```bash
+        # ✅ 正确
+        cp -r src/checkers/path_checker/v1 src/checkers/path_checker/v2
+        # 修改 v2
+        # 测试 v2
+        # 确认后归档 v1
+
+        # ❌ 错误
+        mv src/checkers/path_checker/v1 src/checkers/path_checker/v2
+        ```
+
+        参考：/brain/base/spec/core/lep.yaml (G-VERSION-UPGRADE)
+
+  G-GATE-SPEC-SYNC:
+    name: Spec Synchronization
+    applies_to: [write]
+    rule: 项目代码改动后必须同步更新对应 spec (index、路径、状态等)
+    scope: /app/groups/**
+    target: /brain/groups/**/projects/**/spec/**
+    enforcement: |
+      - [必须]Agent 每次改动代码后，必须检查并更新相关 spec
+      - [必须]必须更新的字段：code_location、status、version、last_updated
+      - [必须]路径变更必须全局搜索并修正所有引用
+
+    enforcement:
+      stage: pre_tool_use
+      method: python_inline
+      priority: MEDIUM
+      note: "推荐性检查 - 提醒同步 spec，不强制阻塞"
+
+      triggers:
+        tools: [Write, Edit]
+        patterns:
+          code_files:
+            - "/app/groups/**/projects/**/*.py"
+            - "/app/groups/**/projects/**/*.js"
+            - "/app/groups/**/projects/**/*.ts"
+            - "/app/groups/**/projects/**/*.cpp"
+            - "/app/groups/**/projects/**/*.yaml"
+
+      rules:
+        remind_spec_update:
+          description: "代码改动后提醒更新 spec"
+          spec_fields:
+            - code_location
+            - status
+            - version
+            - last_updated
+            - dependencies
+
+      warn_message: |
+        💡 提醒更新 spec (G-SPEC-SYNC)
+
+        代码文件: {file_path}
+
+        项目代码改动后，请记得同步更新对应的 spec：
+        - 更新 code_location（如有路径变更）
+        - 更新 status（开发中/测试中/已部署）
+        - 更新 version（版本号）
+        - 更新 last_updated（时间戳）
+        - 更新 dependencies（依赖变更）
+
+        Spec 位置:
+        - /brain/groups/**/projects/**/spec/**/*.yaml
+        - /brain/groups/**/projects/**/index.yaml
+
+        这是推荐性检查，不阻塞操作。
+
+        参考：/brain/base/spec/core/lep.yaml (G-SPEC-SYNC)
+
+  G-GATE-AUDIT:
+    name: Audit Trail
+    applies_to: ["*"]
+    rule: 所有操作记录到 JSONL 日志
+    format: jsonl
+    fields: [ts, agent, session, action, target, result]
+
+    enforcement:
+      stage: all  # PreToolUse, PostToolUse, 所有 hooks
+      method: python_logger
+      logger: audit_logger
+      priority: LOW  # 不阻塞操作
+
+      dual_write:
+        # 主日志：hooks 操作审计
+        hooks: /brain/runtime/logs/hooks_audit.jsonl
+        # 全局日志：所有 agent 操作（按日期）
+        global: /brain/runtime/logs/agents/global_agent_log_{date}.jsonl
+        # 项目日志：特定项目的操作（可选）
+        project: /brain/groups/{group}/projects/{project}/logs/{date}.jsonl
+
+      log_fields:
+        required: [timestamp, hook_event, tool_name, agent]
+        optional: [tool_input, cwd, user, session, result]
+
+      config:
+        # 审计失败不阻塞操作
+        block_on_failure: false
+        # 日志格式
+        format: jsonl
+        # 日志编码
+        encoding: utf-8
+        # 单条日志大小限制（避免巨大的 tool_input）
+        max_entry_size: 10240  # 10KB
+
+      # 隐私保护：敏感字段不记录或脱敏
+      redact_fields:
+        - password
+        - token
+        - secret
+        - api_key
+        - credential
+
+
+  G-GATE-DEFER:
+    name: Deferred Task Handoff
+    applies_to: [write, delete, move]
+    rule: |
+      Agent 产生"当前不做、以后要做"的延迟任务时，必须通过 IPC 通知对应 PMO：
+      - routing: 任务所属 group 的 PMO (agent_{group}_pmo)
+      - scope = project 时，先查 project PMO，无则上升到 group PMO
+      - PMO 收到后记录到 backlog，设置触发条件
+      - 禁止仅口头提及而不发送结构化消息
+    required_fields: [task, trigger_type, trigger_condition, owner_suggestion, context]
+    trigger_types: [time, event, dependency]
+    enforcement: ipc_send → group PMO → backlog → 定时 check
+
+    enforcement:
+      stage: ipc_message_check
+      method: message_content_validation
+      priority: MEDIUM
+      note: "需要 IPC 拦截支持 - 当前为推荐性检查"
+
+      triggers:
+        # 检测文本中出现延迟任务关键词
+        keywords:
+          - "以后"
+          - "稍后"
+          - "待办"
+          - "TODO"
+          - "延迟"
+          - "将来"
+          - "下次"
+
+      rules:
+        require_ipc_notification:
+          description: "延迟任务必须通过 IPC 通知 PMO"
+          required_message_fields:
+            - task
+            - trigger_type
+            - trigger_condition
+            - owner_suggestion
+            - context
+          target_pmo: "agent_{group}_pmo"
+
+      warn_message: |
+        💡 延迟任务需要通知 PMO (G-DEFER)
+
+        检测到延迟任务关键词: {keyword}
+
+        如果产生了"当前不做、以后要做"的任务，必须：
+        1. 发送 IPC 消息给 group PMO
+        2. 包含字段: task, trigger_type, trigger_condition, owner_suggestion, context
+        3. PMO 会记录到 backlog
+
+        示例:
+        ```python
+        ipc_send(
+            to="agent_system_pmo",
+            message="延迟任务: 优化数据库索引",
+            metadata={
+                "task": "优化数据库索引",
+                "trigger_type": "time",
+                "trigger_condition": "2026-03-01",
+                "owner_suggestion": "agent_system_devops",
+                "context": "当前性能可接受，3月后预计需要优化"
+            }
+        )
+        ```
+
+        禁止仅口头提及而不发送结构化消息。
+
+        这是推荐性检查（需要 IPC 集成）。
+
+        参考：/brain/base/spec/core/lep.yaml (G-DEFER)
+
+  G-GATE-PATH-DISCIPLINE:
+    name: Structured Path and Naming
+    applies_to: [write, move]
+    rule: 文件必须归属正确层级，文件名必须体现所属模块
+    path_rule: 禁止 /brain/ 顶层创建文件或目录；必须归入 base/ | runtime/ | groups/
+    naming_rule: 禁止无意义命名（temp, test, untitled）；名称须含项目/模块/日期等标识
+
+    enforcement:
+      stage: pre_tool_use
+      method: python_checker
+      checker: file_org_checker  # 复用 G-FILE-ORG 的检查器
+      priority: MEDIUM
+      note: "G-PATH-DISCIPLINE 核心规则已由 G-FILE-ORG 实现"
+
+      triggers:
+        tools: [Write]
+
+      # 与 G-FILE-ORG 共享检查逻辑
+
+  G-GATE-SPEC-LOCATION:
+    name: SPEC Location Enforcement
+    applies_to: [write]
+    rule: SPEC 文件必须在指定目录，避免分散存储
+
+    enforcement:
+      stage: pre_tool_use
+      method: python_checker
+      checker: path_checker
+      priority: CRITICAL
+
+      triggers:
+        tools: [Write, Edit]
+
+      patterns:
+        forbidden:
+          - "**/.claude/plans/**"          # Claude CLI 默认计划目录
+          - "**/tmp/**"                    # 临时目录
+          - "/tmp/**"                      # 临时目录（绝对路径）
+          - "/root/**"                     # Root 用户目录
+          - "**/.local/**"                 # 本地配置目录
+          - "/home/**"                     # 用户 home 目录
+          - "**/.cache/**"                 # 缓存目录
+        allowed:
+          - "/brain/groups/**/spec/**"                   # 任意 group 的 spec (推荐)
+          - "/brain/groups/org/brain_system/spec/**"    # Brain System SPEC
+          - "/brain/groups/org/xkquant/spec/**"         # XKQuant SPEC
+          - "/brain/groups/org/commerce/spec/**"        # Commerce SPEC
+          - "/brain/base/spec/**"                        # Base SPEC (只读参考)
+
+      content_triggers:
+        # 文件内容包含这些关键词时触发 SPEC 检查
+        - "spec_id:"
+        - "alignment:"
+        - "requirements:"
+        - "## Context"
+        - "实施计划："
+        - "## 实施步骤"
+        - "Phase 1:"
+        - "Phase 2:"
+
+      config:
+        enable_content_check: true
+        block_on_warning: false
+
+      block_message: |
+        🚫 SPEC 路径违规 (G-SPEC-LOCATION)
+
+        文件路径: {file_path}
+        违规原因: {reason}
+
+        ❌ 禁止在 {forbidden_location} 创建 SPEC 文件
+        ✅ 正确路径格式: /brain/groups/org/{group}/spec/{spec_id}/
+
+        SPEC 文件必须遵循 S1-S8 流程：
+        1. 创建 SPEC 目录: /brain/groups/org/{group}/spec/BS-{seq}-{short_name}/
+        2. 写入标准文件:
+           - 00_index.yaml       (元信息)
+           - 01_alignment.yaml   (S1: 目标范围)
+           - 02_requirements.yaml (S2: 需求定义)
+           - 03_research.yaml    (S3: 技术调研)
+           - 04_analysis.yaml    (S4: 方案对比)
+           - 05_solution.yaml    (S5: 详细设计)
+           - 06_tasks.yaml       (S6: 任务分解)
+           - 07_verification.yaml (S7: 验收测试)
+           - 08_complete.yaml    (S8: 归档总结)
+        3. 经 PMO 审批后实施
+
+        参考文档:
+        - Workflow: /brain/base/spec/core/workflow.yaml
+        - Templates: /brain/base/spec/templates/
+        - 现有示例: /brain/groups/org/brain_system/spec/
+
+        来源: /brain/base/spec/core/lep.yaml (G-SPEC-LOCATION)
+        (原 /brain/infrastructure/service/agent_abilities/hooks/rules/spec_path.yaml 已合并)
+
+  G-GATE-FILE-ORG:
+    name: File Organization Standard
+    applies_to: [write]
+    rule: |
+      所有新文件创建必须遵循文件组织规范，避免文件直接堆积在顶级或项目根目录。
+      Agent 必须根据文件用途选择三种组织模式之一：time_based, business_based, type_based。
+
+    spec_ref: /brain/base/spec/standards/file_organization.yaml
+    helper: /brain/base/spec/standards/file_organization_helper.py
+
+    # ------------------------------------------------------------------------
+    # 三种组织模式
+    # ------------------------------------------------------------------------
+    organization_modes:
+      time_based:
+        描述: 按时间分类，适合时序敏感的数据
+        适用场景: [日志文件, 时序数据, 归档数据, 临时文件]
+        路径模板:
+          daily: "{base_dir}/{YYYY}/{MM}/{DD}/{filename}"
+          compact: "{base_dir}/{YYYY-MM-DD}/{filename}"
+        示例:
+          - runtime/logs/2026/02/13/agent_system_pmo.log
+          - runtime/logs/2026-02-13/deployment.log
+          - memory/archive/2026/02/session_20260213.jsonl
+
+      business_based:
+        描述: 按项目/组/任务分类，适合项目产物
+        适用场景: [项目输出, 任务产物, spec文件, 组织产出]
+        路径模板:
+          project: "groups/{org}/{group}/projects/{project_id}/{category}/{filename}"
+          task: "groups/{org}/{group}/tasks/{task_id}/{category}/{filename}"
+          spec: "groups/{org}/{group}/spec/{spec_id}/{filename}"
+        示例:
+          - groups/org/xkquant/projects/newsalpha/reports/incident_002.md
+          - groups/org/brain_system/tasks/BS-TASK-005/deliverables/report.md
+          - groups/org/brain_system/spec/BS-012-hooks-build/S3_design.yaml
+
+      type_based:
+        描述: 按文件类型/功能分类，适合配置和工具文件
+        适用场景: [配置文件, 缓存文件, 构建产物, 工具输出]
+        路径模板:
+          config: "runtime/config/{subsystem}/{filename}"
+          cache: "runtime/cache/{cache_type}/{filename}"
+          build: "runtime/build/{artifact_type}/{filename}"
+        示例:
+          - runtime/config/mcp/agent_system_frontdesk.mcp.json
+          - runtime/cache/pip/wheels/
+          - runtime/build/binaries/brain_daemon
+
+    # ------------------------------------------------------------------------
+    # 决策树：如何选择组织模式
+    # ------------------------------------------------------------------------
+    decision_tree:
+      步骤1:
+        问题: 文件是否与时间强相关（日志、日报、归档）？
+        是: 使用 time_based
+        否: 进入步骤2
+
+      步骤2:
+        问题: 文件是否属于特定项目/任务/spec？
+        是: 使用 business_based
+        否: 进入步骤3
+
+      步骤3:
+        问题: 文件是配置、缓存或工具输出吗？
+        是: 使用 type_based
+        否: 默认使用 business_based（归入最相关的项目）
+
+    # ------------------------------------------------------------------------
+    # 强制性规则
+    # ------------------------------------------------------------------------
+    mandatory_rules:
+      路径构造:
+        - 必须包含 base_dir（runtime/, groups/, base/）
+        - 禁止直接在 /brain/ 顶层创建文件
+        - 禁止直接在项目根目录创建文件（如 groups/org/xkquant/report.pdf）
+        - 路径深度建议 ≤ 5 层，最多不超过 10 层
+
+      命名约定:
+        - 目录名使用 snake_case（小写+下划线）
+        - 文件名必须具有自描述性（包含 agent名/时间戳/类型）
+        - 禁止无意义命名：misc, other, temp, test, untitled
+        - 必须包含适当的文件扩展名
+
+      时间格式:
+        - 年份: YYYY（四位，如 2026）
+        - 月份: MM（两位补零，如 02）
+        - 日期: DD（两位补零，如 13）
+        - 紧凑格式: YYYY-MM-DD（如 2026-02-13）
+
+    # ------------------------------------------------------------------------
+    # 禁止行为
+    # ------------------------------------------------------------------------
+    forbidden:
+      - "❌ 直接在组根目录创建文件: /brain/output.txt"
+      - "❌ 直接在项目根目录创建: groups/org/xkquant/report.pdf"
+      - "❌ 使用系统临时目录: /tmp/agent_output.txt（应使用 runtime/tmp/）"
+      - "❌ 创建无分类堆积目录: misc/, other/, stuff/, dump/"
+      - "❌ 时间格式不规范: 2026-2-3（应为 2026-02-03）"
+      - "❌ 路径过深: 超过 10 层嵌套"
+
+    # ------------------------------------------------------------------------
+    # 组合使用（允许）
+    # ------------------------------------------------------------------------
+    hybrid_modes:
+      允许:
+        - "business + time: groups/org/xkquant/projects/newsalpha/reports/daily/2026/02/13/"
+        - "business + type: groups/org/brain_system/projects/orchestrator/tests/coverage/"
+        - "type + time: runtime/logs/deployments/2026/02/13/"
+
+      原则:
+        - 同一批文件使用相同模式
+        - 外层体现主要分类，内层体现次要分类
+        - 避免过度嵌套
+
+    # ------------------------------------------------------------------------
+    # 实施要求
+    # ------------------------------------------------------------------------
+    implementation:
+      Agent职责:
+        - 创建文件前选择合适的组织模式
+        - 使用 file_organization_helper.py 生成路径
+        - 检查目录是否存在，不存在则创建
+        - 记录文件创建到审计日志（如启用）
+
+      推荐做法:
+        - 在 CLAUDE.md 中声明默认组织模式
+        - import file_organization_helper 使用 helper 函数
+        - 为常见操作定义路径模板
+
+      代码示例: |
+        from file_organization_helper import organizer, ensure_path
+        log = organizer.log_path("agent_system_pmo", "audit")
+        ensure_path(log)
+
+    exceptions:
+      - /brain/runtime/tmp/**  # 临时文件允许灵活组织
+      - /brain/**/memory/**    # Agent memory 自管理
+      - /brain/.claude/**      # Claude 配置目录
+      - /brain/.git/**         # Git 元数据
+
+    enforcement:
+      stage: pre_tool_use
+      method: python_checker
+      checker: file_org_checker
+      priority: MEDIUM
+
+      triggers:
+        tools: [Write]
+
+      rules:
+        # 禁止顶层文件
+        no_toplevel_files:
+          pattern: "^/brain/[^/]+\\.(txt|md|yaml|json|py|sh)$"
+          message: "禁止在 /brain/ 顶层创建文件"
+
+        # 禁止项目根目录文件
+        no_project_root_files:
+          pattern: "^/brain/groups/[^/]+/[^/]+/[^/]+\\.(txt|md|yaml|json|py)$"
+          message: "禁止在项目根目录创建文件"
+
+        # 禁止无意义命名
+        no_meaningless_names:
+          patterns:
+            - "**/misc/**"
+            - "**/other/**"
+            - "**/temp/**"
+            - "**/test/**"
+            - "**/untitled/**"
+            - "**/dump/**"
+            - "**/stuff/**"
+          message: "禁止使用无意义的目录名"
+
+        # 路径深度限制
+        max_depth: 10
+
+      block_message: |
+        ⚠️ 文件组织规范违规 (G-FILE-ORG)
+
+        文件路径: {file_path}
+        违规原因: {reason}
+
+        建议：
+        1. 选择合适的组织模式：
+           - time_based: 日志、日报、归档（runtime/logs/2026/02/13/）
+           - business_based: 项目产物（groups/org/{group}/projects/{project}/）
+           - type_based: 配置、缓存（runtime/config/）
+
+        2. 避免：
+           - 顶层文件（/brain/file.txt）
+           - 项目根目录文件（groups/org/xxx/file.pdf）
+           - 无意义命名（misc/, temp/, other/）
+           - 过深路径（> 10 层）
+
+        参考：/brain/base/spec/core/lep.yaml (G-FILE-ORG)
+
+  G-GATE-APPROVAL-DELEGATION:
+    name: Approval Delegation to PMO
+    applies_to: [write, delete, move, git]
+    rule: |
+      Agent 需要审批时，不直接等待用户，而是发送 APPROVAL_REQUEST 给组内 PMO。
+      PMO 是组内操作的全权审批代理：
+      - PMO 可自行批准常规操作
+      - PMO 可自行拒绝不合规操作
+      - PMO 认为需要用户介入时，通过 frontdesk 转发给用户
+      - 用户保留最终覆盖权（可随时通过 frontdesk 下达指令）
+    ipc_message:
+      type: APPROVAL_REQUEST
+      required_fields: [task_id, agent, action_type, target, plan_summary, risk_level]
+      target: "agent_{group}_pmo"
+    pmo_response:
+      type: APPROVAL_RESPONSE
+      fields: [task_id, decision, reason]
+      decision_enum: [approved, rejected, escalated_to_user]
+
+    enforcement:
+      stage: ipc_message_check
+      method: message_routing_validation
+      priority: MEDIUM
+      note: "需要 IPC 拦截支持 - 当前为推荐性检查"
+
+      triggers:
+        # 检测 AskUserQuestion 工具使用
+        tools: [AskUserQuestion]
+
+      rules:
+        delegate_to_pmo:
+          description: "审批请求应该先发给 PMO"
+          approval_routing:
+            - "Agent 需要审批 → 发 APPROVAL_REQUEST 给 PMO"
+            - "PMO 决策 → 批准/拒绝/升级给用户"
+            - "禁止 Agent 直接使用 AskUserQuestion 等待用户"
+
+      warn_message: |
+        💡 建议委派审批给 PMO (G-APPROVAL-DELEGATION)
+
+        检测到使用 AskUserQuestion
+
+        建议的审批流程：
+        1. Agent 发送 APPROVAL_REQUEST 给 group PMO
+        2. PMO 评估并决策（批准/拒绝/升级）
+        3. 如需用户介入，PMO 通过 frontdesk 转发
+
+        IPC 消息示例：
+        ```python
+        ipc_send(
+            to="agent_system_pmo",
+            message_type="request",
+            message={
+                "type": "APPROVAL_REQUEST",
+                "task_id": "task-123",
+                "agent": "agent_system_architect",
+                "action_type": "modify_core_spec",
+                "target": "/brain/base/spec/core/lep.yaml",
+                "plan_summary": "添加新的 gate",
+                "risk_level": "medium"
+            }
+        )
+        ```
+
+        PMO 响应格式:
+        ```python
+        {
+            "type": "APPROVAL_RESPONSE",
+            "task_id": "task-123",
+            "decision": "approved",  # approved | rejected | escalated_to_user
+            "reason": "符合规范，批准"
+        }
+        ```
+
+        这是推荐性检查（需要 IPC 集成）。
+
+        参考：/brain/base/spec/core/lep.yaml (G-APPROVAL-DELEGATION)
+
+  G-GATE-AGENT-LIFECYCLE:
+    name: Agent Lifecycle via Orchestrator Only
+    applies_to: [agent_start, agent_stop, agent_restart, agent_autostart]
+    rule: |
+      所有 Agent 生命周期操作必须且只能通过 brain-agentctl 执行：
+      - 启动 (start)
+      - 停止 (stop)
+      - 重启 (restart)
+      - 开启/关闭自启动 (autostart)
+      禁止任何 agent 直接操作其他 agent 的 tmux session 或进程。
+    allowed:
+      - "ipc_send(to='brain-agentctl', message='请启动 {agent_name}')"
+      - "ipc_send(to='brain-agentctl', message='请停止 {agent_name}')"
+      - "ipc_send(to='brain-agentctl', message='请重启 {agent_name}')"
+      - "ipc_send(to='brain-agentctl', message='开启自启动 {agent_name}')"
+      - "ipc_send(to='brain-agentctl', message='关闭自启动 {agent_name}')"
+    forbidden:
+      - "tmux send-keys ... /exit | C-c | exit"
+      - "tmux kill-session -t {agent_session}"
+      - "tmux new-session -s {agent_session}"
+      - "kill / kill -9 <agent_pid>"
+      - "直接在 tmux pane 中启动 claude/codex 命令"
+    reason: |
+      Orchestrator 是 agent 生命周期的唯一管理者，负责：
+      1. 写入正确的 .mcp.json（MCP server 路径）
+      2. 设置环境变量（BRAIN_AGENT_NAME 等）
+      3. 注册 agent 到 daemon
+      4. 配置 tmux session 参数（auto-restart 等）
+      绕过 orchestrator 会导致 MCP 配置丢失、环境变量缺失、agent 注册状态不一致。
+
+    enforcement:
+      stage: pre_tool_use
+      method: python_inline
+      priority: CRITICAL
+
+      triggers:
+        tools: [Bash]
+
+      patterns:
+        agent_tmux_operations:
+          - pattern: "tmux\\s+(kill-session|send-keys|new-session).*(?:agent_|codex_)"
+            message: "检测到 tmux 操作 agent session"
+          - pattern: "(?:agent_|codex_).*tmux\\s+(kill-session|send-keys|new-session)"
+            message: "检测到 tmux 操作 agent session"
+
+      block_message: |
+        🚫 Agent 生命周期操作被拦截 (G-AGENT-LIFECYCLE)
+
+        {message}
+
+        ❌ 禁止直接使用 tmux 命令操作 agent
+        ✅ 正确方式：使用 brain-agentctl
+
+        示例：
+          agentctl start --apply agent_name
+          agentctl stop --apply agent_name
+          agentctl restart --apply agent_name
+
+        原因：agentctl 启动时会正确配置 MCP，直接用 tmux 会导致配置缺失。
+
+        参考：/brain/base/spec/core/lep.yaml (G-AGENT-LIFECYCLE)
+
+details_ref: /brain/base/spec/policies/lep

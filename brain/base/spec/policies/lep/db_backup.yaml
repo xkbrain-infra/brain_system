@@ -1,0 +1,57 @@
+gate_id: G-GATE-DB-BACKUP
+name: Database Backup First
+applies_to: [write, delete, move]
+rule: 数据库操作前必须先备份
+
+enforcement:
+  stage: pre_tool_use
+  method: python_inline
+  priority: CRITICAL
+
+  triggers:
+    tools: [Bash]
+
+  patterns:
+    dangerous_operations:
+      - pattern: "pg_restore"
+        message: "检测到 pg_restore 操作"
+      - pattern: "psql.*DROP"
+        message: "检测到数据库 DROP 操作"
+      - pattern: "psql.*TRUNCATE"
+        message: "检测到 TRUNCATE 操作"
+      - pattern: "psql.*DELETE\\s+FROM"
+        message: "检测到 DELETE FROM 操作"
+      - pattern: "psql.*UPDATE.*WHERE"
+        message: "检测到 UPDATE 操作"
+      - pattern: "mysql.*DROP"
+        message: "检测到 MySQL DROP 操作"
+      - pattern: "redis-cli\\s+FLUSHDB"
+        message: "检测到 Redis FLUSHDB 操作"
+      - pattern: "redis-cli\\s+FLUSHALL"
+        message: "检测到 Redis FLUSHALL 操作"
+
+  block_message: |
+    🚫 数据库操作需要先备份 (G-DB-BACKUP)
+
+    命令: {command}
+
+    必须先执行备份：
+    ```bash
+    # PostgreSQL
+    pg_dump -Fc dbname > /brain/.archived/db_backup_$(date +%Y%m%d_%H%M%S).dump
+
+    # Redis
+    redis-cli SAVE
+    cp /var/lib/redis/dump.rdb /brain/.archived/redis_$(date +%Y%m%d_%H%M%S).rdb
+    ```
+
+    然后再执行原命令。
+
+    参考：/brain/base/spec/core/lep.yaml (G-DB-BACKUP)
+bindings:
+  hooks:
+    stage: pre_tool_use
+    trigger_tools: [Bash]
+    patterns: [drop_table, truncate, delete_from]
+  mcp_tools: []
+  related_skills: []

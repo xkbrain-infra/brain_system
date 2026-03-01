@@ -1,0 +1,76 @@
+# Telegram 平台配置（合并自 im/bots.yaml + telegram_api/telegram.yaml）
+# 路径: /brain/infrastructure/config/third_api/telegram/telegram.yaml
+
+# =========================================================
+# Bot 注册表（bots registry）
+# =========================================================
+bots:
+  - name: "XKAgentBot"
+    platform: "telegram"
+    service_name: "service-telegram_api"
+    token_env: "TELEGRAM_BOT_TOKEN_XKAGENTBOT"
+    chat_id_env: "TELEGRAM_CHAT_ID_XKAGENTBOT"
+    aliases:
+      - "xkagent"
+    description: "主要 XKAgent Bot，用于日常任务处理"
+
+  - name: "XKQuantBot"
+    platform: "telegram"
+    service_name: "service-telegram_api"
+    token_env: "TELEGRAM_BOT_TOKEN_XKQUANTBOT"
+    chat_id_env: "TELEGRAM_CHAT_ID_XKQUANTBOT"
+    aliases:
+      - "xkquant"
+    description: "XKQuant Bot，用于量化交易相关任务"
+
+# =========================================================
+# 服务配置
+# =========================================================
+service:
+  name: "service-telegram_api"
+  health_port: 8091
+  # BS-028-T3: 热重载开关（默认关闭）
+  enable_hot_reload: false
+
+# =========================================================
+# Telegram API 参数
+# =========================================================
+telegram:
+  polling:
+    enabled: true
+    timeout_seconds: 30
+    max_retries: 3
+    retry_backoff_seconds: 2
+    retry_max_delay_seconds: 60
+
+# =========================================================
+# IPC 配置
+# =========================================================
+ipc:
+  socket_path: "/tmp/brain_ipc.sock"
+  target_gateway: "service-brain_gateway"
+  heartbeat_interval: 30
+
+# =========================================================
+# 路由配置（供 brain_gateway 参考）
+# =========================================================
+routing:
+  priority:
+    - "target_service"
+    - "target_bot"
+    - "session"
+  valid_source_services:
+    - "service-telegram_api"
+
+# =========================================================
+# 数据存储
+# =========================================================
+offset_manager:
+  db_path: "/brain/infrastructure/data/telegram_api/offset.db"
+
+# =========================================================
+# 日志
+# =========================================================
+logging:
+  level: "INFO"
+  format: "json"

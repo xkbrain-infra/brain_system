@@ -1,0 +1,120 @@
+#!/bin/bash
+# brain_tmux_api - tmux 操作统一入口 (G-GATE-TMUX-PROXY)
+#
+# 用法:
+#   brain_tmux_api list-sessions              列出所有 session
+#   brain_tmux_api has-session <name>         检查 session 是否存在
+#   brain_tmux_api capture-pane -t <tgt> [-n lines]  捕获 pane 内容
+#   brain_tmux_api list-panes [-t session]    列出 panes
+#   brain_tmux_api display-message -t <tgt>   显示 tmux 变量
+#   brain_tmux_api send -t <tgt> "message"    发送消息到 pane
+
+set -euo pipefail
+
+UTILS_DIR="$(dirname "$(dirname "$(readlink -f "$0")")")"
+SRC_DIR="$UTILS_DIR/src"
+
+case "${1:-help}" in
+  list-sessions|ls)
+    python3 -c "
+import sys; sys.path.insert(0, '$SRC_DIR')
+from tmux_utils import list_sessions
+for s in list_sessions():
+    att = ' (attached)' if s.attached else ''
+    print(f'{s.name}: {s.windows} windows{att}')
+"
+    ;;
+
+  has-session|has)
+    shift
+    NAME="${1:?usage: brain_tmux_api has-session <name>}"
+    python3 -c "
+import sys; sys.path.insert(0, '$SRC_DIR')
+from tmux_utils import has_session
+sys.exit(0 if has_session('$NAME') else 1)
+"
+    ;;
+
+  capture-pane|cap)
+    shift
+    TARGET=""
+    LINES=200
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        -t) TARGET="$2"; shift 2 ;;
+        -n) LINES="$2"; shift 2 ;;
+        *) TARGET="$1"; shift ;;
+      esac
+    done
+    [[ -z "$TARGET" ]] && { echo "usage: brain_tmux_api capture-pane -t <target> [-n lines]" >&2; exit 1; }
+    python3 -c "
+import sys; sys.path.insert(0, '$SRC_DIR')
+from tmux_utils import capture_pane
+print(capture_pane('$TARGET', $LINES))
+"
+    ;;
+
+  list-panes|lp)
+    shift
+    SESSION="${2:-}"
+    if [[ "${1:-}" == "-t" && -n "$SESSION" ]]; then
+      shift 2
+    else
+      SESSION=""
+    fi
+    python3 -c "
+import sys; sys.path.insert(0, '$SRC_DIR')
+from tmux_utils import list_panes
+session = '$SESSION' or None
+for p in list_panes(session):
+    act = '*' if p.active else ' '
+    print(f'{act} {p.pane_id} [{p.session}:{p.window}] {p.command}')
+"
+    ;;
+
+  display-message|dm)
+    shift
+    TARGET=""
+    FMT='#{pane_id}'
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        -t) TARGET="$2"; shift 2 ;;
+        -f) FMT="$2"; shift 2 ;;
+        *) TARGET="$1"; shift ;;
+      esac
+    done
+    [[ -z "$TARGET" ]] && { echo "usage: brain_tmux_api display-message -t <target> [-f fmt]" >&2; exit 1; }
+    python3 -c "
+import sys; sys.path.insert(0, '$SRC_DIR')
+from tmux_utils import display_message
+print(display_message('$TARGET', '$FMT'))
+"
+    ;;
+
+  send)
+    shift
+    exec python3 "$SRC_DIR/tmux_send.py" "$@"
+    ;;
+
+  help|--help|-h)
+    cat <<'USAGE'
+brain_tmux_api - tmux 操作统一入口 (G-GATE-TMUX-PROXY)
+
+命令:
+  list-sessions (ls)                    列出所有 tmux sessions
+  has-session (has) <name>              检查 session 是否存在
+  capture-pane (cap) -t <target> [-n N] 捕获 pane 内容 (默认 200 行)
+  list-panes (lp) [-t session]          列出 panes
+  display-message (dm) -t <target> [-f fmt]  查询 tmux 变量
+  send -t <target> "message"            发送消息到 pane
+
+所有操作自动记录审计日志。
+禁止直接使用 tmux 命令 (G-GATE-TMUX-PROXY)。
+USAGE
+    ;;
+
+  *)
+    echo "error: unknown command '$1'. Run 'brain_tmux_api help' for usage." >&2
+    exit 1
+    ;;
+esac

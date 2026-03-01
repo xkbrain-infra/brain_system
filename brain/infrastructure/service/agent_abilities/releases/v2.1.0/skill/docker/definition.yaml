@@ -1,0 +1,19 @@
+skill:
+  id: "SKL-INFRA-DOCKER-SANDBOX"
+  name: "Docker Sandbox Engine"
+  version: "1.0"
+  description: "Execute engineering tasks in isolated containers."
+
+actions:
+  - name: "run_in_sandbox"
+    description: "Run a shell command inside a docker container with project volume mounted."
+    parameters:
+      type: "object"
+      required: ["image", "project_root", "command"]
+      properties:
+        image: { type: "string", description: "Docker image to use (e.g., alpine, python:3.9-slim)" }
+        project_root: { type: "string", description: "Absolute path to the project root on host" }
+        command: { type: "string", description: "Command to execute inside the container" }
+    implementation:
+      runtime: "python"
+      path: "src/client.py"

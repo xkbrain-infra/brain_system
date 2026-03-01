@@ -1,0 +1,4 @@
+#!/bin/bash
+# Wrapper for service-agent_vectordb IPC service
+cd /xkagent_infra/brain/infrastructure/service/agent_vectordb
+exec python3 service_agent_vectordb.py "$@"

@@ -1,0 +1,10 @@
+# Role: brain-manager - 系统基础设施部署管理者
+scope:
+  allowed_write:
+    - /brain/infrastructure/service/agent_abilities/**
+    - /brain/base/hooks/**
+    - /brain/groups/org/{group}/**
+  denied_write:
+    - /brain/base/spec/core/**
+    - /brain/base/workflow/**
+    - /brain/INIT.yaml

@@ -1,0 +1,389 @@
+# Project Creation Quick Reference
+# 项目创建流程快速索引
+#
+# 目标受众：
+# - PMO (强制加载) - 完整项目流程指南
+# - 其他 Agent (按需加载) - 理解项目结构和协作流程
+
+metadata:
+  id: CORE-PROJECT-CREATION
+  version: "1.0"
+  last_updated: "2026-02-11"
+  owner: base_pmo
+  audience:
+    mandatory: [pmo]
+    optional: [architect, devops, qa, developer]
+
+# ============================================
+# 快速导航
+# ============================================
+quick_nav:
+  完整流程文档: /brain/base/spec/core/workflow.yaml
+  PMO运行时机制: /brain/base/workflow/runtime.yaml
+  Spec模板库: /brain/base/spec/templates/spec_dsl.yaml
+  项目目录规范: 见下方 "project_directory_structure"
+  初始化模板清单: 见下方 "initialization_templates"
+
+# ============================================
+# 项目创建一页纸
+# ============================================
+one_page_summary:
+  title: "S1-S8 八阶段项目创建流程"
+
+  流程概览: |
+    Phase 1: 需求接收 → PMO 创建 Spec 目录
+    Phase 2: S1-S2 (PMO) → 目标对齐 + 需求定义
+    Phase 3: S3-S5 (Architect) → 调研 + 分析 + 设计
+    Phase 4: S6 (PMO) → 任务分解 + 派发执行
+    Phase 5: S7 (QA) → 测试验证 + 部署检查
+    Phase 6: S8 (PMO) → 完成归档 + 经验沉淀
+
+  角色职责:
+    PMO: "流程协调者 - 创建 Spec、派任务、追踪进度、协调资源"
+    Architect: "技术设计者 - S3/S4/S5 产出、方案评审、技术决策"
+    DevOps: "实施执行者 - 代码改造、部署、运维"
+    QA: "质量守门者 - S7 验证、测试用例、验收确认"
+    Developer: "功能开发者 - 实现业务逻辑、单元测试"
+
+  关键机制:
+    自驱动事件链: "PMO 通过 ipc_send_delayed 种自提醒，构建任务追踪循环"
+    强制两环节验证: "测试环境 → 生产环境，每环节都需 QA 验证"
+    所有设计落盘: "禁止口头承诺，设计文档必须存储在 spec 目录"
+    任务原子化: "单一 owner、明确验收标准、可执行步骤、清晰回滚"
+
+  关键门控:
+    G-NAWP: "修改操作需 Plan + PMO 批准"
+    G-ATOMIC: "Plan 必须原子化"
+    G-SCOP: "操作必须在允许路径内"
+    G-FOUR-DOMAIN-SYNC: "四域任一变更必须联动确认"
+
+# ============================================
+# 项目空间目录结构
+# ============================================
+project_directory_structure:
+  说明: |
+    Brain 系统中有两个层面的项目空间：
+    1. Spec 层 - 设计文档和规范（存在于 /brain 下）
+    2. Project 层 - 项目实施空间（存在于 /brain 或 /app 下）
+    3. Codebase 层 - 实际代码库（通常在 /app/domain/ 下）
+
+  # Spec 层 - 设计文档空间
+  spec_space:
+    location: "{group_root}/spec/{spec_id}/"
+    purpose: "存储 S1-S8 设计文档和方案"
+    example: "/brain/groups/org/brain_system/spec/BS-010-agentctl-naming-unification/"
+
+    structure: |
+      {group_root}/spec/{spec_id}/
+      ├── 00_index.yaml              # S0: Spec 元信息
+      ├── 01_alignment.yaml          # S1: 目标对齐 (PMO)
+      ├── 02_requirements.yaml       # S2: 需求定义 (PMO)
+      ├── 03_research.yaml           # S3: 技术调研 (Architect)
+      ├── 04_analysis.yaml           # S4: 方案分析 (Architect)
+      ├── 05_solution.yaml           # S5: 详细设计 (Architect)
+      ├── 06_tasks.yaml              # S6: 任务分解 (PMO)
+      ├── 07_verification.yaml       # S7: 验证报告 (QA)
+      └── 08_complete.yaml           # S8: 完成归档 (PMO) [可选]
+
+    naming_convention:
+      spec_id: "{GROUP_PREFIX}-{SEQ}-{SHORT_NAME}"
+      examples:
+        - "BS-010-agentctl-naming-unification"
+        - "XQ-002-signal-bridge"
+        - "BS-004-pmo-task-check"
+      group_prefix:
+        brain_system: "BS"
+        xkquant: "XQ"
+        commerce: "COM"
+
+  # Project 层 - 项目实施空间
+  project_space:
+    location: "{group_root}/projects/{project_id}/"
+    purpose: "项目实施过程中的工作空间、记忆、日志"
+    example: "/brain/groups/org/brain_system/projects/agent_orchestrator/"
+
+    structure: |
+      {group_root}/projects/{project_id}/
+      ├── config/                    # 项目配置
+      │   ├── agents_registry.yaml   # Agent 定义
+      │   └── *.yaml                 # 其他配置
+      ├── specs/                     # 项目特定 Specs (可选)
+      │   └── {feature_spec}/
+      ├── memory/                    # 项目记忆
+      │   ├── design_decisions/      # 设计决策记录
+      │   ├── architecture/          # 架构文档
+      │   └── lessons_learned/       # 经验教训
+      ├── logs/                      # 项目日志
+      │   ├── activity_*.jsonl       # 活动日志
+      │   └── *.log                  # 运行日志
+      ├── data/                      # 项目数据 (可选)
+      │   └── archive/               # 归档数据
+      └── tests/                     # 项目测试 (可选)
+
+    examples:
+      brain_system:
+        - agent_orchestrator         # Agent 编排系统
+        - agent_dashboard            # Agent 监控面板
+        - system.graph               # 系统图形化工具
+      xkquant:
+        - cxx_service                # C++ 服务
+        - py_datasource_fetcher      # Python 数据源
+        - db_migration               # 数据库迁移
+
+  # Codebase 层 - 实际代码库
+  codebase_space:
+    说明: "实际代码通常不在 /brain 下，而在 /app/domain/ 或外部仓库"
+
+    mapping:
+      由: "{group_root}/spec/projects.yaml"
+      定义: |
+        projects:
+          - id: "PRJ-XKQUANT-CXX-SERVICE"
+            paths:
+              brain: "projects/cxx_service"        # Spec/Memory 位置
+              codebase: "domain/cxx_service"       # 代码位置 (/app/domain/cxx_service)
+
+    典型路径:
+      xkquant_cxx_service: "/app/domain/cxx_service"
+      newsalpha_system: "/app/domain/newsalpha_system"
+      brain_infrastructure: "/brain/infrastructure"
+
+  # PMO 工作记录空间
+  pmo_workspace:
+    location: "{group_root}/workflow/pmo/"
+    purpose: "PMO 工作记忆、任务追踪、决策记录"
+
+    structure: |
+      {group_root}/workflow/pmo/
+      ├── board.yaml                 # 任务面板 (当前活跃任务)
+      ├── agent_roster.yaml          # Agent 注册表
+      ├── logs/                      # 日志目录
+      │   └── {date}.yaml            # 日追踪日志
+      ├── decisions/                 # 决策目录
+      │   └── {date}.yaml            # 决策记录
+      └── meetings/                  # 会议目录
+          └── {date}.yaml            # 会议纪要
+
+# ============================================
+# 初始化模板清单
+# ============================================
+initialization_templates:
+  说明: |
+    创建新项目时，需要从模板库复制初始文件到项目目录。
+    所有模板位于：/brain/base/spec/templates/
+
+  必须模板:
+    - name: "00_index.yaml"
+      source: "/brain/base/spec/templates/spec_dsl.yaml"
+      section: "index"
+      when: "项目创建时立即生成"
+      owner: "PMO"
+      content: |
+        spec:
+          id: "{SPEC_ID}"
+          title: "{PROJECT_TITLE}"
+          status: in_progress
+          owner: "{PMO_AGENT}"
+          created_at: "{ISO_TIMESTAMP}"
+          workflow_state:
+            current_phase: S1
+            phases_completed: []
+            last_updated: "{ISO_TIMESTAMP}"
+
+  S1-S8 模板:
+    - name: "01_alignment.yaml"
+      source: "/brain/base/spec/templates/spec_dsl.yaml"
+      section: "alignment"
+      when: "S1 阶段开始时"
+      owner: "PMO"
+
+    - name: "02_requirements.yaml"
+      source: "/brain/base/spec/templates/spec_dsl.yaml"
+      section: "requirements"
+      when: "S2 阶段开始时"
+      owner: "PMO"
+
+    - name: "03_research.yaml"
+      source: "/brain/base/spec/templates/spec_dsl.yaml"
+      section: "research"
+      when: "S3 阶段开始时"
+      owner: "Architect"
+
+    - name: "04_analysis.yaml"
+      source: "/brain/base/spec/templates/spec_dsl.yaml"
+      section: "analysis"
+      when: "S4 阶段开始时"
+      owner: "Architect"
+
+    - name: "05_solution.yaml"
+      source: "/brain/base/spec/templates/spec_dsl.yaml"
+      section: "solution"
+      when: "S5 阶段开始时"
+      owner: "Architect"
+
+    - name: "06_tasks.yaml"
+      source: "/brain/base/spec/templates/spec_dsl.yaml"
+      section: "tasks"
+      when: "S6 阶段开始时"
+      owner: "PMO"
+
+    - name: "07_verification.yaml"
+      source: "/brain/base/spec/templates/spec_dsl.yaml"
+      section: "verification"
+      when: "S7 阶段开始时"
+      owner: "QA"
+
+    - name: "08_complete.yaml"
+      source: "/brain/base/spec/templates/spec_dsl.yaml"
+      section: "complete"
+      when: "S8 阶段开始时 (可选)"
+      owner: "PMO"
+
+  可选模板:
+    - name: "DELIVERABLES.md"
+      purpose: "交付物清单和链接"
+      when: "有多个交付物需要索引时"
+
+    - name: "DECISIONS.md"
+      purpose: "重大决策记录"
+      when: "需要记录关键决策依据时"
+
+  PMO 记录模板:
+    - name: "board.yaml"
+      location: "{group_root}/workflow/pmo/board.yaml"
+      purpose: "任务面板"
+      structure: |
+        active_tasks:
+          - task_id: "{TASK_ID}"
+            project_id: "{SPEC_ID}"
+            agent: "{AGENT_NAME}"
+            status: "ACTIVE|REVIEW|VERIFIED|DONE"
+            deadline: "{ISO_TIMESTAMP}"
+            assigned_at: "{ISO_TIMESTAMP}"
+            overdue_count: 0
+            notes: "备注"
+
+    - name: "agent_roster.yaml"
+      location: "{group_root}/workflow/pmo/agent_roster.yaml"
+      purpose: "Agent 注册表"
+      structure: |
+        roster:
+          - agent_name: "{AGENT_NAME}"
+            type: "resident|temporary"
+            project_id: "{PROJECT_ID}"
+            role: "{ROLE}"
+            created_at: "{ISO_TIMESTAMP}"
+            status: "active|idle|recycled"
+            tasks_completed: 0
+
+# ============================================
+# 快速启动检查清单
+# ============================================
+quick_start_checklist:
+  创建项目前:
+    - "[ ] 确认需求来源 (用户、升级、governance)"
+    - "[ ] 确定 Spec ID ({GROUP_PREFIX}-{SEQ}-{SHORT_NAME})"
+    - "[ ] 确认 PMO 负责人"
+    - "[ ] 初步评估复杂度与优先级"
+
+  创建 Spec 目录:
+    - "[ ] 创建目录: mkdir -p {SPEC_ROOT}"
+    - "[ ] 创建 00_index.yaml (从模板)"
+    - "[ ] 更新 {group_root}/spec/index.yaml 添加新条目"
+
+  S1-S2 完成检查:
+    - "[ ] 目标明确且可度量"
+    - "[ ] 范围已定义 (in_scope / out_of_scope)"
+    - "[ ] 成功标准清晰"
+    - "[ ] 风险已识别并有缓解策略"
+    - "[ ] 需求分为 Must/Should/Could"
+    - "[ ] 非功能需求已定义"
+
+  S3-S5 完成检查:
+    - "[ ] 技术调研充分，至少对比 2 个方案"
+    - "[ ] 方案选择有明确理由"
+    - "[ ] 架构设计清晰 (分层/模块)"
+    - "[ ] 接口定义完整"
+    - "[ ] 部署策略明确"
+    - "[ ] 里程碑可度量"
+
+  S6 完成检查:
+    - "[ ] 所有任务有明确 owner"
+    - "[ ] 任务依赖关系正确"
+    - "[ ] 每个任务有验收标准"
+    - "[ ] 每个任务有回滚方案"
+    - "[ ] 已更新 PMO board.yaml"
+
+  S7 完成检查:
+    - "[ ] 所有测试用例已执行"
+    - "[ ] 测试结果有证据支持"
+    - "[ ] 测试环境验证通过"
+    - "[ ] 生产环境冒烟测试通过"
+    - "[ ] 异常已记录并确认"
+
+  S8 完成检查:
+    - "[ ] 所有交付物已完成"
+    - "[ ] 经验教训已记录"
+    - "[ ] 后续计划已明确"
+    - "[ ] 00_index.yaml 状态已更新为 archived"
+    - "[ ] PMO 记录已更新"
+
+# ============================================
+# 常见问题 FAQ
+# ============================================
+faq:
+  Q1: "Spec 和 Project 的区别是什么？"
+  A1: |
+    - Spec 是设计层：存储 S1-S8 文档，描述"要做什么"和"怎么做"
+    - Project 是实施层：存储实施过程的配置、记忆、日志
+    - Codebase 是代码层：实际的源代码，通常在 /app/domain/ 下
+
+    一个 Spec 可以对应一个或多个 Projects（例如分阶段实施）
+
+  Q2: "什么时候创建 Project 目录？"
+  A2: |
+    - 如果项目需要独立的运行时配置（如 agents_registry.yaml），创建 Project 目录
+    - 如果只是简单的功能增强，可以只创建 Spec，不需要 Project 目录
+    - 例如：agent_orchestrator 有 Project 目录，但 BS-010 只有 Spec
+
+  Q3: "模板必须一次性全部创建吗？"
+  A3: |
+    - 不必须。通常先创建 00_index.yaml
+    - 进入 S1 时创建 01_alignment.yaml，进入 S2 时创建 02_requirements.yaml，以此类推
+    - 这样避免产生大量空文件
+
+  Q4: "如果 Architect 不可用，PMO 可以代写 S3-S5 吗？"
+  A4: |
+    - 可以，但需要明确记录在 00_index.yaml 的 notes 中
+    - 例如：BS-010 因 Architect 繁忙，PMO 临时接管 S3-S5
+    - 风险：PMO 的技术深度可能不足，需要更仔细的评审
+
+  Q5: "08_complete.yaml 是可选的，什么时候需要创建？"
+  A5: |
+    - 对于复杂项目（> 2 周），建议创建以记录经验教训
+    - 对于简单项目（< 1 天），可以省略，直接更新 00_index.yaml 的 status 为 archived
+    - 教训应该同步到 /brain/base/knowledge/ 知识库
+
+# ============================================
+# 相关文档链接
+# ============================================
+related_docs:
+  完整流程:
+    - /brain/base/spec/core/workflow.yaml           # S1-S8 详细定义
+    - /brain/base/workflow/runtime.yaml             # PMO 运行时机制
+    - /brain/base/workflow/dsl.yaml                 # 状态机定义
+    - /brain/base/workflow/governance.yaml          # 四域联动审核
+
+  模板库:
+    - /brain/base/spec/templates/spec_dsl.yaml      # Spec 文档模板
+    - /brain/base/spec/templates/agent/             # Agent 模板
+    - /brain/base/spec/templates/docker/            # Docker 模板
+
+  实际案例:
+    - /brain/groups/org/brain_system/spec/BS-010-agentctl-naming-unification/
+    - /brain/groups/org/xkquant/spec/XQ-001-docker-stack/
+
+  组织结构:
+    - /brain/groups/spec/index.yaml                 # 组索引
+    - /brain/groups/org/brain_system/spec/index.yaml
+    - /brain/groups/org/xkquant/spec/index.yaml

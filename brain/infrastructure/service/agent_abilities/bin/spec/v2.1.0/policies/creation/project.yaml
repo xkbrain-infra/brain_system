@@ -1,0 +1,518 @@
+# Project Space Creation Specification
+# Project（项目）空间创建规范
+#
+# 本文档定义 Project Space 的创建规格，包括：
+# a. 路径定义 - Project 在文件系统中的位置（Brain 层 + 代码层）
+# b. 依赖引用 - Project 依赖的 spec 和配置
+# c. 元数据描述 - Project 的属性、技术栈、团队
+
+metadata:
+  id: CORE-CREATION-SPACE-PROJECT
+  version: "1.0"
+  created_at: "2026-02-11"
+  owner: group_architect
+  description: "Project Space 创建的核心规范"
+
+# ============================================
+# Project Space 定义模板
+# ============================================
+project_space_template:
+  # ------------------------------------------
+  # a. 路径定义 (Paths)
+  # ------------------------------------------
+  paths:
+    description: "Project 在文件系统中的所有关键路径（分 Brain 层和代码层）"
+
+    # Brain 层路径（管理空间）
+    brain_layer:
+      root:
+        path: "/brain/groups/org/{group_id}/projects/{project_name}"
+        purpose: "Project 根目录（Brain 层）"
+        must_exist: true
+
+      config:
+        path: "/brain/groups/org/{group_id}/projects/{project_name}/config"
+        purpose: "项目配置文件"
+        must_exist: true
+        files:
+          - "agents_registry.yaml"  # 如果有专属 Agents
+
+      specs:
+        path: "/brain/groups/org/{group_id}/projects/{project_name}/specs"
+        purpose: "Project 级 Specs（功能迭代）"
+        must_exist: true
+        files:
+          - "00_index.yaml"  # Project Spec 索引
+
+      memory:
+        path: "/brain/groups/org/{group_id}/projects/{project_name}/memory"
+        purpose: "项目记忆（设计决策、架构文档）"
+        must_exist: true
+        subdirs:
+          - "design_decisions"
+          - "architecture"
+          - "lessons_learned"
+
+      logs:
+        path: "/brain/groups/org/{group_id}/projects/{project_name}/logs"
+        purpose: "项目日志"
+        must_exist: true
+
+      data:
+        path: "/brain/groups/org/{group_id}/projects/{project_name}/data"
+        purpose: "项目数据"
+        must_exist: false  # 可选
+
+      tests:
+        path: "/brain/groups/org/{group_id}/projects/{project_name}/tests"
+        purpose: "测试脚本"
+        must_exist: false  # 可选
+
+    # 代码层路径（源代码）
+    codebase_layer:
+      root:
+        path: "/app/domain/{project_name}"
+        purpose: "Project 代码库根目录"
+        note: "大多数项目在 /app/domain/ 下，Brain 基础设施例外"
+        exceptions:
+          - "/brain/infrastructure/..."  # Brain 基础设施
+          - "/brain/runtime/..."          # Brain 运行时
+
+      typical_structure:
+        src: "/app/domain/{project_name}/src"
+        tests: "/app/domain/{project_name}/tests"
+        config: "/app/domain/{project_name}/config"
+        docs: "/app/domain/{project_name}/docs"
+
+    # 部署路径
+    deployment_layer:
+      dockerfile:
+        path: "platform/docker/base/services/{project_name}/Dockerfile"
+        purpose: "容器镜像定义"
+        note: "统一放在 platform/docker/ 下，不要放在 domain/ 下"
+
+      compose:
+        path: "platform/docker/{env}/compose.yaml"
+        purpose: "Docker Compose 配置"
+        envs: ["dev", "stage", "prod"]
+
+  # ------------------------------------------
+  # b. 依赖引用 (Dependencies)
+  # ------------------------------------------
+  dependencies:
+    description: "Project 依赖的 spec、配置、服务和库"
+
+    spec_refs:
+      group_workflow:
+        path: "/brain/groups/org/{group_id}/workflow/index.yaml"
+        purpose: "继承 Group 工作流"
+        mandatory: true
+
+      group_spec_templates:
+        path: "/brain/groups/org/{group_id}/spec/index.yaml"
+        purpose: "Group Spec 索引"
+        mandatory: true
+
+      base_spec_templates:
+        path: "/brain/base/spec/templates/spec_dsl.yaml"
+        purpose: "Spec 文档模板"
+        mandatory: true
+
+    inherits_from:
+      workflow:
+        path: "/brain/groups/org/{group_id}/workflow/index.yaml"
+        note: "Project 继承 Group workflow，Group 继承 Base workflow"
+
+    service_dependencies:
+      description: "Project 依赖的其他服务"
+      example:
+        - service: "collection_db"
+          type: "database"
+          version: "PostgreSQL 14"
+        - service: "redis"
+          type: "cache"
+          version: "Redis 7"
+
+    library_dependencies:
+      description: "Project 使用的技术栈和库"
+      example:
+        language: "Python 3.12"
+        framework: "FastAPI 0.100"
+        database: "PostgreSQL, Redis"
+
+    external_apis:
+      description: "Project 依赖的外部 API"
+      example:
+        - "Telegram Bot API"
+        - "OpenAI API"
+
+  # ------------------------------------------
+  # c. 元数据描述 (Metadata)
+  # ------------------------------------------
+  metadata:
+    description: "Project 的核心属性和描述信息"
+
+    identity:
+      project_id:
+        value: "PRJ-{GROUP_PREFIX}-{SHORT_NAME}"
+        format: "^PRJ-[A-Z]{2,3}-[A-Z0-9_-]+$"
+        example: "PRJ-XKQUANT-CXX-SERVICE, PRJ-BRAIN-AGENT-ORCHESTRATOR"
+        note: "唯一标识符，大写"
+
+      project_name:
+        value: "{project_name}"
+        format: "^[a-z][a-z0-9_]*$"
+        example: "cxx_service, agent_orchestrator, xkquant_notifier"
+        note: "目录名，小写+下划线"
+
+      group_id:
+        value: "{group_id}"
+        example: "xkquant, brain_system, commerce"
+        note: "所属 Group"
+
+    description:
+      summary:
+        value: "项目简要描述"
+        example: "C++ 量化交易引擎，负责策略执行和订单管理"
+
+      full_description:
+        value: "项目详细描述"
+        example: |
+          量化交易通知系统，提供以下功能：
+          - 交易信号实时通知
+          - 系统告警推送
+          - Telegram Bot 集成
+          - 多渠道消息分发
+
+    technology_stack:
+      language:
+        value: "{language}"
+        example: "Python 3.12, C++17, TypeScript 5.0"
+
+      framework:
+        value: "{framework}"
+        example: "FastAPI, Django, Express, Qt"
+
+      database:
+        value: "{database}"
+        example: "PostgreSQL 14, MongoDB 6, Redis 7"
+
+      other:
+        example:
+          - "Docker for containerization"
+          - "pytest for testing"
+          - "GitHub Actions for CI/CD"
+
+    deployment:
+      container_workdir:
+        value: "/app/domain/{project_name}"
+        purpose: "容器内工作目录"
+
+      dockerfile:
+        value: "platform/docker/base/services/{project_name}/Dockerfile"
+        purpose: "Dockerfile 路径"
+
+      compose:
+        value: "platform/docker/{env}/compose.yaml"
+        purpose: "Compose 文件路径"
+
+      ports:
+        description: "端口映射"
+        format: "{host_port}:{container_port}"
+        example:
+          prod: ["51110:8000"]
+          dev: ["52110:8000"]
+          stage: ["54110:8000"]
+
+      environment:
+        description: "环境变量"
+        example:
+          - "ENV=production"
+          - "DATABASE_URL=postgresql://..."
+          - "REDIS_URL=redis://..."
+
+    team:
+      description: "Project 团队成员"
+      structure:
+        architect:
+          agent: "agent_{group_id}_architect"
+          responsibility: "技术方案设计和评审"
+
+        developer:
+          agent: "agent_{group_id}_dev1"
+          responsibility: "功能开发和实现"
+
+        devops:
+          agent: "agent_{group_id}_devops"
+          responsibility: "部署和运维"
+
+        qa:
+          agent: "agent_{group_id}_qa"
+          responsibility: "测试和验证"
+
+    lifecycle:
+      created_at:
+        value: "{ISO_TIMESTAMP}"
+        format: "ISO 8601"
+        example: "2026-02-11T16:00:00Z"
+
+      created_by:
+        value: "{creator_agent}"
+        example: "agent-xkquant_pmo"
+
+      status:
+        value: "active"
+        options: ["active", "maintenance", "deprecated", "archived"]
+
+      version:
+        value: "1.0.0"
+        format: "Semantic Versioning"
+
+# ============================================
+# 全局注册规范 (Global Registration)
+# ============================================
+global_registration:
+  description: |
+    创建 Project Space 后，必须更新注册表，
+    实现"局部 → 全局"的双向同步。
+
+  # ------------------------------------------
+  # 注册点 1: Group projects.yaml（必须）
+  # ------------------------------------------
+  register_in_group:
+    file: "/brain/groups/org/{group_id}/spec/projects.yaml"
+    section: "projects"
+    action: "添加 Project 条目"
+
+    entry_template: |
+      - id: "{PROJECT_ID}"
+        name: "{project_name}"
+        description: "{description}"
+        paths:
+          brain: "projects/{project_name}"
+          codebase: "/app/domain/{project_name}"
+        deployment:
+          container_workdir: "/app/domain/{project_name}"
+          dockerfile: "platform/docker/base/services/{project_name}/Dockerfile"
+          compose: "platform/docker/{env}/compose.yaml"
+          ports:
+            - "{host_port}:{container_port}"
+          environment:
+            - "ENV={env}"
+
+    timing: "Project Space 创建完成后立即注册"
+    mandatory: true
+
+  # ------------------------------------------
+  # 注册点 2: 全局 projects_index.yaml（可选）
+  # ------------------------------------------
+  register_in_global:
+    file: "/brain/groups/spec/projects_index.yaml"
+    section: "projects"
+    action: "添加 Project 条目（重要项目）"
+
+    entry_template: |
+      - project_id: "{PROJECT_ID}"
+        group_id: "{group_id}"
+        root: "/brain/groups/org/{group_id}/projects/{project_name}"
+        spec_index: "/brain/groups/org/{group_id}/projects/{project_name}/specs/00_index.yaml"
+        description: "{description}"
+        status: "active"
+
+    timing: "Project Space 创建完成后（可选）"
+    mandatory: false
+    criteria: "系统级重要项目或跨 Group 协作的项目"
+
+  # ------------------------------------------
+  # 验证注册完整性
+  # ------------------------------------------
+  verification:
+    checklist:
+      - "[ ] {group_root}/spec/projects.yaml 已添加 Project 条目"
+      - "[ ] （可选）/brain/groups/spec/projects_index.yaml 已注册"
+      - "[ ] Project ID 在 Group 内唯一"
+      - "[ ] Project 路径在 Group 注册表中可查"
+
+# ============================================
+# 创建示例：xkquant_notifier Project
+# ============================================
+example:
+  scenario: "在 xkquant 组创建 xkquant_notifier 项目"
+
+  # a. 路径定义
+  paths:
+    brain_layer:
+      root: "/brain/groups/org/xkquant/projects/xkquant_notifier"
+      config: "/brain/groups/org/xkquant/projects/xkquant_notifier/config"
+      specs: "/brain/groups/org/xkquant/projects/xkquant_notifier/specs"
+      memory: "/brain/groups/org/xkquant/projects/xkquant_notifier/memory"
+      logs: "/brain/groups/org/xkquant/projects/xkquant_notifier/logs"
+
+    codebase_layer:
+      root: "/app/domain/xkquant_notifier"
+      src: "/app/domain/xkquant_notifier/src"
+      tests: "/app/domain/xkquant_notifier/tests"
+
+    deployment_layer:
+      dockerfile: "platform/docker/base/services/xkquant_notifier/Dockerfile"
+      compose: "platform/docker/prod/compose.yaml"
+
+  # b. 依赖引用
+  dependencies:
+    spec_refs:
+      - "/brain/groups/org/xkquant/workflow/index.yaml"
+      - "/brain/base/spec/templates/spec_dsl.yaml"
+    service_dependencies:
+      - service: "collection_db"
+        type: "PostgreSQL 14"
+      - service: "redis"
+        type: "Redis 7"
+    library_dependencies:
+      language: "Python 3.12"
+      framework: "FastAPI 0.100"
+      database: "PostgreSQL, Redis"
+
+  # c. 元数据描述
+  metadata:
+    identity:
+      project_id: "PRJ-XKQUANT-NOTIFIER"
+      project_name: "xkquant_notifier"
+      group_id: "xkquant"
+
+    description:
+      summary: "量化交易通知系统"
+      full: |
+        提供交易信号实时通知、系统告警推送、
+        Telegram Bot 集成等功能。
+
+    technology_stack:
+      language: "Python 3.12"
+      framework: "FastAPI"
+      database: "PostgreSQL, Redis"
+
+    deployment:
+      container_workdir: "/app/domain/xkquant_notifier"
+      dockerfile: "platform/docker/base/services/xkquant_notifier/Dockerfile"
+      compose: "platform/docker/prod/compose.yaml"
+      ports:
+        prod: ["51110:8000"]
+        dev: ["52110:8000"]
+      environment:
+        - "ENV=production"
+        - "TELEGRAM_BOT_TOKEN=..."
+
+    team:
+      architect: "agent-xkquant_architect"
+      developer: "agent-xkquant_dev1"
+      devops: "agent-xkquant_devops"
+
+    lifecycle:
+      created_at: "2026-02-11T16:30:00Z"
+      created_by: "agent-xkquant_pmo"
+      status: "active"
+      version: "1.0.0"
+
+  # 全局注册
+  global_registration:
+    group_projects:
+      file: "/brain/groups/org/xkquant/spec/projects.yaml"
+      added: |
+        - id: "PRJ-XKQUANT-NOTIFIER"
+          name: "xkquant_notifier"
+          description: "量化交易通知系统"
+          paths:
+            brain: "projects/xkquant_notifier"
+            codebase: "/app/domain/xkquant_notifier"
+          deployment:
+            container_workdir: "/app/domain/xkquant_notifier"
+            ports: ["51110:8000"]
+
+    global_index:
+      file: "/brain/groups/spec/projects_index.yaml"
+      added: |
+        - project_id: "PRJ-XKQUANT-NOTIFIER"
+          group_id: "xkquant"
+          root: "/brain/groups/org/xkquant/projects/xkquant_notifier"
+          spec_index: ".../specs/00_index.yaml"
+          status: "active"
+
+# ============================================
+# 创建工作流简述
+# ============================================
+creation_workflow:
+  phase_1_define:
+    name: "定义 Project Space Spec"
+    owner: "Group PMO + Group Architect"
+    output: "Project Space 定义（paths, dependencies, metadata）"
+
+  phase_2_approve:
+    name: "审批"
+    approvers:
+      - "Group PMO（资源分配）"
+      - "Group Architect（技术方案）"
+    criteria:
+      - "Project 定位清晰"
+      - "不与现有 Project 重复"
+      - "技术栈选型合理"
+
+  phase_3_execute_brain:
+    name: "创建 Brain 层空间"
+    owner: "Group DevOps"
+    actions:
+      - "创建 Brain 层目录结构"
+      - "创建配置文件（specs/00_index.yaml, README.md）"
+
+  phase_4_execute_codebase:
+    name: "创建代码库（可选）"
+    owner: "Developer"
+    actions:
+      - "初始化代码库（/app/domain/{project_name}）"
+      - "设置技术栈和依赖"
+      - "创建部署文件（Dockerfile, compose.yaml）"
+
+  phase_5_register:
+    name: "全局注册"
+    owner: "Group Architect"
+    actions:
+      - "更新 {group_root}/spec/projects.yaml"
+      - "（可选）更新 /brain/groups/spec/projects_index.yaml"
+      - "验证注册完整性"
+
+  phase_6_activate:
+    name: "激活和验证"
+    owner: "Group PMO"
+    actions:
+      - "验证所有路径和文件"
+      - "验证注册完整性"
+      - "通知团队成员"
+
+# ============================================
+# Project vs Spec 的区别
+# ============================================
+project_vs_spec:
+  project:
+    definition: "具体的软件系统/服务，有代码库、部署、运行时"
+    lifespan: "长期存在，持续迭代"
+    contains: "代码、配置、数据、日志"
+    example: "cxx_service, agent_orchestrator"
+
+  spec:
+    definition: "设计文档，描述要做什么、怎么做"
+    lifespan: "项目阶段性产出，完成后归档"
+    contains: "S1-S8 设计文档、任务分解、验收报告"
+    example: "BS-010-agentctl-naming-unification"
+
+  relationship:
+    - "一个 Project 可以有多个 Specs（功能迭代）"
+    - "一个 Spec 可以影响多个 Projects（跨项目改进）"
+    - "创建 Project 本身也可以有 Spec（Project Creation Spec）"
+
+# ============================================
+# 相关文档
+# ============================================
+related_docs:
+  - "../index.yaml"                              # Creation 索引
+  - "./group.yaml"                               # Group Space 创建
+  - "/brain/groups/spec/projects_index.yaml"     # Project 全局索引
+  - "{group_root}/spec/projects.yaml"            # Group Project 注册表
+  - "/brain/base/spec/core/workflow.yaml"        # S1-S8 Workflow

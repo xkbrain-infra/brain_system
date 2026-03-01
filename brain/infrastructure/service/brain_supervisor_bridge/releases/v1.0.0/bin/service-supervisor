@@ -1,0 +1,3 @@
+#!/bin/bash
+cd /xkagent_infra/brain/infrastructure/service/brain_supervisor_bridge
+exec python3 service_supervisor.py "$@"

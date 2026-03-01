@@ -1,0 +1,14 @@
+# QA 角色规则目录
+
+## 规则说明
+
+QA 角色需要以下规则：
+- 验证规则
+- 测试覆盖率检查
+- 质量标准
+
+## 文件示例
+
+- verification.yaml - 验证规则
+- coverage.yaml - 覆盖率规则
+- quality_gate.yaml - 质量门禁

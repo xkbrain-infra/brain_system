@@ -1,0 +1,89 @@
+# 健康监控操作手册
+# spec_ref: BS-027-ipc-health-monitor / 05_solution.yaml (runbook_schema)
+# created_at: 2026-02-24
+# owner: agent-system_devops
+
+health_monitor:
+  # 默认配置（未在 targets 中定义的目标使用此配置）
+  defaults:
+    threshold_seconds: 120
+    alert_target: service-agentctl  # 健康告警统一走服务，不直发普通 agent
+    recovery_enabled: false     # 默认不自动恢复，只告警
+    alert_channels:
+      - telegram
+      - file_log
+
+  # 核心监控目标
+  targets:
+    service-telegram_api:
+      type: service
+      threshold_seconds: 60
+      recovery_enabled: true
+      recovery_steps:
+        - action: supervisorctl_restart
+          target: service_telegram_api   # supervisord program name
+        - action: verify
+          wait_seconds: 10
+          check: ipc_online              # 检查目标是否重新注册到 IPC daemon
+      on_failure:
+        alert_channels:
+          - file_log                     # telegram 自身挂了不能用 telegram 告警
+        message: "service-telegram_api 自愈失败，需人工介入"
+
+    service-brain_gateway:
+      type: service
+      threshold_seconds: 30
+      recovery_enabled: true
+      recovery_steps:
+        - action: supervisorctl_restart
+          target: brain_gateway
+        - action: verify
+          wait_seconds: 10
+          check: ipc_online
+      on_failure:
+        alert_channels:
+          - telegram
+          - file_log
+        message: "brain_gateway 自愈失败"
+
+    service-brain_timer:
+      type: service
+      threshold_seconds: 60
+      recovery_enabled: false            # timer 自己不能重启自己
+      on_failure:
+        alert_channels:
+          - telegram
+          - file_log
+        message: "service-brain_timer 心跳异常（注意：由 supervisord autorestart 兜底）"
+
+    agent-brain_frontdesk:
+      type: agent
+      threshold_seconds: 120
+      recovery_enabled: true
+      recovery_steps:
+        - action: agentctl_restart
+          target: agent-brain_frontdesk
+        - action: verify
+          wait_seconds: 15
+          check: ipc_online
+      on_failure:
+        alert_channels:
+          - telegram
+          - file_log
+        message: "frontdesk 自愈失败"
+
+    agent-brain_manager:
+      type: agent
+      threshold_seconds: 120
+      recovery_enabled: true
+      recovery_steps:
+        - action: agentctl_restart
+          target: agent-brain_manager
+        - action: verify
+          wait_seconds: 15
+          check: ipc_online
+      on_failure:
+        alert_channels:
+          - telegram
+          - file_log
+        message: "brain_manager 自愈失败（关键：影响所有自愈能力）"

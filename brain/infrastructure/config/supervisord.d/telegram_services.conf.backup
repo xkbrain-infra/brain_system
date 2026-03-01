@@ -1,0 +1,54 @@
+# Telegram Services Configuration for supervisord
+# BACKUP: Original dual-process configuration (before T2.2)
+# Date: 2026-02-20
+# Status: DEPRECATED - Replaced by single-process mode
+
+# Telegram Bot1 Service (registers as service-telegram_api)
+[program:service_telegram_api]
+command=/brain/infrastructure/service/telegram_api/releases/current/bin/telegram_api_service
+directory=/brain/infrastructure/service/telegram_api
+autostart=true
+autorestart=true
+startsecs=10
+stopasgroup=true
+stdout_logfile=/brain/runtime/logs/telegram_api.log
+stderr_logfile=/brain/runtime/logs/telegram_api_error.log
+environment=
+  TELEGRAM_BOT_TOKEN_FILE=/brain/secrets/IM/telegram/bot_token_1.env,
+  TELEGRAM_CONFIG=/brain/infrastructure/config/telegram_api/telegram.yaml,
+  DAEMON_SOCKET=/tmp/brain_ipc.sock,
+  BOT_INSTANCE=1,
+  SERVICE_NAME=service-telegram_api
+
+# Telegram Bot2 Service (registers as service-telegram_api_bot2)
+[program:service_telegram_api_bot2]
+command=/brain/infrastructure/service/telegram_api/releases/current/bin/telegram_api_service
+directory=/brain/infrastructure/service/telegram_api
+autostart=true
+autorestart=true
+startsecs=10
+stopasgroup=true
+stdout_logfile=/brain/runtime/logs/telegram_api_bot2.log
+stderr_logfile=/brain/runtime/logs/telegram_api_bot2_error.log
+environment=
+  TELEGRAM_BOT_TOKEN_FILE=/brain/secrets/IM/telegram/bot_token_2.env,
+  TELEGRAM_CONFIG=/brain/infrastructure/config/telegram_api/telegram.yaml,
+  DAEMON_SOCKET=/tmp/brain_ipc.sock,
+  BOT_INSTANCE=2,
+  SERVICE_NAME=service-telegram_api_bot2
+
+# Agent Gateway Service
+[program:service-agent_gateway]
+command=/brain/infrastructure/service/agent_gateway/releases/current/bin/agent_gateway_service
+directory=/brain/infrastructure/service/agent_gateway
+autostart=true
+autorestart=true
+startsecs=10
+stopasgroup=true
+stdout_logfile=/brain/runtime/logs/service-agent_gateway.log
+stderr_logfile=/brain/runtime/logs/service-agent_gateway_error.log
+environment=GATEWAY_CONFIG=/brain/infrastructure/config/agent_gateway/gateway.yaml,DAEMON_SOCKET=/tmp/brain_ipc.sock
+
+# Group for managing both services
+[group:telegram_services]
+programs=service_telegram_api,service_telegram_api_bot2,service-agent_gateway

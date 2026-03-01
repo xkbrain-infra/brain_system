@@ -1,0 +1,18 @@
+service:
+  agent_name: service-task_manager
+  socket_path: /tmp/brain_ipc.sock
+  health_port: 8091
+  data_dir: /brain/infrastructure/service/task_manager/data/
+  log_file: /brain/runtime/logs/service-task_manager.log
+
+scheduler:
+  deadline_reminder_interval_s: 300
+  stale_task_interval_s: 3600
+  stale_spec_interval_s: 3600
+  deadline_warning_hours: 24
+  stale_task_hours: 48
+  stale_spec_hours: 72
+
+validation:
+  check_owner_online: true
+  allowed_priorities: [critical, high, normal, low]

@@ -1,0 +1,119 @@
+gate_id: G-GATE-FILE-ORG
+name: File Organization Standard
+applies_to: [write]
+rule: |
+  所有新文件创建必须遵循文件组织规范，避免文件直接堆积在顶级或项目根目录。
+  Agent 必须根据文件用途选择三种组织模式之一：time_based, business_based, type_based。
+
+spec_ref: /brain/base/spec/standards/file_organization.yaml
+helper: /brain/base/spec/standards/file_organization_helper.py
+
+organization_modes:
+  time_based:
+    描述: 按时间分类，适合时序敏感的数据
+    适用场景: [日志文件, 时序数据, 归档数据, 临时文件]
+    路径模板:
+      daily: "{base_dir}/{YYYY}/{MM}/{DD}/{filename}"
+      compact: "{base_dir}/{YYYY-MM-DD}/{filename}"
+
+  business_based:
+    描述: 按项目/组/任务分类，适合项目产物
+    适用场景: [项目输出, 任务产物, spec文件, 组织产出]
+    路径模板:
+      project: "groups/{org}/{group}/projects/{project_id}/{category}/{filename}"
+      task: "groups/{org}/{group}/tasks/{task_id}/{category}/{filename}"
+      spec: "groups/{org}/{group}/spec/{spec_id}/{filename}"
+
+  type_based:
+    描述: 按文件类型/功能分类，适合配置和工具文件
+    适用场景: [配置文件, 缓存文件, 构建产物, 工具输出]
+    路径模板:
+      config: "runtime/config/{subsystem}/{filename}"
+      cache: "runtime/cache/{cache_type}/{filename}"
+      build: "runtime/build/{artifact_type}/{filename}"
+
+decision_tree:
+  步骤1:
+    问题: 文件是否与时间强相关（日志、日报、归档）？
+    是: 使用 time_based
+    否: 进入步骤2
+  步骤2:
+    问题: 文件是否属于特定项目/任务/spec？
+    是: 使用 business_based
+    否: 进入步骤3
+  步骤3:
+    问题: 文件是配置、缓存或工具输出吗？
+    是: 使用 type_based
+    否: 默认使用 business_based（归入最相关的项目）
+
+mandatory_rules:
+  路径构造:
+    - 必须包含 base_dir（runtime/, groups/, base/）
+    - 禁止直接在 /brain/ 顶层创建文件
+    - 禁止直接在项目根目录创建文件
+    - 路径深度建议 ≤ 5 层，最多不超过 10 层
+  命名约定:
+    - 目录名使用 snake_case（小写+下划线）
+    - 文件名必须具有自描述性
+    - 禁止无意义命名：misc, other, temp, test, untitled
+    - 必须包含适当的文件扩展名
+
+exceptions:
+  - /brain/runtime/tmp/**
+  - /brain/**/memory/**
+  - /brain/.claude/**
+  - /brain/.git/**
+
+enforcement:
+  stage: pre_tool_use
+  method: python_checker
+  checker: file_org_checker
+  priority: MEDIUM
+
+  triggers:
+    tools: [Write]
+
+  rules:
+    no_toplevel_files:
+      pattern: "^/brain/[^/]+\\.(txt|md|yaml|json|py|sh)$"
+      message: "禁止在 /brain/ 顶层创建文件"
+    no_project_root_files:
+      pattern: "^/brain/groups/[^/]+/[^/]+/[^/]+\\.(txt|md|yaml|json|py)$"
+      message: "禁止在项目根目录创建文件"
+    no_meaningless_names:
+      patterns:
+        - "**/misc/**"
+        - "**/other/**"
+        - "**/temp/**"
+        - "**/test/**"
+        - "**/untitled/**"
+        - "**/dump/**"
+        - "**/stuff/**"
+      message: "禁止使用无意义的目录名"
+    max_depth: 10
+
+  block_message: |
+    ⚠️ 文件组织规范违规 (G-FILE-ORG)
+
+    文件路径: {file_path}
+    违规原因: {reason}
+
+    建议：
+    1. 选择合适的组织模式：
+       - time_based: 日志、日报、归档（runtime/logs/2026/02/13/）
+       - business_based: 项目产物（groups/org/{group}/projects/{project}/）
+       - type_based: 配置、缓存（runtime/config/）
+
+    2. 避免：
+       - 顶层文件（/brain/file.txt）
+       - 项目根目录文件（groups/org/xxx/file.pdf）
+       - 无意义命名（misc/, temp/, other/）
+       - 过深路径（> 10 层）
+
+    参考：/brain/base/spec/core/lep.yaml (G-FILE-ORG)
+bindings:
+  hooks:
+    stage: pre_tool_use
+    trigger_tools: [Write, Bash]
+  mcp_tools: []
+  related_skills: []

@@ -1,0 +1,8 @@
+#!/bin/bash
+# System Status Tests - Entry point
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+MONITOR_ROOT="$(dirname "$SCRIPT_DIR")"
+SRC_DIR="$MONITOR_ROOT/src"
+
+exec python3 "$SRC_DIR/test_system_status.py" "$@"

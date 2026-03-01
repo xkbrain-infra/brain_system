@@ -1,0 +1,40 @@
+gate_id: G-GATE-DELETE-BACKUP
+name: Delete with Backup
+applies_to: [delete]
+rule: 删除前必须先备份
+exception: [/tmp/**, build/, __pycache__/]
+
+enforcement:
+  stage: pre_tool_use
+  method: python_inline
+  priority: MEDIUM
+
+  triggers:
+    tools: [Bash]
+
+  patterns:
+    delete_important_files:
+      - pattern: "rm\\s+(?!.*(?:/tmp/|build/|__pycache__|node_modules|.git/objects)).*\\.(?:yaml|yml|py|js|ts|cpp|hpp|c|h|sql|sh|md|json|toml)"
+        message: "删除重要文件（代码/配置）"
+      - pattern: "rm\\s+-rf?\\s+(?!.*(?:/tmp/|build/|__pycache__|node_modules)).*(?:/brain/|/groups/|/spec/)"
+        message: "删除重要目录"
+
+  warn_message: |
+    ⚠️ 删除操作需要先备份 (G-DELETE-BACKUP)
+
+    {message}
+
+    建议操作：
+    1. 先备份: cp {file_path} /brain/.archived/
+    2. 再删除: rm {file_path}
+
+    或使用 git 追踪文件（可通过 git 恢复）
+
+    参考：/brain/base/spec/core/lep.yaml
+bindings:
+  hooks:
+    stage: pre_tool_use
+    trigger_tools: [Bash]
+    patterns: [rm_rf, delete_dir]
+  mcp_tools: []
+  related_skills: []

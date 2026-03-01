@@ -1,0 +1,41 @@
+# Telegram API Service Configuration
+
+service:
+  name: "service-telegram_api"
+  health_port: 8091
+
+# Multi-bot configuration
+bots:
+  - name: "XKAgentBot"
+    token_env: "TELEGRAM_BOT_TOKEN_1"
+    chat_id_env: "TELEGRAM_CHAT_ID_1"
+  - name: "XKQuantBot"
+    token_env: "TELEGRAM_BOT_TOKEN_2"
+    chat_id_env: "TELEGRAM_CHAT_ID_2"
+
+telegram:
+  # Bot token file path (environment variable TELEGRAM_BOT_TOKEN_FILE)
+  bot_token_file: "/xkagent_infra/brain/secrets/IM/telegram/bot_token.env"
+
+  # Polling configuration
+  polling:
+    enabled: true
+    timeout_seconds: 30
+    max_retries: 3
+    retry_backoff_seconds: 2
+    retry_max_delay_seconds: 60
+
+# IPC Configuration
+ipc:
+  socket_path: "/tmp/brain_ipc.sock"
+  target_gateway: "service-agent_gateway"
+  heartbeat_interval: 30
+
+# Offset Management (per-bot)
+offset_manager:
+  db_path: "/xkagent_infra/brain/infrastructure/data/telegram_api/offset.db"
+
+# Logging
+logging:
+  level: "INFO"
+  format: "json"  # json | text

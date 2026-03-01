@@ -1,0 +1,20 @@
+#!/usr/bin/env python3
+"""post_tool_use Hook - v3.0.0 入口 (自动生成)"""
+import os
+# 设置环境变量供 lep engine 使用
+os.environ["HOOK_ROOT"] = "/brain/base/hooks"
+import sys
+
+# 发布后位置: /brain/base/hooks
+HOOK_ROOT = "/brain/base/hooks"
+# 添加所有 handler 路径
+sys.path.insert(0, os.path.join(HOOK_ROOT, "tool_validation"))
+sys.path.insert(0, os.path.join(HOOK_ROOT, "session"))
+sys.path.insert(0, os.path.join(HOOK_ROOT, "checkers", "audit_logger", "current", "python"))
+sys.path.insert(0, os.path.join(HOOK_ROOT, "utils"))
+sys.path.insert(0, os.path.join(HOOK_ROOT, "lep"))
+
+from tool_validation.handler import handle_post_tool_use
+
+if __name__ == "__main__":
+    handle_post_tool_use()

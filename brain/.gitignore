@@ -1,0 +1,34 @@
+# Gemini Agent Credentials & State
+.gemini/oauth_creds.json
+.gemini/google_accounts.json
+.gemini/installation_id
+.gemini/state.json
+.gemini/tmp/
+
+# Ignore compiled python files
+**/__pycache__/
+**/*.pyc
+
+# Ignore secrets and env files
+# Default: ignore everything under any secrets directory
+**/secrets/**
+# Allow traversing directories so explicit allow-list files can be tracked
+!**/secrets/**/
+# Allow non-sensitive docs/index/templates/examples
+!**/secrets/.gitignore
+!**/secrets/README.md
+!**/secrets/index.yaml
+!**/secrets/**/*.template
+!**/secrets/**/*.example
+!**/secrets/**/SETUP_GUIDE.md
+
+**/.env
+**/.env.prod
+**/.env.local
+**/.env.*.local
+
+# Ignore temporary configs
+tmp_config/
+
+# runtime
+runtime/

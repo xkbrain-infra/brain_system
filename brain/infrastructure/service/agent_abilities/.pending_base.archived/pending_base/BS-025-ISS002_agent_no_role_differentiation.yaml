@@ -1,0 +1,33 @@
+id: BS-025-ISS002
+title: 项目 agent 创建无差异化，任务分配未按角色能力匹配
+discovered_at: "2026-02-22"
+discovered_by: system-tmp_claude
+stage: S6
+severity: high
+description: |
+  当前 project.yaml 定义的 6 个项目 agent（pmo/orchestrator/architect/qa/devops/researcher）
+  除 qa 用 codex 外，其余全部是 claude Sonnet，没有能力差异化：
+    1. agent 创建时没有按角色注入不同的能力配置（capabilities、allowed_paths、tool_permissions）
+    2. CLAUDE.md 模板是通用的，没有按角色定制（devops 和 dev 拿到的 CLAUDE.md 几乎一样）
+    3. orchestrator 分配任务时不考虑 agent 的角色匹配，只看谁空闲
+    4. 结果：devops 任务可能被分给 dev，架构任务可能被分给 researcher
+  
+  根因：agentctl add 只区分了 agent_type 和 model，没有按 role 注入：
+    - 角色专属的 CLAUDE.md（不同角色的职责、工具、约束应该不同）
+    - 角色专属的 hook 权限（devops 可写 infrastructure/，dev 只能写项目代码目录）
+    - 角色专属的 capabilities 标签（供 orchestrator 做能力匹配）
+impact: |
+  1. 任务分配无法按能力匹配，降低执行效率
+  2. hook 权限无法按角色细分，要么全拦要么全放
+  3. agent 不知道自己该做什么不该做什么，容易越权或遗漏
+  4. BS-025-ISS001（BRAIN_AGENT_ROLE 缺失）只是表层症状，本质是角色体系未落地
+resolution: ""
+resolved_at: ""
+resolved_by: ""
+base_upgrade_candidate: true
+base_upgrade_detail: |
+  需要在 agentctl add 和 project.yaml agent 创建流程中实现角色差异化：
+  1. agentctl add --role X 时，从角色模板生成专属 CLAUDE.md（不是通用模板）
+  2. 角色模板位置：/brain/base/spec/templates/roles/{role}/CLAUDE.md
+  3. 不同角色注入不同的 hook 权限（allowed_paths、denied_paths）
+  4. orchestrator 分配任务时必须检查 agent.role 与 task.required_role 是否匹配

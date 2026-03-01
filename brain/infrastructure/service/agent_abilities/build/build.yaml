@@ -1,0 +1,87 @@
+# Agent Abilities — 统一构建配置
+# 所有 base/ 域产物的构建目标定义
+# 用法: build/build.sh publish [target]
+
+version: "1.0"
+
+# ─── 构建目标 ───────────────────────────────────────────────
+targets:
+
+  spec:
+    description: "Spec 规范文档 (含 LEP gates)"
+    src: ../src/spec
+    dst: /brain/base/spec
+    type: yaml_registry       # 需要 registry 校验
+    versioned: true           # 创建版本快照
+    validate: true
+    build_script: scripts/spec/build.sh
+    exclude: ["*.bak", "__pycache__"]
+
+  workflow:
+    description: "工作流程文档"
+    src: ../src/workflow
+    dst: /brain/base/workflow
+    type: yaml_dir            # 简单 rsync，无 registry 校验
+    versioned: false
+    exclude: ["*.bak", "__pycache__"]
+
+  evolution:
+    description: "演进引擎文档"
+    src: ../src/evolution
+    dst: /brain/base/evolution
+    type: yaml_dir
+    versioned: false
+    exclude: ["*.bak", "__pycache__"]
+
+  knowledge:
+    description: "知识库文档"
+    src: ../src/knowledge
+    dst: /brain/base/knowledge
+    type: yaml_dir
+    versioned: false
+    exclude: ["*.bak", "__pycache__"]
+
+  skill:
+    description: "系统能力说明"
+    src: ../src/skill
+    dst: /brain/base/skill
+    type: yaml_dir
+    versioned: false
+    exclude: ["*.bak", "__pycache__"]
+
+  hooks:
+    description: "Agent Hooks 运行时"
+    src: ../src/hooks
+    type: custom              # 走 hooks 自己的 build pipeline
+    build_script: scripts/hooks/build.sh
+    build_args: ["build"]
+    note: "hooks 构建产物在 bin/hooks/current/，部署见 /brain/infrastructure/deploy/services/agent_abilities/deploy.sh"
+
+  mcp_server:
+    description: "brain_ipc_c MCP server (C 编译)"
+    src: ../src/mcp/brain_ipc_c
+    type: c_compile           # C 源码编译
+    build_script: scripts/mcp/build.sh
+    build_args: ["all"]
+    note: "编译产物在 bin/mcp/brain_ipc_c_mcp_server"
+
+  index:
+    description: "base/ 域统一入口"
+    src: ../src/index.yaml
+    dst: /brain/base/index.yaml
+    type: single_file
+    versioned: false
+
+# ─── 全局排除项 ───────────────────────────────────────────────
+global_exclude:
+  - "*.bak"
+  - ".draft"
+  - "__pycache__"
+  - ".DS_Store"
+
+# ─── 快速发布组合 ─────────────────────────────────────────────
+aliases:
+  all_docs:   [spec, workflow, evolution, knowledge, skill, index]
+  all:        [spec, workflow, evolution, knowledge, skill, hooks, mcp_server, index]
+  docs:       [spec, workflow, evolution, knowledge, skill]
+  runtime:    [hooks, mcp_server]

@@ -1,0 +1,350 @@
+---
+spec_id: STD-FILE-ORG-001
+title: Agent 文件组织规范
+version: 1.0.0
+status: draft
+created: 2026-02-13
+owner: tmp_claude
+category: standards/file_management
+
+# ============================================================================
+# 目的：规范所有 Agent 创建文件时的目录组织方式
+# 适用范围：所有新文件创建（日志、临时文件、输出产物、配置文件等）
+# 强制性：所有 Agent 必须遵守
+# ============================================================================
+
+overview: |
+  本规范定义了 Agent 创建文件时的组织策略，避免文件直接堆积在顶级目录中。
+  提供三种组织模式：时间分类、业务分类、类型分类。
+  Agent 根据文件用途选择最合适的模式。
+
+# ============================================================================
+# 三种组织模式
+# ============================================================================
+
+organization_modes:
+  # --------------------------------------------------------------------------
+  # 模式 1: 按时间分类 (TIME-BASED)
+  # --------------------------------------------------------------------------
+  time_based:
+    description: 按创建时间组织文件，适合时序敏感的数据
+    适用场景:
+      - 日志文件（运行日志、审计日志、调试日志）
+      - 时序数据（日报、周报、监控数据）
+      - 归档数据（历史快照、备份）
+      - 临时文件（需要定期清理的中间结果）
+
+    path_templates:
+      daily: "{base_dir}/{YYYY}/{MM}/{DD}/{filename}"
+      monthly: "{base_dir}/{YYYY}/{MM}/{filename}"
+      yearly: "{base_dir}/{YYYY}/{filename}"
+      compact: "{base_dir}/{YYYY-MM-DD}/{filename}"
+
+    变量说明:
+      base_dir: 基础目录（如 runtime/logs, memory/archive）
+      YYYY: 四位年份（如 2026）
+      MM: 两位月份（如 02）
+      DD: 两位日期（如 13）
+      YYYY-MM-DD: 紧凑日期格式（如 2026-02-13）
+      filename: 实际文件名
+
+    examples:
+      - path: runtime/logs/2026/02/13/agent_system_pmo.log
+        说明: PMO agent 的日志文件
+      - path: memory/archive/2026/02/session_20260213_143022.jsonl
+        说明: 会话归档文件
+      - path: runtime/tmp/2026-02-13/build_artifacts/
+        说明: 临时构建产物（紧凑格式）
+
+  # --------------------------------------------------------------------------
+  # 模式 2: 按业务分类 (BUSINESS-BASED)
+  # --------------------------------------------------------------------------
+  business_based:
+    description: 按项目/组/任务组织文件，适合项目产物
+    适用场景:
+      - 项目输出（分析报告、设计文档、测试结果）
+      - 任务产物（spec 文件、代码实现、部署配置）
+      - 组织产出（组级别的共享资源）
+      - 跨时间的持续性工作
+
+    path_templates:
+      project: "groups/{org}/{group}/projects/{project_id}/{category}/{filename}"
+      task: "groups/{org}/{group}/tasks/{task_id}/{category}/{filename}"
+      spec: "groups/{org}/{group}/spec/{spec_id}/{filename}"
+      shared: "groups/{org}/{group}/shared/{category}/{filename}"
+
+    变量说明:
+      org: 组织名（如 org, brain_system_group）
+      group: 组名（如 brain_system, xkquant）
+      project_id: 项目ID（如 agent_orchestrator）
+      task_id: 任务ID（如 XQ-TASK-002）
+      spec_id: Spec ID（如 BS-011-mcp-gmail-gdrive）
+      category: 分类（如 docs, reports, config）
+      filename: 实际文件名
+
+    examples:
+      - path: groups/org/xkquant/projects/newsalpha/reports/incident_XQ-002.md
+        说明: XKQuant 组 NewsAlpha 项目的事故报告
+      - path: groups/org/brain_system/spec/BS-012-hooks-build/S3_design.yaml
+        说明: Brain System 组的 spec 设计文档
+      - path: groups/org/xkquant/tasks/XQ-TASK-003/deliverables/analysis.pdf
+        说明: 任务交付物
+
+  # --------------------------------------------------------------------------
+  # 模式 3: 按类型分类 (TYPE-BASED)
+  # --------------------------------------------------------------------------
+  type_based:
+    description: 按文件类型/功能组织文件，适合配置和工具文件
+    适用场景:
+      - 配置文件（动态生成的 .json, .yaml, .env）
+      - 工具输出（构建产物、测试覆盖率、性能分析）
+      - 缓存文件（编译缓存、下载缓存）
+      - 通用资源（不属于特定项目或时间）
+
+    path_templates:
+      config: "runtime/config/{subsystem}/{filename}"
+      cache: "runtime/cache/{cache_type}/{filename}"
+      build: "runtime/build/{artifact_type}/{filename}"
+      tools: "runtime/tools/{tool_name}/{output_type}/{filename}"
+
+    变量说明:
+      subsystem: 子系统名（如 agents, mcp, hooks）
+      cache_type: 缓存类型（如 pip, npm, compiled）
+      artifact_type: 产物类型（如 binaries, libraries, packages）
+      tool_name: 工具名（如 pytest, coverage, profiler）
+      output_type: 输出类型（如 reports, data, logs）
+      filename: 实际文件名
+
+    examples:
+      - path: runtime/config/agents/agent_system_frontdesk.mcp.json
+        说明: Agent 的 MCP 配置文件
+      - path: runtime/cache/pip/wheels/
+        说明: Python 包缓存
+      - path: runtime/build/binaries/brain_ipc
+        说明: 编译后的二进制文件
+      - path: runtime/tools/pytest/reports/coverage_2026-02-13.html
+        说明: 测试覆盖率报告
+
+# ============================================================================
+# Agent 选择指南
+# ============================================================================
+
+selection_guide:
+  决策树:
+    - question: 文件是否与时间强相关（日志、时序数据、归档）？
+      yes: 使用 time_based
+      no: 继续下一步
+
+    - question: 文件是否属于特定项目/任务/spec？
+      yes: 使用 business_based
+      no: 继续下一步
+
+    - question: 文件是配置、缓存或工具输出吗？
+      yes: 使用 type_based
+      no: 默认使用 business_based（归入最相关的项目）
+
+  通用原则:
+    - 同一批文件应使用相同的组织模式
+    - 优先考虑文件的主要用途和访问模式
+    - 当无法确定时，优先使用 business_based
+    - 避免创建过深的目录层级（建议 ≤ 5 层）
+    - 文件名应具有自描述性
+
+  组合使用:
+    - "允许在 business_based 内部使用时间子目录, 例: groups/org/xkquant/projects/newsalpha/logs/2026/02/13/"
+    - "允许在 time_based 内部按类型分组, 例: runtime/logs/2026/02/13/agents/pmo.log"
+
+# ============================================================================
+# 路径构造规范
+# ============================================================================
+
+path_construction:
+  命名约定:
+    目录名:
+      - 使用小写字母和下划线（snake_case）
+      - 避免空格和特殊字符
+      - 日期使用 YYYY, MM, DD 或 YYYY-MM-DD 格式
+
+    文件名:
+      - 包含必要的上下文信息（agent 名、时间戳、类型）
+      - 使用有意义的描述性名称
+      - 包含适当的扩展名
+      - 例: agent_system_pmo_2026-02-13_143022.log
+
+  必需组件:
+    time_based:
+      - base_dir（必需）
+      - 时间层级（至少一层：年/月/日）
+      - filename（必需）
+
+    business_based:
+      - org 和 group（必需）
+      - project_id 或 task_id 或 spec_id（至少一个）
+      - filename（必需）
+
+    type_based:
+      - runtime（基础目录，必需）
+      - subsystem 或 cache_type 等（必需）
+      - filename（必需）
+
+  禁止行为:
+    - ❌ 直接在组根目录创建文件（如 /brain/output.txt）
+    - ❌ 直接在项目根目录创建文件（如 groups/org/xkquant/report.pdf）
+    - ❌ 使用临时路径如 /tmp（应使用 runtime/tmp/）
+    - ❌ 创建无分类的 misc 或 other 目录堆积文件
+
+# ============================================================================
+# 生命周期管理（可选配置）
+# ============================================================================
+
+lifecycle_management:
+  enable: false  # 默认关闭，Agent 可选择性启用
+
+  retention_policies:
+    logs:
+      daily_logs:
+        retention_days: 30
+        archive_after_days: 7
+        cleanup_action: compress_and_archive
+        archive_location: memory/archive/{YYYY}/{MM}/
+
+      audit_logs:
+        retention_days: 365
+        archive_after_days: 90
+        cleanup_action: archive
+
+    tmp_files:
+      build_artifacts:
+        retention_days: 3
+        cleanup_action: delete
+
+      cache:
+        retention_days: 14
+        cleanup_action: delete
+
+    reports:
+      daily_reports:
+        retention_days: 90
+        archive_after_days: 30
+        cleanup_action: archive
+
+  cleanup_actions:
+    delete: 直接删除文件
+    archive: 移动到归档目录
+    compress: 压缩但保留在原位置
+    compress_and_archive: 压缩后移动到归档目录
+
+  自动清理:
+    trigger: cron  # 或 manual
+    schedule: "0 2 * * *"  # 每天凌晨 2:00
+    responsible_agent: agent_system_devops
+    dry_run: true  # 默认先模拟运行
+
+# ============================================================================
+# Agent 实施要求
+# ============================================================================
+
+implementation:
+  强制性规则:
+    - 所有 Agent 创建文件前必须选择组织模式
+    - 必须使用完整路径（包含所有必需组件）
+    - 创建文件前检查目录是否存在，不存在则创建
+    - 记录文件创建到审计日志（如果启用）
+
+  推荐做法:
+    - 在 Agent CLAUDE.md 中声明默认组织模式
+    - 为常见文件类型定义路径模板函数
+    - 使用环境变量或配置文件存储 base_dir
+    - 提供清理旧文件的便捷命令
+
+  LEP Gate:
+    - G-FILE-ORG: 文件创建必须符合组织规范
+    - 违规将被 hook 拦截（如果启用）
+
+  Hook 集成:
+    pre_write_hook:
+      - 验证路径是否符合规范
+      - 检查目录深度
+      - 验证文件命名约定
+
+    post_write_hook:
+      - 记录到审计日志
+      - 更新文件索引
+      - 触发清理检查（如果启用）
+
+# ============================================================================
+# 示例场景
+# ============================================================================
+
+example_scenarios:
+  场景1_PMO_创建任务报告:
+    文件类型: 输出产物
+    选择模式: business_based
+    路径: groups/org/brain_system/tasks/BS-TASK-005/reports/completion_report.md
+    原因: 属于特定任务的交付物
+
+  场景2_DevOps_记录部署日志:
+    文件类型: 日志文件
+    选择模式: time_based
+    路径: runtime/logs/2026/02/13/deployment/cxx_service_v3.1.log
+    原因: 时序敏感，需要按日期查询
+
+  场景3_Architect_生成MCP配置:
+    文件类型: 配置文件
+    选择模式: type_based
+    路径: runtime/config/mcp/agent_system_frontdesk.mcp.json
+    原因: 系统配置，按类型管理
+
+  场景4_Researcher_保存日报:
+    文件类型: 输出产物
+    选择模式: 组合模式（business + time）
+    路径: groups/org/xkquant/projects/newsalpha/reports/daily/2026/02/13/daily_report.md
+    原因: 项目产物但按时间序列组织
+
+  场景5_QA_保存测试结果:
+    文件类型: 工具输出
+    选择模式: 组合模式（business + type）
+    路径: groups/org/brain_system/projects/agent_orchestrator/tests/results/unit_test_coverage.html
+    原因: 项目相关但按测试类型分类
+
+# ============================================================================
+# 迁移指南（针对现有文件）
+# ============================================================================
+
+migration:
+  现状评估:
+    - 扫描顶级目录中的孤立文件
+    - 识别不符合规范的路径
+    - 评估迁移影响和优先级
+
+  迁移步骤:
+    1: 创建目标目录结构
+    2: 移动文件到新位置
+    3: 更新引用（配置文件、脚本、文档）
+    4: 创建符号链接（如果需要兼容性）
+    5: 验证功能正常
+    6: 删除旧文件和符号链接
+
+  优先级:
+    高: 日志文件、审计数据
+    中: 项目产物、配置文件
+    低: 临时文件、缓存
+
+# ============================================================================
+# 附录
+# ============================================================================
+
+appendix:
+  相关规范:
+    - /brain/base/spec/standards/infra/database/operation.yaml  # 数据库备份组织
+    - /brain/base/spec/standards/workflow/verification.yaml     # 构建产物组织
+
+  维护:
+    - 定期审查是否需要新增组织模式
+    - 收集 Agent 反馈优化路径模板
+    - 监控磁盘使用情况调整清理策略
+
+  工具支持:
+    - 提供路径生成 helper 函数库
+    - 开发文件组织合规检查工具
+    - 集成到 agentctl 提供清理命令

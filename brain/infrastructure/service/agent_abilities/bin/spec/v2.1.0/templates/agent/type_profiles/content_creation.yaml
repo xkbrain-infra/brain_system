@@ -1,0 +1,55 @@
+# 内容创作行业 Type Profiles
+
+category: TP-CAT-CONTENT-CREATION
+version: "1.0"
+
+profiles:
+
+  topic-planner:
+    description: "选题策划，热点追踪，内容日历管理"
+    default: TP-CC-PLANNER-CLAUDE-SONNET
+    variants:
+      - id: TP-CC-PLANNER-CLAUDE-SONNET
+        agent_type: claude
+        model: claude-sonnet-4-6
+        reason: "选题需要搜索 + 趋势分析能力"
+
+  writer:
+    description: "内容写作，长文/短文/文案"
+    default: TP-CC-WRITER-CLAUDE-OPUS
+    variants:
+      - id: TP-CC-WRITER-CLAUDE-OPUS
+        agent_type: claude
+        model: claude-opus-4-6
+        reason: "高质量写作需要最强语言能力"
+      - id: TP-CC-WRITER-CLAUDE-SONNET
+        agent_type: claude
+        model: claude-sonnet-4-6
+        reason: "日常内容产出，性价比均衡"
+
+  editor-reviewer:
+    description: "编辑审校，语法/事实核查，风格统一"
+    default: TP-CC-EDITOR-CLAUDE-SONNET
+    variants:
+      - id: TP-CC-EDITOR-CLAUDE-SONNET
+        agent_type: claude
+        model: claude-sonnet-4-6
+        reason: "审校需要细致的语言理解"
+
+  seo-optimizer:
+    description: "SEO 优化，关键词策略，搜索排名提升"
+    default: TP-CC-SEO-CLAUDE-HAIKU
+    variants:
+      - id: TP-CC-SEO-CLAUDE-HAIKU
+        agent_type: claude
+        model: claude-haiku-4-5
+        reason: "SEO 规则明确，速度优先"
+
+  distributor:
+    description: "多平台分发，格式适配，定时发布"
+    default: TP-CC-DISTRIBUTOR-CLAUDE-HAIKU
+    variants:
+      - id: TP-CC-DISTRIBUTOR-CLAUDE-HAIKU
+        agent_type: claude
+        model: claude-haiku-4-5
+        reason: "分发流程标准化，速度优先"

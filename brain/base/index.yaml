@@ -1,0 +1,76 @@
+# /brain/base/index.yaml
+# Brain Base 层索引 - Agent 启动入口
+
+role: 规范层，只读，所有 Group/Project 继承（代码在 /brain/runtime/）
+
+# 四域结构
+four_domains:
+  spec/: "当前世界是什么 — 规则、结构、约束"
+  workflow/: "当前世界如何运转 — PMO 事件链、状态机、触发协议"
+  knowledge/: "过去经验是什么 — 故障案例、调研报告、可复用认知"
+  evolution/: "下一世界是什么 — 能力评估、升级提案、演进方向"
+
+# 能力层（不属于四域，支撑系统运转）
+capability_layers:
+  skill/: "Agent 技能定义 — 可调用工具与能力描述（供 agents 读取）"
+  mcp/:    "MCP 服务配置 — tool definitions 与 agent .mcp.json 模板"
+
+# 构建来源
+build_source: /brain/infrastructure/service/agent_abilities/src/
+build_pipeline: /brain/infrastructure/service/agent_abilities/build/build.sh
+
+# 目录结构
+structure:
+  spec/: # 规范定义 (YAML)
+    core/: 核心规范 (lep, layers, workflow)
+    policies/: 执行政策 (agents, lep, ipc)
+    standards/: 技术标准 (infra, workflow, coding)
+    templates/: 模板
+  workflow/: # PMO 驱动的通用流程 DSL
+    index.yaml: 入口索引
+    dsl.yaml: 三层状态机 (Task/Project/Group)
+    runtime.yaml: PMO 事件循环 + Agent 回报协议 + Researcher + 记录系统
+    governance.yaml: 四域联动审核
+  knowledge/: # 知识库 (按需检索)
+    troubleshooting/: 问题解决方案
+    architecture/: 架构知识
+    research/: Researcher 调研报告 (按 group 存储)
+  evolution/: # 演进引擎
+    index.yaml: 入口 + 四域循环哲学
+    cycle.yaml: 评估周期 (触发 → 多 Agent 协同 → 提案)
+    proposal.yaml: Upgrade Proposal schema + 生命周期
+  skill/: # Agent 技能定义
+    "{skill_name}/": "技能文档（description + usage + examples）"
+  mcp/: # MCP 服务器配置
+    definitions/: "MCP server 工具定义文档（各 server 的 tool schema）"
+    templates/: "各 Agent .mcp.json 配置模板（Jinja2，由 agentctl 渲染）"
+
+# 加载顺序
+load_sequence:
+  1_mandatory: # 启动必读
+    - spec/core/lep.yaml
+    - spec/core/layers.yaml
+    - spec/core/workflow.yaml
+    - workflow/index.yaml
+  2_on_demand: # 按需加载
+    - spec/policies/**
+    - spec/standards/**
+    - knowledge/**
+    - workflow/runtime.yaml
+    - workflow/governance.yaml
+    - evolution/**
+  3_capability: # 能力层（工具调用时参考）
+    - skill/**
+    - mcp/definitions/**
+
+# 快速入口
+quick_entry:
+  规范总览: spec/index.yaml
+  门控规则: spec/core/lep.yaml
+  Agent协作: spec/policies/agents/agent_protocol.yaml
+  技术标准: spec/standards/index.yaml
+  PMO事件循环: workflow/index.yaml
+  演进引擎: evolution/index.yaml
+  四域审核: workflow/governance.yaml
+  MCP工具定义: mcp/definitions/
+  Agent技能: skill/

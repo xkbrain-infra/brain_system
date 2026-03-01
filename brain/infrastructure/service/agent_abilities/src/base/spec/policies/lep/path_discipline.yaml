@@ -1,0 +1,22 @@
+gate_id: G-GATE-PATH-DISCIPLINE
+name: Structured Path and Naming
+applies_to: [write, move]
+rule: 文件必须归属正确层级，文件名必须体现所属模块
+path_rule: 禁止 /brain/ 顶层创建文件或目录；必须归入 base/ | runtime/ | groups/
+naming_rule: 禁止无意义命名（temp, test, untitled）；名称须含项目/模块/日期等标识
+
+enforcement:
+  stage: pre_tool_use
+  method: python_checker
+  checker: file_org_checker
+  priority: MEDIUM
+  note: "G-PATH-DISCIPLINE 核心规则由 G-GATE-FILE-HIERARCHY / G-GATE-FILE-ORG 统一执行"
+
+  triggers:
+    tools: [Write]
+bindings:
+  hooks:
+    stage: pre_tool_use
+    trigger_tools: [Write, Bash]
+  mcp_tools: []
+  related_skills: []

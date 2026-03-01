@@ -1,0 +1,436 @@
+# Group Space Creation Specification
+# Group（项目组）空间创建规范
+#
+# 本文档定义 Group Space 的创建规格，包括：
+# a. 路径定义 - Group 在文件系统中的位置
+# b. 依赖引用 - Group 依赖的 spec 和配置
+# c. 元数据描述 - Group 的属性、使命、成员
+
+metadata:
+  id: CORE-CREATION-SPACE-GROUP
+  version: "1.0"
+  created_at: "2026-02-11"
+  owner: base_architect
+  description: "Group Space 创建的核心规范"
+
+# ============================================
+# Group Space 定义模板
+# ============================================
+group_space_template:
+  # ------------------------------------------
+  # a. 路径定义 (Paths)
+  # ------------------------------------------
+  paths:
+    description: "Group 在文件系统中的所有关键路径"
+
+    root:
+      path: "/brain/groups/org/{group_id}"
+      purpose: "Group 根目录"
+      must_exist: true
+
+    spec_root:
+      path: "/brain/groups/org/{group_id}/spec"
+      purpose: "Group 级 Specs 存储"
+      must_exist: true
+      files:
+        - "index.yaml"        # Spec 索引
+        - "projects.yaml"     # Projects 注册表
+
+    workflow:
+      path: "/brain/groups/org/{group_id}/workflow"
+      purpose: "工作流配置"
+      must_exist: true
+      files:
+        - "index.yaml"        # Workflow 索引
+        - "pmo/board.yaml"    # PMO 任务面板
+        - "pmo/agent_roster.yaml"  # Agent 注册
+
+    agents:
+      path: "/brain/groups/org/{group_id}/agents"
+      purpose: "Group 的 Agents 定义"
+      must_exist: true
+
+    projects:
+      path: "/brain/groups/org/{group_id}/projects"
+      purpose: "Group 的 Projects 存储"
+      must_exist: true
+
+    knowledge:
+      path: "/brain/groups/org/{group_id}/knowledge"
+      purpose: "知识库"
+      must_exist: false  # 可选
+
+    memory:
+      path: "/brain/groups/org/{group_id}/memory"
+      purpose: "记忆存储"
+      must_exist: false  # 可选
+
+    data:
+      path: "/brain/groups/org/{group_id}/data"
+      purpose: "数据存储"
+      must_exist: false  # 可选
+
+  # ------------------------------------------
+  # b. 依赖引用 (Dependencies)
+  # ------------------------------------------
+  dependencies:
+    description: "Group 依赖的 spec、配置和模板"
+
+    spec_refs:
+      base_workflow:
+        path: "/brain/base/workflow/index.yaml"
+        purpose: "继承 Base 层工作流定义"
+        mandatory: true
+
+      base_spec_templates:
+        path: "/brain/base/spec/templates/spec_dsl.yaml"
+        purpose: "Spec 文档模板"
+        mandatory: true
+
+      base_lep:
+        path: "/brain/base/spec/core/lep.yaml"
+        purpose: "LEP 门控规则"
+        mandatory: true
+
+      base_architecture:
+        path: "/brain/base/spec/core/architecture.yaml"
+        purpose: "架构规范"
+        mandatory: false
+
+    inherits_from:
+      workflow:
+        path: "/brain/base/workflow/index.yaml"
+        note: "Group workflow 必须继承 Base workflow"
+
+    templates_used:
+      - "/brain/base/spec/templates/agent/"  # Agent 模板
+      - "/brain/base/spec/templates/spec_dsl.yaml"  # Spec 模板
+
+    external_dependencies:
+      note: "如果 Group 需要外部依赖（数据库、API 等），在此声明"
+      example: []
+
+  # ------------------------------------------
+  # c. 元数据描述 (Metadata)
+  # ------------------------------------------
+  metadata:
+    description: "Group 的核心属性和描述信息"
+
+    identity:
+      group_id:
+        value: "{group_id}"
+        format: "^[a-z][a-z0-9_]*$"
+        example: "xkquant, commerce, brain_system"
+        note: "唯一标识符，小写字母开头"
+
+      group_name:
+        value: "{group_name}"
+        example: "XKQuant 量化交易组"
+        note: "用户友好的显示名称"
+
+      group_prefix:
+        value: "{GROUP_PREFIX}"
+        format: "^[A-Z]{2,3}$"
+        example: "XQ, COM, BS"
+        note: "用于 Spec ID 和 Project ID 的前缀"
+
+    mission:
+      description: "Group 的业务使命和目标"
+      example: |
+        负责量化交易系统的策略开发、回测、实盘交易、
+        数据采集、行情分析等业务能力。
+
+    scope:
+      in_scope:
+        description: "Group 负责的业务领域"
+        example:
+          - "量化交易策略开发和优化"
+          - "历史数据采集和管理"
+          - "回测系统和模拟交易"
+          - "实盘交易引擎"
+
+      out_of_scope:
+        description: "明确不属于 Group 的领域"
+        example:
+          - "Brain 系统基础设施（brain_system 组）"
+          - "非量化业务（commerce 组）"
+
+    members:
+      description: "Group 的团队成员（Agents）"
+      structure:
+        pmo:
+          agent_id: "agent_{group_id}_pmo"
+          ipc_address: "agent_{group_id}_pmo"
+          role: "{GROUP_NAME} PMO"
+          responsibilities:
+            - "审批 {group_id} 组所有排期和计划"
+            - "协调组内资源和优先级"
+            - "跟踪项目进度和风险"
+
+        architect:
+          agent_id: "agent_{group_id}_architect"
+          ipc_address: "agent_{group_id}_architect"
+          role: "{GROUP_NAME} Architect"
+          responsibilities:
+            - "系统架构设计和技术选型"
+            - "技术方案评审"
+            - "技术标准制定"
+
+        devops:
+          agent_id: "agent_{group_id}_devops"
+          ipc_address: "agent_{group_id}_devops"
+          role: "{GROUP_NAME} DevOps"
+          responsibilities:
+            - "服务部署和配置管理"
+            - "系统监控和运维"
+            - "数据库管理"
+
+        # 可选成员
+        qa: null
+        developer: null
+        researcher: null
+
+    projects:
+      description: "Group 管理的 Projects 列表"
+      initial: []
+      note: "创建时为空，后续通过 Project 创建流程添加"
+
+    created_at:
+      value: "{ISO_TIMESTAMP}"
+      format: "ISO 8601"
+      example: "2026-02-11T16:00:00Z"
+
+    created_by:
+      value: "{creator_agent}"
+      example: "base_pmo"
+
+    status:
+      value: "active"
+      options: ["active", "archived", "deprecated"]
+
+# ============================================
+# 全局注册规范 (Global Registration)
+# ============================================
+global_registration:
+  description: |
+    创建 Group Space 后，必须更新全局注册表，
+    实现"局部 → 全局"的双向同步。
+
+  # ------------------------------------------
+  # 注册点 1: /brain/groups/spec/index.yaml
+  # ------------------------------------------
+  register_in_groups_index:
+    file: "/brain/groups/spec/index.yaml"
+    section: "groups"
+    action: "添加 Group 条目"
+
+    entry_template: |
+      - id: "{group_id}"
+        root: "/brain/groups/org/{group_id}"
+        spec_root: "/brain/groups/org/{group_id}/spec"
+        entrypoints:
+          - "/brain/groups/org/{group_id}/spec/index.yaml"
+          - "/brain/groups/org/{group_id}/spec/projects.yaml"
+
+    timing: "Group Space 创建完成后立即注册"
+    mandatory: true
+
+  # ------------------------------------------
+  # 注册点 2: /brain/groups/spec/organization.yaml
+  # ------------------------------------------
+  register_in_organization:
+    file: "/brain/groups/spec/organization.yaml"
+    section: "business_groups"
+    action: "注册 Group 详细信息"
+
+    entry_template: |
+      {group_id}:
+        group_id: "{group_id}"
+        group_name: "{GROUP_NAME}"
+        location: "/brain/groups/org/{group_id}"
+
+        mission: |
+          {mission_description}
+
+        scope:
+          - {scope_item_1}
+          - {scope_item_2}
+
+        out_of_scope:
+          - {out_of_scope_item_1}
+
+        members:
+          - agent_id: "agent_{group_id}_pmo"
+            agent_name: "agent_{group_id}_pmo"
+            ipc_address: "agent_{group_id}_pmo"
+            role: "{GROUP_NAME} PMO"
+            responsibilities:
+              - "审批 {group_id} 组所有排期和计划"
+
+          - agent_id: "agent_{group_id}_architect"
+            agent_name: "agent_{group_id}_architect"
+            ipc_address: "agent_{group_id}_architect"
+            role: "{GROUP_NAME} Architect"
+            responsibilities:
+              - "系统架构设计和技术选型"
+
+          - agent_id: "agent_{group_id}_devops"
+            agent_name: "agent_{group_id}_devops"
+            ipc_address: "agent_{group_id}_devops"
+            role: "{GROUP_NAME} DevOps"
+            responsibilities:
+              - "服务部署和配置管理"
+
+        projects:
+          active: []
+          status: "新创建"
+
+    timing: "Group Space 创建完成后立即注册"
+    mandatory: true
+
+  # ------------------------------------------
+  # 验证注册完整性
+  # ------------------------------------------
+  verification:
+    checklist:
+      - "[ ] /brain/groups/spec/index.yaml 已添加 Group 条目"
+      - "[ ] /brain/groups/spec/organization.yaml 已注册 Group 信息"
+      - "[ ] Group ID 在全局唯一"
+      - "[ ] Group 路径在全局索引中可查"
+
+# ============================================
+# 创建示例：Commerce Group
+# ============================================
+example:
+  scenario: "创建 Commerce（商业应用组）"
+
+  # a. 路径定义
+  paths:
+    root: "/brain/groups/org/commerce"
+    spec_root: "/brain/groups/org/commerce/spec"
+    workflow: "/brain/groups/org/commerce/workflow"
+    agents: "/brain/groups/org/commerce/agents"
+    projects: "/brain/groups/org/commerce/projects"
+
+  # b. 依赖引用
+  dependencies:
+    spec_refs:
+      - "/brain/base/workflow/index.yaml"
+      - "/brain/base/spec/templates/spec_dsl.yaml"
+      - "/brain/base/spec/core/lep.yaml"
+    inherits_from:
+      - "/brain/base/workflow/index.yaml"
+
+  # c. 元数据描述
+  metadata:
+    identity:
+      group_id: "commerce"
+      group_name: "Commerce 商业应用组"
+      group_prefix: "COM"
+
+    mission: |
+      负责商业应用、电商、订单、支付等业务系统开发。
+
+    scope:
+      in_scope:
+        - "电商平台开发"
+        - "订单管理系统"
+        - "支付集成"
+        - "用户管理"
+      out_of_scope:
+        - "Brain 系统基础设施（brain_system 组）"
+        - "量化交易业务（xkquant 组）"
+
+    members:
+      pmo:
+        agent_id: "agent_commerce_pmo"
+        ipc_address: "agent_commerce_pmo"
+        role: "Commerce PMO"
+      architect:
+        agent_id: "agent_commerce_architect"
+        ipc_address: "agent_commerce_architect"
+        role: "Commerce Architect"
+      devops:
+        agent_id: "agent_commerce_devops"
+        ipc_address: "agent_commerce_devops"
+        role: "Commerce DevOps"
+
+    projects: []
+    created_at: "2026-02-11T16:00:00Z"
+    created_by: "base_pmo"
+    status: "active"
+
+  # 全局注册
+  global_registration:
+    groups_index:
+      file: "/brain/groups/spec/index.yaml"
+      added: |
+        - id: "commerce"
+          root: "/brain/groups/org/commerce"
+          spec_root: "/brain/groups/org/commerce/spec"
+          entrypoints:
+            - "/brain/groups/org/commerce/spec/index.yaml"
+
+    organization:
+      file: "/brain/groups/spec/organization.yaml"
+      added: |
+        commerce:
+          group_id: "commerce"
+          group_name: "Commerce 商业应用组"
+          location: "/brain/groups/org/commerce"
+          mission: "负责商业应用、电商、订单、支付等业务系统开发。"
+          scope: [...]
+          members: [...]
+
+# ============================================
+# 创建工作流简述
+# ============================================
+creation_workflow:
+  phase_1_define:
+    name: "定义 Group Space Spec"
+    owner: "Base PMO + Base Architect"
+    output: "Group Space 定义（paths, dependencies, metadata）"
+
+  phase_2_approve:
+    name: "审批"
+    approvers:
+      - "Base PMO（系统级变更）"
+      - "Base Architect（架构设计）"
+    criteria:
+      - "Group 边界清晰"
+      - "不与现有 Group 冲突"
+      - "有明确的业务价值"
+
+  phase_3_execute:
+    name: "执行创建"
+    owner: "Base DevOps"
+    actions:
+      - "创建目录结构（根据 paths 定义）"
+      - "创建必须配置文件"
+      - "创建 Agent 基础目录"
+
+  phase_4_register:
+    name: "全局注册"
+    owner: "Base Architect"
+    actions:
+      - "更新 /brain/groups/spec/index.yaml"
+      - "更新 /brain/groups/spec/organization.yaml"
+      - "验证注册完整性"
+
+  phase_5_activate:
+    name: "激活和验证"
+    owner: "Base PMO"
+    actions:
+      - "验证所有路径和文件"
+      - "验证全局注册"
+      - "通知相关人员"
+
+# ============================================
+# 相关文档
+# ============================================
+related_docs:
+  - "../index.yaml"                              # Creation 索引
+  - "./project.yaml"                             # Project Space 创建
+  - "/brain/groups/spec/index.yaml"              # Group 全局索引
+  - "/brain/groups/spec/organization.yaml"       # 组织架构
+  - "/brain/base/workflow/index.yaml"            # Base Workflow

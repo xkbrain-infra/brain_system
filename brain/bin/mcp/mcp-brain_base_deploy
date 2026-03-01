@@ -1,0 +1,3 @@
+#!/bin/bash
+# brain_base_deploy MCP Server wrapper
+exec python3 /brain/infrastructure/service/agent_abilities/src/base/mcp/brain_base_deploy/server.py "$@"

@@ -1,0 +1,50 @@
+name: xk-agent-infra
+
+networks:
+  xk-agent-infra-net:
+    name: xk-agent-infra-net
+    driver: bridge
+
+services:
+  xk-agent-infra:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: xk-agent-infra:local
+    container_name: XKAgentInfra
+    hostname: XKAgentInfra
+    working_dir: /xkagent_infra/brain
+    command:
+      - /bin/bash
+      - -lc
+      - |
+        if [ ! -L /brain ] || [ "$(readlink -f /brain 2>/dev/null || true)" != "/xkagent_infra/brain" ]; then
+          rm -rf /brain
+          ln -s /xkagent_infra/brain /brain
+        fi
+        if [ -x /xkagent_infra/brain/platform/docker/scripts/container_bootstrap.sh ]; then
+          /xkagent_infra/brain/platform/docker/scripts/container_bootstrap.sh
+        else
+          echo '[bootstrap] script not found, skip'
+        fi
+        exec /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf
+    networks:
+      - xk-agent-infra-net
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${INFRA_ROOT_HOST_PATH:-/services/xkagent_infra}:/xkagent_infra
+      - ${DOCKER_DATA_ROOT_PATH:-./docker-data/root}:/root
+    ports:
+      - "${SSH_PORT:-8622}:22"
+    environment:
+      BRAIN_PATH: /xkagent_infra/brain
+      BRAIN_IPC_SOCKET: /tmp/brain_ipc.sock
+      ENVIRONMENT: development
+      TZ: ${TZ:-Asia/Shanghai}
+    healthcheck:
+      test: ["CMD-SHELL", "/xkagent_infra/brain/platform/docker/scripts/healthcheck.sh runtime"]
+      interval: 30s
+      timeout: 15s
+      retries: 5
+      start_period: 90s
+    restart: unless-stopped

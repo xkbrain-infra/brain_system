@@ -1,0 +1,29 @@
+# 通用角色 Type Profiles
+# 所有行业/Group 都需要的基础角色
+
+category: TP-CAT-GENERAL
+version: "1.0"
+
+profiles:
+
+  pmo:
+    description: "项目管理：治理 + 执行编排。负责 S1-S4 立项、S6 任务分配调度、S8 归档，以及 go/no-go 最终决策"
+    default: TP-PMO-CLAUDE-SONNET
+    variants:
+      - id: TP-PMO-CLAUDE-SONNET
+        agent_type: claude
+        model: claude-sonnet-4-6
+        reason: "PMO 兼做执行编排（agentctl/IPC/task_manager），需要 Sonnet 级别推理能力"
+      - id: TP-PMO-CLAUDE-HAIKU
+        agent_type: claude
+        model: claude-haiku-4-5
+        reason: "轻量协调型项目，无复杂编排需求时可用 Haiku"
+
+  frontdesk:
+    description: "用户交互网关，消息路由"
+    default: TP-FRONTDESK-CLAUDE-HAIKU
+    variants:
+      - id: TP-FRONTDESK-CLAUDE-HAIKU
+        agent_type: claude
+        model: claude-haiku-4-5
+        reason: "消息路由速度优先"

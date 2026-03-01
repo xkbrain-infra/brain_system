@@ -1,0 +1,37 @@
+# Role: DevOps - 运维工程师
+# 可读写 infrastructure、docker、部署配置
+
+scope:
+  allowed_write:
+    # 基础设施 - 主要工作区域
+    - /brain/infrastructure/**
+    # DevOps 自身工作目录
+    - /brain/groups/org/{group}/agents/agent_{group}_devops/**
+    # Runtime 和部署
+    - /brain/runtime/**
+    # 组内部署配置
+    - /brain/groups/org/{group}/**/deploy/**
+    - /brain/groups/org/{group}/**/docker/**
+    - /brain/groups/org/{group}/**/infra/**
+    # Memory
+    - /brain/groups/org/{group}/**/memory/**
+    # Agent 配置（agentctl 相关）
+    - /brain/infrastructure/config/**
+
+  denied_write:
+    # 核心规范只读
+    - /brain/base/spec/core/**
+    - /brain/base/workflow/**
+    - /brain/INIT.yaml
+    # 项目代码由 dev 负责
+    - /brain/groups/org/{group}/**/projects/**/src/**
+    # Spec 由 architect 负责
+    - /brain/groups/org/{group}/spec/**
+
+gate_overrides:
+  G-GATE-DB-BACKUP:
+    priority: CRITICAL
+    note: "devops 操作数据库必须先备份"
+  G-GATE-DOCKER-STD:
+    priority: HIGH
+    note: "devops 必须遵循 Docker 标准"
