@@ -1,15 +1,22 @@
 # IDE / local
 .vscode/
 
-# Python caches
+# Python caches and virtual envs
 **/__pycache__/
 **/*.pyc
+**/venv/
+**/venv_*/
+**/.venv/
+**/site-packages/
 
 # Environments
 **/.env
 **/.env.*
 
-# Runtime / generated data
+# Logs / runtime artifacts
+**/*.log
+**/*.jsonl
+app/memory/
 tmp/
 brain/runtime/
 brain/platform/docker/docker-data/
