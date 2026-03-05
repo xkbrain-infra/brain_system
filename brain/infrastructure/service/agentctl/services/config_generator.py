@@ -16,19 +16,19 @@ from typing import Any
 # Default MCP server - every agent must bind IPC (C version)
 DEFAULT_MCP_SERVER = {
     "mcp-brain_ipc_c": {
-        "command": "/xkagent_infra/brain/bin/mcp/mcp-brain_ipc_c",
+        "command": "/brain/bin/mcp/mcp-brain_ipc_c",
         "args": [],
     },
     "mcp-brain_google_api": {
-        "command": "/xkagent_infra/brain/bin/mcp/mcp-brain_google_api",
+        "command": "/brain/bin/mcp/mcp-brain_google_api",
         "args": [],
         "env": {
-            "GOOGLE_CREDENTIALS_PATH": "/xkagent_infra/brain/secrets/brain_google_api/credentials.json",
+            "GOOGLE_CREDENTIALS_PATH": "/brain/secrets/brain_google_api/credentials.json",
         },
     },
 }
 
-TEMPLATE_DIR = Path("/xkagent_infra/brain/base/spec/templates/agent")
+TEMPLATE_DIR = Path("/brain/base/spec/templates/agent")
 
 
 # ------------------------------------------------------------------
@@ -403,7 +403,7 @@ def generate_claude_md(
     role_sections = _load_role_sections(role)
 
     # Build scope_path from group
-    scope_path = f"/xkagent_infra/groups/org/{group}"
+    scope_path = f"/brain/groups/org/{group}"
 
     # Build capabilities list
     capabilities = spec.get("capabilities") or []
@@ -487,11 +487,13 @@ def generate_all_configs(
     # 3. Generate .claude/settings.local.json (only for Claude Code CLI agents)
     cli_type = str(spec.get("cli_type") or "").strip().lower()
     # Only generate Claude settings for agents that use Claude CLI
-    # - agent_type in ("claude", "minimax", "chatgpt") with cli_type=claude (implicit)
     # - Explicitly set cli_type=claude
+    # - Legacy implicit claude-cli agent types
     needs_claude_settings = (
         cli_type in ("claude", "claude_code")
-        or (not cli_type and agent_type in ("claude", "minimax", "chatgpt"))
+        or (not cli_type and agent_type in (
+            "claude", "minimax", "chatgpt", "kimi", "gemini", "alibaba", "bytedance", "openai", "copilot"
+        ))
     )
     if needs_claude_settings:
         settings_path = _generate_settings_local(cwd, role, group, spec)
@@ -505,7 +507,17 @@ def generate_all_configs(
 # Settings.local.json generation
 # ------------------------------------------------------------------
 
-_SECRETS_FILE = Path("/xkagent_infra/brain/secrets/system/agents/llm_tokens.env")
+_SECRETS_FILE = Path("/brain/secrets/system/agents/llm_tokens.env")
+
+# agent_type -> provider_id in brain_agent_proxy (proxy-first defaults)
+_AGENT_TYPE_PROXY_PROVIDER_MAP: dict[str, str] = {
+    "openai": "openai",
+    "copilot": "copilot",
+    "gemini": "gemini",
+    "minimax": "minimax",
+    "alibaba": "alibaba",
+    "bytedance": "bytedance",
+}
 
 # agent_type → secrets env var mapping (API credentials)
 _AGENT_TYPE_SECRETS_MAP: dict[str, dict[str, str]] = {
@@ -528,6 +540,21 @@ _AGENT_TYPE_SECRETS_MAP: dict[str, dict[str, str]] = {
         "ANTHROPIC_API_KEY": "GEMINI_API_KEY",
         "ANTHROPIC_BASE_URL": "GEMINI_API_BASE",
     },
+    "openai": {
+        "ANTHROPIC_API_KEY": "OPENAI_API_KEY",
+        "ANTHROPIC_AUTH_TOKEN": "OPENAI_API_KEY",
+        "ANTHROPIC_BASE_URL": "OPENAI_API_BASE",
+    },
+    "alibaba": {
+        "ANTHROPIC_API_KEY": "QWEN_API_KEY",
+        "ANTHROPIC_AUTH_TOKEN": "QWEN_API_KEY",
+        "ANTHROPIC_BASE_URL": "QWEN_API_BASE",
+    },
+    "bytedance": {
+        "ANTHROPIC_API_KEY": "BYTEDANCE_API_KEY",
+        "ANTHROPIC_AUTH_TOKEN": "BYTEDANCE_API_KEY",
+        "ANTHROPIC_BASE_URL": "BYTEDANCE_API_BASE",
+    },
 }
 
 # agent_type → base_url override (when secrets file value is wrong/outdated)
@@ -535,6 +562,8 @@ _AGENT_TYPE_BASE_URL: dict[str, str] = {
     "kimi": "https://api.kimi.com/coding/",
     "minimax": "https://api.minimaxi.com/anthropic",
     "chatgpt": "http://localhost:8001/anthropic",
+    "alibaba": "https://coding.dashscope.aliyuncs.com/apps/anthropic",
+    "bytedance": "https://ark.cn-beijing.volces.com/api/coding",
 }
 
 # agent_type → hardcoded fallback env values (used when secrets are absent)
@@ -601,6 +630,50 @@ def _resolve_model_name(spec: dict[str, Any]) -> str:
     return model
 
 
+def _build_proxy_auth_token(agent_type: str, spec: dict[str, Any]) -> str:
+    """Build deterministic proxy token.
+
+    New canonical format:
+      bgw-apx-v1--p-{provider}--m-{model_key}--n-{name}
+
+    Keep only [a-z0-9_] for model/name segments to avoid parser ambiguity.
+    """
+    provider = _AGENT_TYPE_PROXY_PROVIDER_MAP.get(agent_type, "").strip()
+    if not provider:
+        return ""
+    model_name = _resolve_model_name(spec)
+    model_part = re.sub(r"[^a-z0-9]+", "_", model_name.lower()).strip("_") or "default"
+    name = str(spec.get("name") or "").strip().lower()
+    name_part = re.sub(r"[^a-z0-9]+", "_", name).strip("_")[:32] or "dev"
+    return f"bgw-apx-v1--p-{provider}--m-{model_part}--n-{name_part}"
+
+
+def _build_model_selector(agent_type: str, spec: dict[str, Any]) -> str:
+    """Build canonical model selector.
+
+    Format: provider/model
+    Example: minimax/MiniMax-M2.5
+    """
+    model_name = _resolve_model_name(spec)
+    provider = _AGENT_TYPE_PROXY_PROVIDER_MAP.get(agent_type, "").strip()
+    if provider and model_name:
+        return f"{provider}/{model_name}"
+    return model_name
+
+
+def _resolve_transport_mode(spec: dict[str, Any]) -> str:
+    """Resolve transport mode for Claude settings: proxy|direct."""
+    mode = str(spec.get("transport_mode") or "").strip().lower()
+    if mode in ("proxy", "direct"):
+        return mode
+    env_cfg = spec.get("env") or {}
+    if isinstance(env_cfg, dict):
+        env_mode = str(env_cfg.get("BRAIN_TRANSPORT_MODE") or "").strip().lower()
+        if env_mode in ("proxy", "direct"):
+            return env_mode
+    return "proxy"
+
+
 def _build_settings_env(agent_type: str, spec: dict[str, Any]) -> dict[str, str]:
     """Build env dict for settings.local.json.
 
@@ -614,26 +687,32 @@ def _build_settings_env(agent_type: str, spec: dict[str, Any]) -> dict[str, str]
 
     env: dict[str, str] = {}
 
-    # 1. API credentials from secrets
-    mapping = _AGENT_TYPE_SECRETS_MAP.get(agent_type)
-    if mapping:
-        secrets = _load_secrets()
-        for target_var, source_var in mapping.items():
-            val = secrets.get(source_var, "")
-            if val:
-                env[target_var] = val
-    fallback_env = _AGENT_TYPE_FALLBACK_ENV.get(agent_type) or {}
-    for key, value in fallback_env.items():
-        if key not in env and value:
-            env[key] = value
+    transport_mode = _resolve_transport_mode(spec)
+    # 1. Proxy-first defaults for provider-backed agent types.
+    proxy_token = _build_proxy_auth_token(agent_type, spec)
+    if proxy_token and transport_mode != "direct":
+        env["ANTHROPIC_BASE_URL"] = os.environ.get("BRAIN_PROXY_BASE_URL", "http://127.0.0.1:3456")
+        env["ANTHROPIC_AUTH_TOKEN"] = proxy_token
+    else:
+        # 1b. Legacy direct mode for non-proxy agent types.
+        mapping = _AGENT_TYPE_SECRETS_MAP.get(agent_type)
+        if mapping:
+            secrets = _load_secrets()
+            for target_var, source_var in mapping.items():
+                val = secrets.get(source_var, "")
+                if val:
+                    env[target_var] = val
+        fallback_env = _AGENT_TYPE_FALLBACK_ENV.get(agent_type) or {}
+        for key, value in fallback_env.items():
+            if key not in env and value:
+                env[key] = value
 
-    # 2. Override ANTHROPIC_BASE_URL with canonical URL
-    canonical_url = _AGENT_TYPE_BASE_URL.get(agent_type)
-    if canonical_url:
-        env["ANTHROPIC_BASE_URL"] = canonical_url
+        canonical_url = _AGENT_TYPE_BASE_URL.get(agent_type)
+        if canonical_url:
+            env["ANTHROPIC_BASE_URL"] = canonical_url
 
-    # 3. Model env vars
-    model_name = _resolve_model_name(spec)
+    # 2. Model env vars
+    model_name = _build_model_selector(agent_type, spec)
     if model_name:
         env["ANTHROPIC_MODEL"] = model_name
         env["ANTHROPIC_SMALL_FAST_MODEL"] = model_name
@@ -641,7 +720,7 @@ def _build_settings_env(agent_type: str, spec: dict[str, Any]) -> dict[str, str]
         env["ANTHROPIC_DEFAULT_OPUS_MODEL"] = model_name
         env["ANTHROPIC_DEFAULT_HAIKU_MODEL"] = model_name
 
-    # 4. Timeout and traffic settings
+    # 3. Timeout and traffic settings
     env["API_TIMEOUT_MS"] = "3000000"
     env["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] = "1"
 
@@ -742,7 +821,7 @@ def _generate_settings_local(
     hooks_list = spec.get("hooks") or []
     if hooks_list:
         hooks_config: dict[str, Any] = {}
-        hooks_base = "/xkagent_infra/brain/infrastructure/service/agent_abilities"
+        hooks_base = "/brain/infrastructure/service/agent_abilities"
 
         # hooks_version pinning: lock agent to a specific release snapshot
         # If set, points to releases/{version}/bin/v2 instead of bin/current
@@ -753,7 +832,7 @@ def _generate_settings_local(
             hook_bin_dir = f"{hooks_base}/bin/hooks/current"
 
         role_group = f"{role}-{group}" if role and group else role or "default"
-        scope_path = f"/xkagent_infra/groups/org/{group}" if group else "/xkagent_infra/brain"
+        scope_path = f"/brain/groups/org/{group}" if group else "/brain"
 
         # Role context env vars - passed to every hook process
         hook_env = {

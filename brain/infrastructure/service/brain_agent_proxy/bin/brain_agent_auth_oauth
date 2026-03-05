@@ -1,0 +1,170 @@
+#!/usr/bin/env python3
+"""GitHub Copilot OAuth 授权流程 - Device Flow 模式."""
+import asyncio
+import json
+import os
+import sys
+import time
+import webbrowser
+from pathlib import Path
+
+import httpx
+
+
+def main():
+    print("🔐 GitHub Copilot OAuth 授权")
+    print("=" * 50)
+
+    # GitHub OAuth App 配置（Copilot 生态常用 client_id）
+    CLIENT_ID = "Iv1.b507a08c87ecfe98"
+    SCOPE = "copilot"
+
+    print()
+    print("正在请求 Device Code...")
+    try:
+        resp = httpx.post(
+            "https://github.com/login/device/code",
+            data={
+                "client_id": CLIENT_ID,
+                "scope": SCOPE,
+            },
+            headers={"Accept": "application/json"},
+            timeout=30.0,
+        )
+    except Exception as e:
+        print(f"❌ 请求 device code 失败: {e}")
+        return 1
+    if resp.status_code != 200:
+        print(f"❌ 请求 device code 失败: {resp.status_code}")
+        print(resp.text)
+        return 1
+
+    device_data = resp.json()
+    device_code = device_data.get("device_code")
+    user_code = device_data.get("user_code")
+    verification_uri = device_data.get("verification_uri") or "https://github.com/login/device"
+    interval = int(device_data.get("interval", 5) or 5)
+    expires_in = int(device_data.get("expires_in", 900) or 900)
+    if not device_code or not user_code:
+        print(f"❌ device code 响应无效: {device_data}")
+        return 1
+
+    print()
+    print("请在浏览器中打开以下链接并输入 code：")
+    print(verification_uri)
+    print(f"code: {user_code}")
+    print()
+    try:
+        print("尝试自动打开浏览器...")
+        webbrowser.open(verification_uri)
+        print("浏览器已打开")
+    except Exception as e:
+        print(f"无法自动打开浏览器: {e}")
+
+    print()
+    print("等待授权完成...")
+    deadline = time.time() + expires_in
+    access_token = ""
+    token_data = {}
+    while time.time() < deadline:
+        time.sleep(max(interval, 1))
+        try:
+            token_resp = httpx.post(
+                "https://github.com/login/oauth/access_token",
+                data={
+                    "client_id": CLIENT_ID,
+                    "device_code": device_code,
+                    "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
+                },
+                headers={"Accept": "application/json"},
+                timeout=30.0,
+            )
+        except (httpx.TimeoutException, httpx.RequestError):
+            # Network jitter on polling should not abort a valid authorization flow.
+            print("t", end="", flush=True)
+            continue
+        if token_resp.status_code != 200:
+            print(f"\n❌ 轮询 token 失败: {token_resp.status_code} {token_resp.text}")
+            return 1
+        token_data = token_resp.json()
+        err = token_data.get("error")
+        if err == "authorization_pending":
+            print(".", end="", flush=True)
+            continue
+        if err == "slow_down":
+            interval += 1
+            print(".", end="", flush=True)
+            continue
+        if err:
+            print(f"\n❌ 授权失败: {err}")
+            return 1
+        access_token = str(token_data.get("access_token", "") or "").strip()
+        if access_token:
+            print("\n✅ GitHub OAuth 授权成功!")
+            break
+    if not access_token:
+        print("\n❌ 授权超时，请重试")
+        return 1
+
+    if not access_token:
+        print(f"❌ 未获取到 access_token")
+        return 1
+    print()
+
+    # 尝试获取 Copilot token
+    print("尝试获取 Copilot token...")
+
+    async def get_copilot_token():
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                "https://api.github.com/copilot_internal/v2/token",
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "Accept": "application/json",
+                },
+                timeout=30.0,
+            )
+        return resp
+
+    resp = asyncio.run(get_copilot_token())
+
+    # 保存 GitHub token (备用)
+    token_dir = Path("~/.local/share/brain_agent_proxy/tokens").expanduser()
+    token_dir.mkdir(parents=True, exist_ok=True)
+
+    github_token_file = token_dir / "github_oauth.json"
+    json.dump({
+        "github_token": access_token,
+        "token_type": token_data.get("token_type", "bearer"),
+        "expires_at": int(time.time()) + 3600,
+    }, open(github_token_file, "w"))
+    os.chmod(github_token_file, 0o600)
+
+    if resp.status_code == 200:
+        copilot_data = resp.json()
+        copilot_token = copilot_data.get("token")
+
+        if copilot_token:
+            copilot_file = token_dir / "copilot.json"
+            json.dump({
+                "access_token": copilot_token,
+                "expires_at": int(time.time()) + 3600,
+                "github_token": access_token,
+            }, open(copilot_file, "w"))
+            os.chmod(copilot_file, 0o600)
+
+            print("✅ Copilot token 获取成功!")
+            print(f"   保存到: {copilot_file}")
+            return 0
+
+    print(f"⚠️ Copilot token 获取失败 (HTTP {resp.status_code})")
+    print(f"   响应: {resp.text[:200] if resp.text else 'empty'}")
+    print()
+    print("GitHub OAuth token 已保存，可以稍后手动配置 Copilot token")
+    print(f"   GitHub token 保存到: {github_token_file}")
+
+    return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

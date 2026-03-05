@@ -16,20 +16,19 @@
     "defaultMode": "dontAsk"
   },
   "env": {
-    "ANTHROPIC_API_KEY": "sk-cp-K4C4JjIKInImKH9GlH8bjxEfqlItpqYVyH0YOzjgl6KRLpOqKUa2HKc0LUVm1I059-un9lPzijrVgEhA7sTRjVfh-2u9Yu4T6nWGa6P4_jEaY-9t7SVFZwM",
-    "ANTHROPIC_AUTH_TOKEN": "sk-cp-K4C4JjIKInImKH9GlH8bjxEfqlItpqYVyH0YOzjgl6KRLpOqKUa2HKc0LUVm1I059-un9lPzijrVgEhA7sTRjVfh-2u9Yu4T6nWGa6P4_jEaY-9t7SVFZwM",
-    "ANTHROPIC_BASE_URL": "https://api.minimaxi.com/anthropic",
-    "ANTHROPIC_MODEL": "MiniMax-M2.5",
-    "ANTHROPIC_SMALL_FAST_MODEL": "MiniMax-M2.5",
-    "ANTHROPIC_DEFAULT_SONNET_MODEL": "MiniMax-M2.5",
-    "ANTHROPIC_DEFAULT_OPUS_MODEL": "MiniMax-M2.5",
-    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "MiniMax-M2.5",
+    "ANTHROPIC_BASE_URL": "http://127.0.0.1:8200",
+    "ANTHROPIC_MODEL": "minimax/MiniMax-M2.5",
+    "ANTHROPIC_SMALL_FAST_MODEL": "minimax/MiniMax-M2.5",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "minimax/MiniMax-M2.5",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "minimax/MiniMax-M2.5",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "minimax/MiniMax-M2.5",
     "API_TIMEOUT_MS": "3000000",
     "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
     "BRAIN_AGENT_ROLE": "brain-manager",
     "BRAIN_AGENT_GROUP": "brain",
     "BRAIN_SCOPE_PATH": "/brain/groups/org/brain",
-    "BRAIN_AGENT_NAME": "agent-brain_manager"
+    "BRAIN_AGENT_NAME": "agent-brain_manager",
+    "ANTHROPIC_API_KEY": "bgw-apx-v1--p-minimax--m-minimax_m2_5--n-agent_brain_manager"
   },
   "statusLine": {
     "type": "command",

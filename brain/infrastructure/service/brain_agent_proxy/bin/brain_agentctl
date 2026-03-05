@@ -1,0 +1,1042 @@
+#!/opt/venv/bin/python3
+"""brain_agentctl - Manage brain_agent_proxy configuration for Claude Code."""
+import argparse
+import asyncio
+import base64
+import hashlib
+import getpass
+import json
+import os
+import shutil
+import subprocess
+import sys
+import time
+import threading
+import webbrowser
+from datetime import datetime
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from pathlib import Path
+from urllib.parse import parse_qs, urlencode, urlparse
+
+import httpx
+import yaml
+
+OPENAI_CODEX_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
+
+
+def get_claude_settings_path():
+    """Get the Claude settings path for current directory."""
+    cwd = os.getcwd()
+    settings_path = Path(cwd) / ".claude" / "settings.local.json"
+    return settings_path
+
+
+def load_settings():
+    """Load existing settings."""
+    settings_path = get_claude_settings_path()
+    if settings_path.exists():
+        with open(settings_path) as f:
+            return json.load(f)
+    return {}
+
+
+def save_settings(settings):
+    """Save settings."""
+    settings_path = get_claude_settings_path()
+    settings_path.parent.mkdir(parents=True, exist_ok=True)
+
+    with open(settings_path, "w") as f:
+        json.dump(settings, f, indent=2)
+
+    print(f"Settings saved to {settings_path}")
+
+
+def _sanitize_segment(value: str, default: str = "dev") -> str:
+    s = "".join(ch if ch.isalnum() else "_" for ch in (value or "").lower())
+    s = "_".join([x for x in s.split("_") if x])
+    return s or default
+
+
+def _build_canonical_token(provider: str, model: str, name: str) -> str:
+    p = _sanitize_segment(provider, "provider")
+    m = _sanitize_segment(model, "default")
+    n = _sanitize_segment(name, "dev")
+    return f"bgw-apx-v1--p-{p}--m-{m}--n-{n}"
+
+
+def cmd_enable(port: int, model: str, provider: str, name: str):
+    """Show commands to enable brain_agent_proxy (does not modify config)."""
+    print(f"# Add to your .claude/settings.local.json env section:")
+    token = _build_canonical_token(provider, model or "model", name)
+    model_selector = f"{provider}/{model}" if provider and model else model
+    extra = f'\n    "ANTHROPIC_MODEL": "{model_selector}",' if model_selector else ""
+    comma = "," if model else ""
+    print("# Token format: bgw-apx-v1--p-{provider}--m-{model_key}--n-{name}")
+    print("# Model format: provider/model")
+    print(f'''{{
+  "env": {{
+    "ANTHROPIC_BASE_URL": "http://127.0.0.1:{port}",
+    "ANTHROPIC_AUTH_TOKEN": "{token}"{comma}{extra}
+  }}
+}}''')
+
+
+def cmd_disable():
+    """Show commands to disable brain_agent_proxy (does not modify config)."""
+    print("# Remove these from your .claude/settings.local.json env section:")
+    print("# - ANTHROPIC_BASE_URL")
+    print("# - ANTHROPIC_AUTH_TOKEN")
+    print("# - ANTHROPIC_MODEL")
+
+
+def cmd_status(port: int):
+    """Check brain_agent_proxy status."""
+    import httpx
+
+    # Check proxy health
+    try:
+        resp = httpx.get(f"http://127.0.0.1:{port}/health", timeout=5)
+        if resp.status_code == 200:
+            print(f"✅ brain_agent_proxy running on port {port}")
+        else:
+            print(f"⚠️ brain_agent_proxy returned {resp.status_code}")
+    except Exception as e:
+        print(f"❌ brain_agent_proxy not reachable: {e}")
+        return
+
+    # Check models
+    try:
+        resp = httpx.get(
+            f"http://127.0.0.1:{port}/v1/models",
+            headers={"Authorization": "Bearer dummy"},
+            timeout=5
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            models = data.get("data", [])
+            print(f"📦 Available models: {len(models)}")
+            for m in models[:5]:
+                print(f"   - {m['id']}")
+            if len(models) > 5:
+                print(f"   ... and {len(models) - 5} more")
+    except Exception as e:
+        print(f"⚠️ Could not fetch models: {e}")
+
+    # Check current config
+    settings = load_settings()
+    if settings.get("env", {}).get("ANTHROPIC_BASE_URL"):
+        print(f"\n🔗 Configured to use: {settings['env'].get('ANTHROPIC_BASE_URL')}")
+    else:
+        print("\n🔓 Not configured in settings.local.json")
+
+
+def cmd_test(port: int, model: str):
+    """Test brain_agent_proxy with a simple request."""
+    import httpx
+
+    print(f"🧪 Testing brain_agent_proxy on port {port}...")
+
+    try:
+        resp = httpx.post(
+            f"http://127.0.0.1:{port}/v1/chat/completions",
+            headers={
+                "Authorization": "Bearer dummy",
+                "Content-Type": "application/json"
+            },
+            json={
+                "model": model,
+                "messages": [{"role": "user", "content": "Say 'OK' in one word"}],
+                "stream": False,
+                "max_tokens": 10
+            },
+            timeout=30
+        )
+
+        if resp.status_code == 200:
+            data = resp.json()
+            content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+            print(f"✅ Success! Response: {content}")
+        else:
+            print(f"❌ Error: {resp.status_code} - {resp.text}")
+
+    except Exception as e:
+        print(f"❌ Request failed: {e}")
+
+
+def _load_proxy_providers():
+    providers_file = Path(__file__).resolve().parent.parent / "config" / "providers.yaml"
+    if not providers_file.exists():
+        raise FileNotFoundError(f"providers config not found: {providers_file}")
+    with open(providers_file) as f:
+        data = yaml.safe_load(f) or {}
+    return data.get("providers", {}) or {}
+
+
+def _get_provider(provider_id: str):
+    providers = _load_proxy_providers()
+    return providers.get(provider_id) or {}
+
+
+def _provider_is_oauth_capable(provider_id: str, provider_data: dict | None = None) -> bool:
+    pdata = provider_data or _get_provider(provider_id)
+    ptype = str((pdata or {}).get("type", "") or "").strip().lower()
+    if provider_id == "claude":
+        return True
+    return bool((pdata or {}).get("oauth_config")) or ptype in ("oauth", "oauth_device")
+
+
+def _provider_is_api_key_auth_capable(provider_id: str, provider_data: dict | None = None) -> bool:
+    if provider_id == "claude":
+        # Claude prefers browser auth flow via native CLI, not API-key prompt.
+        return False
+    pdata = provider_data or _get_provider(provider_id)
+    ptype = str((pdata or {}).get("type", "") or "").strip().lower()
+    if ptype != "api_key":
+        return False
+    api_cfg = (pdata or {}).get("api_key") or {}
+    return bool(api_cfg.get("require_auth", True))
+
+
+def _default_oauth_token_file(provider_id: str, provider_data: dict | None = None) -> str:
+    pdata = provider_data or _get_provider(provider_id)
+    cfg = (pdata or {}).get("oauth_config") or {}
+    if cfg.get("token_file"):
+        return str(cfg.get("token_file"))
+    # Legacy oauth providers (e.g. copilot) use a shared token file by convention.
+    if str((pdata or {}).get("type", "")).strip().lower() == "oauth":
+        return f"~/.local/share/brain_agent_proxy/tokens/{provider_id}.json"
+    return f"~/.local/share/brain_agent_proxy/tokens/{provider_id}.json"
+
+
+def _default_api_key_token_file(provider_id: str) -> str:
+    return f"~/.local/share/brain_agent_proxy/tokens/{provider_id}_api_key.json"
+
+
+def _claude_cli_exists() -> bool:
+    return shutil.which("claude") is not None
+
+
+def _claude_cli_auth_status() -> dict:
+    # Align with brain_auth_manager: Claude auth is considered present when ~/.claude.json exists.
+    cfg = Path("~/.claude.json").expanduser()
+    return {
+        "loggedIn": bool(cfg.is_file()),
+        "authMethod": "setup-token",
+        "apiProvider": "firstParty",
+        "configFile": str(cfg),
+    }
+
+
+def _load_oauth_client_from_file(path: str) -> tuple[str, str]:
+    p = Path(path).expanduser()
+    if not p.exists():
+        return "", ""
+    try:
+        with open(p) as f:
+            data = json.load(f)
+    except Exception:
+        return "", ""
+
+    # Google standard format: {"installed": {"client_id": ...}} / {"web": {...}}
+    if isinstance(data, dict):
+        for top in ("installed", "web"):
+            node = data.get(top)
+            if isinstance(node, dict):
+                cid = str(node.get("client_id", "") or "").strip()
+                csec = str(node.get("client_secret", "") or "").strip()
+                if cid:
+                    return cid, csec
+
+        # Fallback custom format: {"<account>": {"client_id": "..."}}
+        for _, node in data.items():
+            if isinstance(node, dict):
+                cid = str(node.get("client_id", "") or "").strip()
+                csec = str(node.get("client_secret", "") or "").strip()
+                if cid:
+                    return cid, csec
+    return "", ""
+
+
+def _resolve_oauth_device_config(provider_id: str, client_id_override: str = ""):
+    providers = _load_proxy_providers()
+    provider = providers.get(provider_id)
+    if not provider:
+        raise ValueError(f"provider '{provider_id}' not found in providers.yaml")
+
+    cfg = provider.get("oauth_config") or {}
+    if not cfg:
+        raise ValueError(f"provider '{provider_id}' has no oauth_config")
+    auth_url = cfg.get("auth_url")
+    token_url = cfg.get("token_url")
+    poll_url = cfg.get("poll_url", token_url)
+    flow = cfg.get("flow", "standard")
+    redirect_uri = cfg.get("redirect_uri", "")
+    verification_url = cfg.get("verification_url", "")
+    scope = cfg.get("scope", "")
+    token_file = cfg.get("token_file", f"~/.local/share/brain_agent_proxy/tokens/{provider_id}.json")
+    client_id = client_id_override.strip() or cfg.get("client_id", "")
+    client_secret = cfg.get("client_secret", "")
+    if not client_id:
+        client_id_file = cfg.get("client_id_file", "")
+        if client_id_file:
+            file_id, file_secret = _load_oauth_client_from_file(client_id_file)
+            client_id = file_id
+            if file_secret:
+                client_secret = file_secret
+    client_id_env = cfg.get("client_id_env", "")
+    if not client_id and client_id_env:
+        client_id = os.environ.get(client_id_env, "").strip()
+    if isinstance(client_id, str) and client_id.startswith("REPLACE_WITH_"):
+        client_id = ""
+    if not client_id and provider_id == "openai":
+        client_id = OPENAI_CODEX_CLIENT_ID
+
+    if not auth_url or not token_url:
+        raise ValueError(f"provider '{provider_id}' oauth_config missing auth_url/token_url")
+    if not client_id:
+        msg = f"provider '{provider_id}' oauth_config missing client_id"
+        if client_id_env:
+            msg += f" (or set env {client_id_env})"
+        raise ValueError(msg)
+
+    return {
+        "provider_id": provider_id,
+        "auth_url": auth_url,
+        "poll_url": poll_url,
+        "token_url": token_url,
+        "flow": flow,
+        "redirect_uri": redirect_uri,
+        "verification_url": verification_url,
+        "scope": scope,
+        "client_id": client_id,
+        "client_secret": client_secret,
+        "token_file": token_file,
+    }
+
+
+def _list_oauth_capable_providers():
+    providers = _load_proxy_providers()
+    result = []
+    for pid, pdata in providers.items():
+        if _provider_is_oauth_capable(pid, pdata):
+            result.append(pid)
+    return sorted(result)
+
+
+def _list_api_key_auth_providers():
+    providers = _load_proxy_providers()
+    result = []
+    for pid, pdata in providers.items():
+        if _provider_is_api_key_auth_capable(pid, pdata):
+            result.append(pid)
+    return sorted(result)
+
+
+def _list_all_providers():
+    providers = _load_proxy_providers()
+    return sorted((providers or {}).keys())
+
+
+def _get_oauth_provider_config(provider_id: str):
+    providers = _load_proxy_providers()
+    provider = providers.get(provider_id) or {}
+    cfg = provider.get("oauth_config") or {}
+    if not cfg:
+        raise ValueError(f"provider '{provider_id}' has no oauth_config")
+    return cfg
+
+
+def _read_token_file(token_file: str):
+    p = Path(token_file).expanduser()
+    if not p.exists():
+        return None
+    try:
+        with open(p) as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+
+def _format_expire_ts(ts: int) -> str:
+    if not ts:
+        return "unknown"
+    return datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _token_status(token_data):
+    if not token_data:
+        return "missing", 0
+    access_token = str(token_data.get("access_token", "") or "").strip()
+    expires_at = int(token_data.get("expires_at", 0) or 0)
+    if not access_token:
+        return "invalid", 0
+    if expires_at and expires_at <= int(time.time()):
+        return "expired", 0
+    if not expires_at:
+        return "valid", 0
+    return "valid", max(0, expires_at - int(time.time()))
+
+
+def _api_key_status(provider_id: str, provider_data: dict | None = None):
+    pdata = provider_data or _get_provider(provider_id)
+    api_cfg = (pdata or {}).get("api_key") or {}
+    inline_key = str(api_cfg.get("api_key", "") or "").strip()
+    env_name = str(api_cfg.get("api_key_env", "") or "").strip()
+    env_val = os.environ.get(env_name, "").strip() if env_name else ""
+    token_file = _default_api_key_token_file(provider_id)
+    token_data = _read_token_file(token_file) or {}
+    token_key = str(token_data.get("api_key", "") or "").strip()
+    if inline_key:
+        return "configured(inline)", token_file
+    if env_name and env_val:
+        return f"configured(env:{env_name})", token_file
+    if token_key:
+        return f"configured(token:{Path(token_file).expanduser()})", token_file
+    return "missing", token_file
+
+
+def cmd_auth_list():
+    all_providers = _list_all_providers()
+    oauth_providers = set(_list_oauth_capable_providers())
+    api_key_providers = set(_list_api_key_auth_providers())
+    providers = all_providers
+    if not providers:
+        print("No providers configured.")
+        return
+    print("Providers:")
+    for pid in providers:
+        if pid in oauth_providers:
+            if pid == "claude":
+                s = _claude_cli_auth_status()
+                status = "valid" if bool(s.get("loggedIn")) else "missing"
+                method = str(s.get("authMethod", "unknown") or "unknown")
+                provider = str(s.get("apiProvider", "unknown") or "unknown")
+                print(f"- {pid}: oauth(cli) | {status} | method={method} provider={provider}")
+                continue
+            pdata = _get_provider(pid)
+            token_file = _default_oauth_token_file(pid, pdata)
+            token_data = _read_token_file(token_file)
+            status, ttl = _token_status(token_data)
+            extra = ""
+            if status == "valid" and ttl:
+                extra = f" (expires in {ttl}s)"
+            print(f"- {pid}: oauth | {status}{extra} | token={Path(token_file).expanduser()}")
+        elif pid in api_key_providers:
+            status, token_file = _api_key_status(pid, _get_provider(pid))
+            print(f"- {pid}: api_key | {status} | token={Path(token_file).expanduser()}")
+        else:
+            print(f"- {pid}: api_key/static")
+
+
+def cmd_auth_status(provider: str = ""):
+    oauth_set = set(_list_oauth_capable_providers())
+    api_set = set(_list_api_key_auth_providers())
+    providers = [provider] if provider else sorted(list(oauth_set | api_set))
+    if not providers:
+        print("No auth-capable providers configured.")
+        return
+    for idx, pid in enumerate(providers):
+        if idx:
+            print("")
+        pdata = _get_provider(pid)
+        print(f"provider: {pid}")
+        if pid in oauth_set:
+            if pid == "claude":
+                s = _claude_cli_auth_status()
+                print("type: oauth(cli)")
+                print(f"loggedIn: {bool(s.get('loggedIn'))}")
+                print(f"authMethod: {s.get('authMethod', 'unknown')}")
+                print(f"apiProvider: {s.get('apiProvider', 'unknown')}")
+                err = str(s.get("error", "") or "").strip()
+                if err:
+                    print(f"error: {err}")
+                continue
+            cfg = (pdata or {}).get("oauth_config") or {}
+            token_file = _default_oauth_token_file(pid, pdata)
+            token_data = _read_token_file(token_file)
+            status, ttl = _token_status(token_data)
+            print("type: oauth")
+            print(f"flow: {cfg.get('flow', 'oauth_legacy') if cfg else 'oauth_legacy'}")
+            print(f"token_file: {Path(token_file).expanduser()}")
+            print(f"status: {status}")
+            if token_data:
+                expires_at = int(token_data.get("expires_at", 0) or 0)
+                print(f"expires_at: {_format_expire_ts(expires_at)}")
+                if status == "valid" and ttl:
+                    print(f"expires_in: {ttl}s")
+                scope = str(token_data.get("scope", "") or "").strip()
+                if scope:
+                    print(f"scope: {scope}")
+        elif pid in api_set:
+            api_cfg = (pdata or {}).get("api_key") or {}
+            env_name = str(api_cfg.get("api_key_env", "") or "").strip()
+            status, token_file = _api_key_status(pid, pdata)
+            print("type: api_key")
+            print(f"token_file: {Path(token_file).expanduser()}")
+            if env_name:
+                print(f"api_key_env: {env_name}")
+            print(f"status: {status}")
+        else:
+            raise ValueError(f"provider '{pid}' has no auth flow")
+
+
+def cmd_auth_logout(provider: str, all_providers: bool = False):
+    oauth_set = set(_list_oauth_capable_providers())
+    api_set = set(_list_api_key_auth_providers())
+    all_targets = sorted(list(oauth_set | api_set))
+    targets = all_targets if all_providers else [provider]
+    if not targets:
+        print("No auth-capable providers configured.")
+        return
+    removed = 0
+    for pid in targets:
+        if pid == "claude":
+            if not _claude_cli_exists():
+                print("claude command not found, skip logout")
+                continue
+            p = subprocess.run(["claude", "auth", "logout"], check=False)
+            if p.returncode == 0:
+                removed += 1
+                print("claude auth logged out")
+            else:
+                print("claude auth logout failed")
+            continue
+        token_paths = []
+        if pid in oauth_set:
+            pdata = _get_provider(pid)
+            token_paths.append(Path(_default_oauth_token_file(pid, pdata)).expanduser())
+            # Copilot legacy flow may keep auxiliary GitHub token.
+            if pid == "copilot":
+                token_paths.append(Path("~/.local/share/brain_agent_proxy/tokens/github_oauth.json").expanduser())
+        elif pid in api_set:
+            token_paths.append(Path(_default_api_key_token_file(pid)).expanduser())
+        else:
+            print(f"skip provider without auth flow: {pid}")
+            continue
+        for token_file in token_paths:
+            if token_file.exists():
+                token_file.unlink()
+                removed += 1
+                print(f"removed token: {token_file}")
+            else:
+                print(f"no token found: {token_file}")
+    print(f"logout complete: removed {removed} token file(s)")
+
+
+def _try_open_browser(url: str):
+    try:
+        return bool(webbrowser.open(url))
+    except Exception:
+        return False
+
+
+def _can_use_local_callback(redirect_uri: str) -> bool:
+    try:
+        parsed = urlparse(redirect_uri)
+    except Exception:
+        return False
+    if parsed.scheme != "http":
+        return False
+    return parsed.hostname in ("127.0.0.1", "localhost")
+
+
+def _wait_for_local_callback(redirect_uri: str, timeout_seconds: int = 180):
+    parsed = urlparse(redirect_uri)
+    host = parsed.hostname or "127.0.0.1"
+    port = parsed.port or 80
+    callback_path = parsed.path or "/"
+    done = threading.Event()
+    result = {"code": "", "state": "", "error": ""}
+
+    class OAuthCallbackHandler(BaseHTTPRequestHandler):
+        def log_message(self, format, *args):
+            return
+
+        def do_GET(self):
+            req = urlparse(self.path)
+            if req.path != callback_path:
+                self.send_response(404)
+                self.end_headers()
+                self.wfile.write(b"Not Found")
+                return
+            qs = parse_qs(req.query)
+            result["code"] = (qs.get("code") or [""])[0]
+            result["state"] = (qs.get("state") or [""])[0]
+            result["error"] = (qs.get("error") or [""])[0]
+            done.set()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(
+                b"<html><body><h3>Authorization received.</h3>"
+                b"<p>You can close this tab and return to terminal.</p></body></html>"
+            )
+
+    try:
+        server = HTTPServer((host, port), OAuthCallbackHandler)
+    except OSError:
+        return None
+    server.timeout = 0.5
+    deadline = time.time() + timeout_seconds
+    while time.time() < deadline and not done.is_set():
+        server.handle_request()
+    server.server_close()
+    if not done.is_set():
+        return None
+    return result
+
+
+async def _run_standard_device_flow(cfg):
+    print(f"🔐 OAuth Device Auth - provider={cfg['provider_id']}")
+    print("=" * 60)
+    print(f"[1/3] Requesting device code from {cfg['auth_url']}")
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.post(
+            cfg["auth_url"],
+            data={"client_id": cfg["client_id"], "scope": cfg["scope"]},
+            headers={"Accept": "application/json"},
+        )
+    if resp.status_code != 200:
+        raise RuntimeError(f"device code request failed: {resp.status_code} {resp.text}")
+
+    data = resp.json()
+    device_code = data.get("device_code")
+    user_code = data.get("user_code")
+    verification_uri = data.get("verification_uri") or data.get("verification_url")
+    verification_uri_complete = data.get("verification_uri_complete")
+    interval = int(data.get("interval", 5))
+
+    if not device_code:
+        raise RuntimeError(f"invalid device code response: {data}")
+
+    print("[2/3] Open this URL and complete authorization:")
+    if verification_uri_complete:
+        print(f"      {verification_uri_complete}")
+    else:
+        print(f"      {verification_uri}")
+        if user_code:
+            print(f"      code: {user_code}")
+    print("[3/3] Waiting for authorization")
+
+    start = time.time()
+    timeout = int(data.get("expires_in", 900))
+
+    while time.time() - start < timeout:
+        await asyncio.sleep(interval)
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            token_resp = await client.post(
+                cfg["token_url"],
+                data={
+                    "client_id": cfg["client_id"],
+                    "device_code": device_code,
+                    "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
+                },
+                headers={"Accept": "application/json"},
+            )
+
+        if token_resp.status_code == 200:
+            token_data = token_resp.json()
+            access_token = token_data.get("access_token")
+            if not access_token:
+                raise RuntimeError(f"token response missing access_token: {token_data}")
+
+            expires_in = int(token_data.get("expires_in", 3600))
+            out = {
+                "access_token": access_token,
+                "refresh_token": token_data.get("refresh_token", ""),
+                "token_type": token_data.get("token_type", "bearer"),
+                "scope": token_data.get("scope", cfg["scope"]),
+                "expires_at": int(time.time()) + expires_in,
+                "raw": token_data,
+            }
+            token_file = Path(cfg["token_file"]).expanduser()
+            token_file.parent.mkdir(parents=True, exist_ok=True)
+            with open(token_file, "w") as f:
+                json.dump(out, f, indent=2)
+            os.chmod(token_file, 0o600)
+            print(f"✅ Auth success. token saved: {token_file}")
+            return 0
+
+        # Error path for OAuth device flow
+        err = {}
+        try:
+            err = token_resp.json()
+        except Exception:
+            pass
+        code = err.get("error", "")
+        if code == "authorization_pending":
+            print(".", end="", flush=True)
+            continue
+        if code == "slow_down":
+            interval += 1
+            print(".", end="", flush=True)
+            continue
+        if code in ("expired_token", "access_denied"):
+            raise RuntimeError(f"authorization failed: {code}")
+        raise RuntimeError(f"token poll failed: {token_resp.status_code} {token_resp.text}")
+
+    raise RuntimeError("authorization timeout")
+
+
+async def _run_openai_deviceauth_flow(cfg):
+    print(f"🔐 OAuth Device Auth - provider={cfg['provider_id']} (openai_deviceauth)")
+    print("=" * 60)
+    print(f"[1/3] Requesting device code from {cfg['auth_url']}")
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.post(
+            cfg["auth_url"],
+            json={"client_id": cfg["client_id"]},
+            headers={"Content-Type": "application/json"},
+        )
+    if resp.status_code != 200:
+        raise RuntimeError(f"device code request failed: {resp.status_code} {resp.text}")
+
+    data = resp.json()
+    device_auth_id = data.get("device_auth_id")
+    user_code = data.get("user_code")
+    interval = max(int(data.get("interval", 5) or 5), 1)
+    if not device_auth_id or not user_code:
+        raise RuntimeError(f"invalid openai deviceauth response: {data}")
+
+    verification_url = cfg.get("verification_url") or "https://auth.openai.com/codex/device"
+    print("[2/3] Open this URL and complete authorization:")
+    print(f"      {verification_url}")
+    print(f"      code: {user_code}")
+    print("[3/3] Waiting for authorization")
+
+    while True:
+        await asyncio.sleep(interval)
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            poll_resp = await client.post(
+                cfg["poll_url"],
+                json={"device_auth_id": device_auth_id, "user_code": user_code},
+                headers={"Content-Type": "application/json"},
+            )
+
+        if poll_resp.status_code in (403, 404):
+            print(".", end="", flush=True)
+            continue
+        if poll_resp.status_code != 200:
+            raise RuntimeError(f"deviceauth poll failed: {poll_resp.status_code} {poll_resp.text}")
+
+        poll_data = poll_resp.json()
+        authorization_code = poll_data.get("authorization_code")
+        code_verifier = poll_data.get("code_verifier")
+        if not authorization_code or not code_verifier:
+            raise RuntimeError(f"invalid deviceauth token response: {poll_data}")
+
+        redirect_uri = cfg.get("redirect_uri") or "https://auth.openai.com/deviceauth/callback"
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            token_resp = await client.post(
+                cfg["token_url"],
+                data={
+                    "grant_type": "authorization_code",
+                    "code": authorization_code,
+                    "redirect_uri": redirect_uri,
+                    "client_id": cfg["client_id"],
+                    "code_verifier": code_verifier,
+                },
+                headers={"Accept": "application/json"},
+            )
+        if token_resp.status_code != 200:
+            raise RuntimeError(f"token exchange failed: {token_resp.status_code} {token_resp.text}")
+
+        token_data = token_resp.json()
+        access_token = token_data.get("access_token")
+        if not access_token:
+            raise RuntimeError(f"token response missing access_token: {token_data}")
+
+        expires_in = int(token_data.get("expires_in", 3600))
+        out = {
+            "access_token": access_token,
+            "refresh_token": token_data.get("refresh_token", ""),
+            "token_type": token_data.get("token_type", "bearer"),
+            "scope": token_data.get("scope", cfg["scope"]),
+            "expires_at": int(time.time()) + expires_in,
+            "raw": token_data,
+        }
+        token_file = Path(cfg["token_file"]).expanduser()
+        token_file.parent.mkdir(parents=True, exist_ok=True)
+        with open(token_file, "w") as f:
+            json.dump(out, f, indent=2)
+        os.chmod(token_file, 0o600)
+        print(f"✅ Auth success. token saved: {token_file}")
+        return 0
+
+
+async def _run_google_code_pkce_flow(cfg, auto_callback: bool = False):
+    print(f"🔐 OAuth Auth Code + PKCE - provider={cfg['provider_id']} (google_code_pkce)")
+    print("=" * 60)
+
+    verifier = base64.urlsafe_b64encode(os.urandom(48)).decode("utf-8").rstrip("=")
+    challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode("utf-8")).digest()).decode("utf-8").rstrip("=")
+    state = base64.urlsafe_b64encode(os.urandom(12)).decode("utf-8").rstrip("=")
+
+    redirect_uri = cfg.get("redirect_uri") or "https://codeassist.google.com/authcode"
+    scope = cfg.get("scope") or (
+        "https://www.googleapis.com/auth/cloud-platform "
+        "https://www.googleapis.com/auth/userinfo.email "
+        "https://www.googleapis.com/auth/userinfo.profile"
+    )
+    auth_endpoint = cfg.get("auth_url") or "https://accounts.google.com/o/oauth2/v2/auth"
+    auth_url = auth_endpoint + "?" + urlencode(
+        {
+            "redirect_uri": redirect_uri,
+            "access_type": "offline",
+            "scope": scope,
+            "code_challenge_method": "S256",
+            "code_challenge": challenge,
+            "state": state,
+            "response_type": "code",
+            "client_id": cfg["client_id"],
+        }
+    )
+
+    print("[1/3] Open this URL and complete authorization:")
+    print(f"      {auth_url}")
+    opened = _try_open_browser(auth_url)
+    if opened:
+        print("      browser opened automatically")
+
+    code = ""
+    got_state = ""
+    if auto_callback and _can_use_local_callback(redirect_uri):
+        print("[2/3] Waiting for local OAuth callback...")
+        callback = _wait_for_local_callback(redirect_uri, timeout_seconds=180)
+        if callback:
+            if callback.get("error"):
+                raise RuntimeError(f"authorization failed: {callback.get('error')}")
+            code = str(callback.get("code", "") or "").strip()
+            got_state = str(callback.get("state", "") or "").strip()
+
+    if not code:
+        print("[2/3] After authorize, paste authorization code (or full callback URL) here.")
+        raw = input("      authorization code: ").strip()
+        if not raw:
+            raise RuntimeError("empty callback/code input")
+        code = raw
+        if "://" in raw:
+            qs = parse_qs(urlparse(raw).query)
+            code = (qs.get("code") or [""])[0]
+            got_state = (qs.get("state") or [""])[0]
+    if not code:
+        raise RuntimeError("missing authorization code")
+    if got_state and got_state != state:
+        raise RuntimeError("state mismatch")
+
+    print("[3/3] Exchanging authorization code for token...")
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        token_resp = await client.post(
+            cfg["token_url"],
+            data={
+                "client_id": cfg["client_id"],
+                "client_secret": cfg.get("client_secret", ""),
+                "code": code,
+                "code_verifier": verifier,
+                "grant_type": "authorization_code",
+                "redirect_uri": redirect_uri,
+            },
+            headers={"Accept": "application/json"},
+        )
+    if token_resp.status_code != 200:
+        body = token_resp.text
+        if "client_secret is missing" in body:
+            raise RuntimeError(
+                "token exchange failed: client_secret is missing for this client_id. "
+                "Use your own OAuth client (client_id + client_secret) via "
+                "config.providers.<provider>.oauth_config.client_id_file"
+            )
+        raise RuntimeError(f"token exchange failed: {token_resp.status_code} {body}")
+    token_data = token_resp.json()
+    access_token = token_data.get("access_token")
+    if not access_token:
+        raise RuntimeError(f"token response missing access_token: {token_data}")
+
+    expires_in = int(token_data.get("expires_in", 3600) or 3600)
+    out = {
+        "access_token": access_token,
+        "refresh_token": token_data.get("refresh_token", ""),
+        "token_type": token_data.get("token_type", "bearer"),
+        "scope": token_data.get("scope", scope),
+        "expires_at": int(time.time()) + expires_in,
+        "raw": token_data,
+    }
+    token_file = Path(cfg["token_file"]).expanduser()
+    token_file.parent.mkdir(parents=True, exist_ok=True)
+    with open(token_file, "w") as f:
+        json.dump(out, f, indent=2)
+    os.chmod(token_file, 0o600)
+    print(f"✅ Auth success. token saved: {token_file}")
+    return 0
+
+
+async def _run_device_flow(cfg, auto_callback: bool = False):
+    flow = (cfg.get("flow") or "standard").strip().lower()
+    if flow == "openai_deviceauth":
+        return await _run_openai_deviceauth_flow(cfg)
+    if flow == "google_code_pkce":
+        return await _run_google_code_pkce_flow(cfg, auto_callback=auto_callback)
+    return await _run_standard_device_flow(cfg)
+
+
+def cmd_auth_login(provider: str, client_id: str = "", auto_callback: bool = False):
+    """Authenticate provider via OAuth or API key."""
+    try:
+        pdata = _get_provider(provider)
+        ptype = str((pdata or {}).get("type", "") or "").strip().lower()
+        has_device_cfg = bool((pdata or {}).get("oauth_config"))
+
+        if provider == "claude":
+            if not _claude_cli_exists():
+                raise RuntimeError("claude command not found")
+            # Match brain_auth_manager flow: setup-token prompts for code in terminal.
+            print("[claude] starting setup-token flow...")
+            rc = subprocess.run(["claude", "setup-token"], check=False).returncode
+            s = _claude_cli_auth_status()
+            if bool(s.get("loggedIn")):
+                print("✅ Claude auth login successful")
+                sys.exit(0)
+            raise RuntimeError(f"claude auth login not completed (rc={rc})")
+
+        if has_device_cfg:
+            cfg = _resolve_oauth_device_config(provider, client_id)
+            if client_id:
+                cfg["client_id"] = client_id.strip()
+            rc = asyncio.run(_run_device_flow(cfg, auto_callback=auto_callback))
+            sys.exit(rc)
+
+        # Legacy OAuth provider path (currently copilot).
+        if ptype == "oauth" and provider == "copilot":
+            base = Path(__file__).resolve().parent
+            # Prefer the proven Device Flow implementation used by copilot-api parity.
+            script = base / "brain_agent_auth"
+            if not script.exists():
+                script = base / "brain_agent_auth_oauth"
+            if not script.exists():
+                raise RuntimeError(f"copilot auth script not found under: {base}")
+            # Run with current interpreter to ensure venv deps (e.g. httpx) are available.
+            p = subprocess.run([sys.executable, str(script)], check=False)
+            sys.exit(int(p.returncode or 0))
+
+        if _provider_is_api_key_auth_capable(provider, pdata):
+            api_key = os.environ.get("BRAIN_AGENT_AUTH_API_KEY", "").strip()
+            if not api_key:
+                prompt = f"Input API key for provider '{provider}': "
+                api_key = getpass.getpass(prompt).strip()
+            if not api_key:
+                raise RuntimeError("empty api key")
+            out = {
+                "api_key": api_key,
+                "saved_at": int(time.time()),
+            }
+            token_file = Path(_default_api_key_token_file(provider)).expanduser()
+            token_file.parent.mkdir(parents=True, exist_ok=True)
+            with open(token_file, "w") as f:
+                json.dump(out, f, indent=2)
+            os.chmod(token_file, 0o600)
+            print(f"✅ API key saved: {token_file}")
+            sys.exit(0)
+
+        raise RuntimeError(f"provider '{provider}' has no oauth login flow")
+    except Exception as e:
+        print(f"❌ Auth failed: {e}")
+        sys.exit(1)
+
+
+def main():
+    parser = argparse.ArgumentParser(description="brain_agentctl - Manage brain_agent_proxy")
+    subparsers = parser.add_subparsers(dest="command")
+
+    # enable
+    enable_parser = subparsers.add_parser("enable", help="Enable brain_agent_proxy for Claude Code")
+    enable_parser.add_argument("--port", type=int, default=3456, help="Proxy port")
+    enable_parser.add_argument("--model", type=str, default="", help="Default model")
+    enable_parser.add_argument("--provider", type=str, default="openai", help="Provider id for model selector/token")
+    enable_parser.add_argument("--name", type=str, default="dev", help="Agent/env name for token")
+
+    # disable
+    subparsers.add_parser("disable", help="Disable brain_agent_proxy")
+
+    # status
+    status_parser = subparsers.add_parser("status", help="Check status")
+    status_parser.add_argument("--port", type=int, default=3456, help="Proxy port")
+
+    # test
+    test_parser = subparsers.add_parser("test", help="Test brain_agent_proxy with a request")
+    test_parser.add_argument("--port", type=int, default=3456, help="Proxy port")
+    test_parser.add_argument("--model", type=str, default="gpt-5-mini", help="Model to test")
+
+    # auth
+    auth_parser = subparsers.add_parser("auth", help="Auth management (oauth/api_key)")
+    auth_parser.add_argument(
+        "action",
+        nargs="?",
+        default="login",
+        choices=["login", "list", "status", "logout"],
+        help="auth action (default: login)",
+    )
+    auth_parser.add_argument(
+        "--provider",
+        type=str,
+        default="",
+        help="Provider id in config/providers.yaml (required for login/logout, optional for status)",
+    )
+    auth_parser.add_argument(
+        "--client-id",
+        type=str,
+        default="",
+        help="OAuth client_id override (avoid env export)",
+    )
+    auth_parser.add_argument(
+        "--api-key",
+        type=str,
+        default="",
+        help="API key input for api_key providers (or set BRAIN_AGENT_AUTH_API_KEY)",
+    )
+    auth_parser.add_argument(
+        "--all",
+        action="store_true",
+        help="Use with auth logout to clear token files for all oauth providers",
+    )
+    auth_parser.add_argument(
+        "--auto-callback",
+        action="store_true",
+        help="Enable local callback auto-capture for PKCE flows (default: manual paste code)",
+    )
+
+    args = parser.parse_args()
+
+    if args.command == "enable":
+        cmd_enable(args.port, args.model, args.provider, args.name)
+    elif args.command == "disable":
+        cmd_disable()
+    elif args.command == "status":
+        cmd_status(args.port)
+    elif args.command == "test":
+        cmd_test(args.port, args.model)
+    elif args.command == "auth":
+        if args.action == "list":
+            cmd_auth_list()
+        elif args.action == "status":
+            cmd_auth_status(args.provider)
+        elif args.action == "logout":
+            if not args.provider and not args.all:
+                parser.error("auth logout requires --provider or --all")
+            cmd_auth_logout(args.provider, all_providers=args.all)
+        else:
+            if not args.provider:
+                parser.error(
+                    "auth login requires --provider. Available providers: "
+                    + ", ".join(sorted(list(set(_list_oauth_capable_providers()) | set(_list_api_key_auth_providers()))))
+                )
+            if args.api_key:
+                os.environ["BRAIN_AGENT_AUTH_API_KEY"] = args.api_key
+            cmd_auth_login(args.provider, args.client_id, auto_callback=args.auto_callback)
+    else:
+        parser.print_help()
+
+
+if __name__ == "__main__":
+    main()

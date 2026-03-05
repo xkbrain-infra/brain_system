@@ -9,6 +9,8 @@ SSH_DIR="/root/.ssh"
 AUTH_KEYS="${SSH_DIR}/authorized_keys"
 SECRET_SSH_DIR="${SECRET_SSH_DIR:-/xkagent_infra/brain/secrets/system/ssh}"
 HOST_KEY_DIR="${HOST_KEY_DIR:-${SECRET_SSH_DIR}/host_keys}"
+AGENT_AUTH_ROOT="${AGENT_AUTH_ROOT:-/xkagent_infra/brain/secrets/system/agents/auth}"
+LOGIN_INIT_SCRIPT="/xkagent_infra/brain/platform/docker/scripts/agent_login_init.sh"
 TMP_KEYS="$(mktemp)"
 trap "rm -f \"$TMP_KEYS\"" EXIT
 
@@ -92,5 +94,80 @@ sync_authorized_keys() {
   fi
 }
 
-sync_host_keys
-sync_authorized_keys
+sync_auth_file() {
+  local src="$1"
+  local dest="$2"
+  local mode="$3"
+
+  [[ -f "$src" ]] || return 0
+
+  mkdir -p "$(dirname "$dest")"
+  cp -f "$src" "$dest"
+  chmod "$mode" "$dest" || true
+  log "synced auth file: ${src} -> ${dest}"
+}
+
+sync_agent_auth() {
+  if [[ ! -d "$AGENT_AUTH_ROOT" ]]; then
+    log "agent auth directory not found: ${AGENT_AUTH_ROOT} (skip)"
+    return 0
+  fi
+
+  # Claude Code login/session
+  sync_auth_file "${AGENT_AUTH_ROOT}/claude/.claude.json" "/root/.claude.json" 600
+
+  # Codex login token/cache
+  sync_auth_file "${AGENT_AUTH_ROOT}/codex/auth.json" "/root/.codex/auth.json" 600
+
+  # Gemini CLI login/session
+  sync_auth_file "${AGENT_AUTH_ROOT}/gemini/oauth_creds.json" "/root/.gemini/oauth_creds.json" 600
+  sync_auth_file "${AGENT_AUTH_ROOT}/gemini/google_accounts.json" "/root/.gemini/google_accounts.json" 600
+  sync_auth_file "${AGENT_AUTH_ROOT}/gemini/installation_id" "/root/.gemini/installation_id" 600
+  sync_auth_file "${AGENT_AUTH_ROOT}/gemini/state.json" "/root/.gemini/state.json" 600
+}
+
+ensure_login_hook_for_shell_rc() {
+  local rc_file="$1"
+  local marker_begin="# >>> XKAGENT_LOGIN_INIT_HOOK >>>"
+  local marker_end="# <<< XKAGENT_LOGIN_INIT_HOOK <<<"
+
+  touch "$rc_file"
+
+  if grep -Fq "$marker_begin" "$rc_file"; then
+    return 0
+  fi
+
+  cat >>"$rc_file" <<'HOOK'
+# >>> XKAGENT_LOGIN_INIT_HOOK >>>
+if [ -n "${SSH_CONNECTION:-}" ] && [ -t 1 ] && [ -z "${XKAGENT_LOGIN_INIT_RAN:-}" ]; then
+  export XKAGENT_LOGIN_INIT_RAN=1
+  if [ -x /xkagent_infra/brain/platform/docker/scripts/agent_login_init.sh ]; then
+    /xkagent_infra/brain/platform/docker/scripts/agent_login_init.sh || true
+  fi
+fi
+# <<< XKAGENT_LOGIN_INIT_HOOK <<<
+HOOK
+
+  log "installed login init hook in ${rc_file}"
+}
+
+ensure_login_init_hook() {
+  ensure_login_hook_for_shell_rc /root/.bashrc
+  ensure_login_hook_for_shell_rc /root/.zshrc
+}
+
+MODE="${1:-all}"
+case "$MODE" in
+  --agent-auth-only)
+    sync_agent_auth
+    ;;
+  --ensure-login-hook)
+    ensure_login_init_hook
+    ;;
+  *)
+    sync_host_keys
+    sync_authorized_keys
+    sync_agent_auth
+    ensure_login_init_hook
+    ;;
+esac

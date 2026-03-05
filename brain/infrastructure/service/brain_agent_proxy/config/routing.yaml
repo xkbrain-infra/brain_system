@@ -1,0 +1,40 @@
+# Routing Configuration
+# ============================================
+# 1. api_key_provider_map: API Key → Provider 映射（每个 agent 的唯一标识）
+# 2. model_provider_map: Model → Provider 映射（固定路由）
+# 3. model_strategy_map: Model → 路由策略
+# 4. protocol_fallback: 协议降级
+
+# API Key → Provider 映射
+# 格式: <api_key>: <provider_id>
+# 当代理收到请求时，先用 API Key 匹配 provider
+api_key_provider_map:
+  sk-copilot-direct: copilot-api-local
+
+# Model → Provider 映射（固定路由）
+# 当没有 API Key 匹配时，使用 model 名称匹配
+model_provider_map:
+  # Anthropic
+  claude-sonnet-4.6: copilot-api-local
+  claude-opus-4.6: copilot-api-local
+  claude-haiku-4.5: copilot-api-local
+  # OpenAI
+  gpt-5-mini: copilot-api-local
+  gpt-4o: copilot-api-local
+  gpt-4o-mini: copilot-api-local
+  # Google
+  gemini-2.5-pro: gemini
+  # xAI
+  grok-code-fast-1: copilot-api-local
+
+# Model → 路由策略
+# 可选: capability_match | cost_weighted | availability
+default_strategy: capability_match
+model_strategy_map:
+  claude-opus-4.6: availability
+  gpt-5-mini: cost_weighted
+
+# 协议降级配置
+# 当 provider 不支持某个协议时，降级使用的协议
+protocol_fallback:
+  messages: chat_completions

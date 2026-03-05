@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/opt/venv/bin/python3
 """AgentCTL - Unified agent control tool.
 
 Modes:
@@ -76,15 +76,11 @@ def _kill_session(name: str, *, apply: bool) -> None:
 # Secrets & env mapping
 # ============================================================
 
-_SECRETS_FILE = Path("/xkagent_infra/brain/secrets/system/agents/llm_tokens.env")
+_SECRETS_FILE = Path("/brain/secrets/system/agents/llm_tokens.env")
 
 # agent_type → { target_env_var: source_env_var_in_secrets }
 # When cli_type=claude, Claude Code needs ANTHROPIC_API_KEY/ANTHROPIC_BASE_URL
 _AGENT_TYPE_ENV_MAP: dict[str, dict[str, str]] = {
-    "codex": {
-        "OPENAI_API_KEY": "OPENAI_API_KEY",
-        "OPENAI_BASE_URL": "OPENAI_API_BASE",
-    },
     "kimi": {
         "ANTHROPIC_API_KEY": "KIMI_API_KEY",
         "ANTHROPIC_AUTH_TOKEN": "KIMI_API_KEY",
@@ -101,18 +97,6 @@ _AGENT_TYPE_ENV_MAP: dict[str, dict[str, str]] = {
         "ANTHROPIC_BASE_URL": "LITELLM_ANTHROPIC_BASE",
     },
     "gemini": {},
-    # QWEN (阿里巴巴千问 - DashScope)
-    # 支持模型: qwen3.5-plus, qwen3-max-2026-01-23, qwen3-coder-next, qwen3-coder-plus, glm-4.7, kimi-k2.5
-    "qwen": {
-        "ANTHROPIC_AUTH_TOKEN": "QWEN_API_KEY",
-        "ANTHROPIC_BASE_URL": "QWEN_API_BASE",
-    },
-    # Bytedance (字节方舟)
-    # 支持模型: doubao-seed-2.0-code, doubao-seed-code, glm-4.7, deepseek-v3.2, kimi-k2-thinking, kimi-k2.5
-    "bytedance": {
-        "ANTHROPIC_AUTH_TOKEN": "BYTEDANCE_API_KEY",
-        "ANTHROPIC_BASE_URL": "BYTEDANCE_API_BASE",
-    },
 }
 
 
@@ -171,7 +155,7 @@ def _start_session(spec: AgentSpec, *, apply: bool, config_gen: bool = True, for
     if not spec.start_cmd:
         raise RuntimeError(f"{spec.name}: missing start_cmd in agents_registry.yaml")
     if not apply:
-        cwd = spec.cwd or "/xkagent_infra/brain"
+        cwd = spec.cwd or "/brain"
         print(f"- {spec.name}: would start (tmux new-session -d -s {spec.tmux_session} -c {cwd} {spec.start_cmd})")
         return
 
@@ -179,7 +163,7 @@ def _start_session(spec: AgentSpec, *, apply: bool, config_gen: bool = True, for
     if config_gen:
         _generate_configs(spec, force_claude_md=force_claude_md)
 
-    cmd = ["new-session", "-d", "-x", "220", "-y", "50", "-s", spec.tmux_session]
+    cmd = ["new-session", "-d", "-s", spec.tmux_session]
     if spec.cwd:
         cmd += ["-c", spec.cwd]
 
@@ -187,28 +171,28 @@ def _start_session(spec: AgentSpec, *, apply: bool, config_gen: bool = True, for
     shell_parts: list[str] = [
         "unset CLAUDECODE",  # Prevent nested Claude Code session detection
         f"export TMUX_SESSION={spec.tmux_session}",
-        'export TMUX_PANE="$(tmux display-message -p "#{pane_id}" 2>/dev/null || true)"',
+        "export TMUX_PANE=$(tmux display-message -p '#{pane_id}' 2>/dev/null)",
     ]
     if spec.agent_type == "codex" and spec.cwd:
         shell_parts.append(f"export CODEX_HOME={spec.cwd}/.codex")
     elif spec.agent_type == "kimi" and spec.cwd:
         shell_parts.append(f"export KIMI_HOME={spec.cwd}/.kimi")
 
-    # Inject env vars from registry spec (e.g. IS_SANDBOX=1 needed for root + --dangerously-skip-permissions)
-    raw_env = spec.raw_spec.get("env") if spec.raw_spec else None
-    if isinstance(raw_env, dict):
-        for key, value in raw_env.items():
-            if key:
-                shell_parts.append(f"export {key}={value}")
-
-    # Inject secrets mapping for non-claude agent types (scoped to this tmux session)
-    mapping = _AGENT_TYPE_ENV_MAP.get(spec.agent_type)
-    if mapping:
-        secrets = _load_secrets()
-        for target_var, source_var in mapping.items():
-            val = secrets.get(source_var, "")
-            if val:
-                shell_parts.append(f"export {target_var}={val}")
+    # Inject legacy direct env mapping only for native CLIs.
+    raw = spec.raw_spec or {}
+    cli_type = str(raw.get("cli_type") or "").strip().lower()
+    uses_claude_cli = (
+        cli_type in ("claude", "claude_code")
+        or (not cli_type and spec.agent_type in ("claude", "kimi", "minimax", "chatgpt", "gemini", "openai", "copilot", "alibaba", "bytedance"))
+    )
+    if not uses_claude_cli:
+        mapping = _AGENT_TYPE_ENV_MAP.get(spec.agent_type)
+        if mapping:
+            secrets = _load_secrets()
+            for target_var, source_var in mapping.items():
+                val = secrets.get(source_var, "")
+                if val:
+                    shell_parts.append(f"export {target_var}={val}")
 
     shell_parts.append(spec.start_cmd)
 
@@ -251,11 +235,12 @@ def _load_spec(config_dir: Path) -> dict[str, AgentSpec]:
             continue
 
         # 构建 start_cmd
-        agent_type = str(a.get("agent_type") or "claude").strip().lower()
-        cli_type = str(a.get("agent_cli") or a.get("cli_type") or "").strip().lower()
+        agent_type = a.get("agent_type", "claude")
+        cli_type = a.get("cli_type", "").strip().lower()  # 新增: 明确指定 CLI 类型
         cli_args = a.get("cli_args", [])
         cwd = str(a.get("cwd") or "").strip() or None
         export_cmd = a.get("export_cmd", {})
+        initial_prompt = a.get("initial_prompt", "")
 
         # 导出环境变量
         exports = []
@@ -277,7 +262,7 @@ def _load_spec(config_dir: Path) -> dict[str, AgentSpec]:
             if agent_type == "codex":
                 cmd = "codex"
                 use_claude_cli = False
-            elif agent_type in ("claude", "kimi", "minimax", "chatgpt"):
+            elif agent_type in ("claude", "kimi", "minimax", "chatgpt", "gemini", "openai", "copilot", "alibaba", "bytedance"):
                 cmd = "claude"
                 use_claude_cli = True
             else:
@@ -287,13 +272,17 @@ def _load_spec(config_dir: Path) -> dict[str, AgentSpec]:
         cmd_parts = [cmd]
 
         # 添加 --model 参数（仅当显式指定时）
-        model = str(a.get("agent_model") or a.get("model") or "").strip()
+        model = a.get("model", "").strip()
         if use_claude_cli and model:
             cmd_parts += ["--model", model]
         elif not use_claude_cli and model and agent_type in ("kimi", "gemini"):
             cmd_parts += ["--model", model]
 
         cmd_parts += cli_args
+
+        # 添加 initial_prompt（使用 Claude Code CLI 时支持）
+        if use_claude_cli and initial_prompt:
+            cmd_parts.append(f"'{initial_prompt}'")
 
         start_cmd = " && ".join(exports + [" ".join(cmd_parts)]) if exports else " ".join(cmd_parts)
 
@@ -496,7 +485,7 @@ def cmd_restart(args: argparse.Namespace) -> int:
     force = getattr(args, "force", False)
     for agent in targets:
         if not args.apply:
-            cwd = agent.cwd or "/xkagent_infra/brain"
+            cwd = agent.cwd or "/brain"
             cmd = agent.start_cmd or "<missing start_cmd>"
             print(f"- {agent.name}: would restart (stop: tmux kill-session -t {agent.tmux_session}; start: tmux new-session -d -s {agent.tmux_session} -c {cwd} {cmd})")
             continue
@@ -621,17 +610,17 @@ def cmd_provision_group(args: argparse.Namespace) -> int:
         print(f"  agents to create:")
         for role in roles:
             agent_name = f"agent_{group_id}_{role}"
-            agent_dir = f"/xkagent_infra/groups/org/{group_id}/agents/{agent_name}"
+            agent_dir = f"/brain/groups/org/{group_id}/agents/{agent_name}"
             role_defaults = ROLE_DEFAULTS.get(role, {})
-            model = role_defaults.get("agent_model", role_defaults.get("model", "Sonnet"))
+            model = role_defaults.get("model", "Sonnet")
             print(f"    - {agent_name} (role={role}, model={model}, cwd={agent_dir})")
         print(f"  files to generate:")
         for role in roles:
             agent_name = f"agent_{group_id}_{role}"
-            agent_dir = f"/xkagent_infra/groups/org/{group_id}/agents/{agent_name}"
+            agent_dir = f"/brain/groups/org/{group_id}/agents/{agent_name}"
             print(f"    - {agent_dir}/CLAUDE.md")
             print(f"    - {agent_dir}/.mcp.json")
-        print(f"    - /xkagent_infra/groups/org/{group_id}/workflow/pmo/agent_roster.yaml")
+        print(f"    - /brain/groups/org/{group_id}/workflow/pmo/agent_roster.yaml")
         print(f"\nRun with --apply to execute.")
         return 0
 
@@ -863,219 +852,20 @@ def cmd_purge(args: argparse.Namespace) -> int:
 
 
 # ============================================================
-# Rename agent
-# ============================================================
-
-def cmd_rename(args: argparse.Namespace) -> int:
-    """Rename an agent: update registry fields, move directory, patch config files.
-
-    Supports --group to move the agent to a different group.
-    Default is dry-run; use --apply to execute.
-    """
-    old_name = args.old_name
-    new_name = args.new_name
-    new_group = getattr(args, "group", None) or None
-    apply = bool(args.apply)
-
-    # Load current spec to find the agent
-    spec = _load_spec(Path(args.config_dir))
-    if old_name not in spec:
-        print(f"ERROR: agent '{old_name}' not found in registry", file=sys.stderr)
-        return 1
-
-    agent = spec[old_name]
-    old_cwd = agent.cwd or ""
-    old_group = agent.group
-
-    # Determine target group and new directory path
-    target_group = new_group or old_group
-    if old_cwd:
-        new_cwd = f"/xkagent_infra/groups/org/{target_group}/agents/{new_name}"
-    else:
-        new_cwd = ""
-
-    # Dry-run: show what would happen
-    if not apply:
-        print(f"rename: {old_name} -> {new_name} (dry-run)")
-        print(f"  group:        {old_group} -> {target_group}")
-        print(f"  tmux_session: {old_name} -> {new_name}")
-        if old_cwd:
-            print(f"  directory:    {old_cwd}")
-            print(f"             -> {new_cwd}")
-        print(f"  registries to update:")
-        for rp in _REGISTRY_PATHS:
-            exists = "ok" if rp.exists() else "missing"
-            print(f"    - {rp} ({exists})")
-        if old_cwd:
-            print(f"  config files to patch (name/path substitution):")
-            for fname in ["CLAUDE.md", "AGENTS.md", ".mcp.json",
-                          ".codex/config.toml", ".claude/settings.local.json"]:
-                fp = Path(old_cwd) / fname
-                if fp.exists():
-                    print(f"    - {fp}")
-        print(f"\nRun with --apply to execute.")
-        return 0
-
-    errors = 0
-
-    # Step 1: Update all registry files
-    print(f"\n=== Step 1: Updating registries ===")
-    for rp in _REGISTRY_PATHS:
-        if not rp.exists():
-            print(f"skip {rp}: not found")
-            continue
-        try:
-            with open(rp, encoding="utf-8") as f:
-                data = yaml.safe_load(f) or {}
-
-            found = False
-            groups = data.get("groups", {})
-            for grp_name, agents_list in list(groups.items()):
-                if not isinstance(agents_list, list):
-                    continue
-                for i, ag in enumerate(agents_list):
-                    if not isinstance(ag, dict):
-                        continue
-                    if str(ag.get("name") or "") != old_name:
-                        continue
-                    found = True
-                    ag["name"] = new_name
-                    ag["tmux_session"] = new_name
-                    if new_cwd:
-                        ag["cwd"] = new_cwd
-                        ag["path"] = new_cwd
-                    export_cmd = ag.get("export_cmd")
-                    if isinstance(export_cmd, dict) and "BRAIN_AGENT_NAME" in export_cmd:
-                        ag["export_cmd"]["BRAIN_AGENT_NAME"] = new_name
-                    if ag.get("initial_prompt") == old_name:
-                        ag["initial_prompt"] = new_name
-                    if new_group and new_group != grp_name:
-                        agents_list.pop(i)
-                        if new_group not in groups:
-                            groups[new_group] = []
-                        groups[new_group].append(ag)
-                        ag["group"] = new_group
-                    break
-                if found:
-                    break
-
-            if not found:
-                print(f"skip {rp}: '{old_name}' not found")
-                continue
-
-            with open(rp, "w", encoding="utf-8") as f:
-                yaml.dump(data, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
-            print(f"ok {rp}")
-        except Exception as e:
-            print(f"error {rp}: {e}")
-            errors += 1
-
-    # Step 2: Patch config files inside the agent directory (before mv)
-    print(f"\n=== Step 2: Patching config files ===")
-    if old_cwd and Path(old_cwd).exists():
-        config_files = [
-            Path(old_cwd) / "CLAUDE.md",
-            Path(old_cwd) / "AGENTS.md",
-            Path(old_cwd) / ".mcp.json",
-            Path(old_cwd) / ".codex" / "config.toml",
-            Path(old_cwd) / ".claude" / "settings.local.json",
-        ]
-        old_group_path = f"/xkagent_infra/groups/org/{old_group}/"
-        new_group_path = f"/xkagent_infra/groups/org/{target_group}/"
-        for cf in config_files:
-            if not cf.exists():
-                continue
-            try:
-                content = cf.read_text(encoding="utf-8")
-                patched = content.replace(old_name, new_name)
-                if old_cwd and new_cwd:
-                    patched = patched.replace(old_cwd, new_cwd)
-                if old_group != target_group:
-                    patched = patched.replace(old_group_path, new_group_path)
-                if patched != content:
-                    cf.write_text(patched, encoding="utf-8")
-                    print(f"patched {cf.name}")
-                else:
-                    print(f"no-op   {cf.name}")
-            except Exception as e:
-                print(f"error {cf}: {e}")
-                errors += 1
-    else:
-        print("no config directory (cwd not set or missing)")
-
-    # Step 3: Move the agent directory
-    print(f"\n=== Step 3: Moving directory ===")
-    if old_cwd and new_cwd:
-        old_path = Path(old_cwd)
-        new_path = Path(new_cwd)
-        if old_path.exists():
-            try:
-                new_path.parent.mkdir(parents=True, exist_ok=True)
-                shutil.move(str(old_path), str(new_path))
-                print(f"moved {old_cwd}")
-                print(f"   -> {new_cwd}")
-            except Exception as e:
-                print(f"error move: {e}")
-                errors += 1
-        else:
-            print(f"skip: source directory not found: {old_cwd}")
-    else:
-        print("skip: no directory to move")
-
-    if errors:
-        print(f"\nrename completed with {errors} error(s)")
-        return 1
-    print(f"\nok: rename {old_name} -> {new_name} (group: {old_group} -> {target_group})")
-    return 0
-
-
-# ============================================================
 # Add single agent
 # ============================================================
 
 # All known registry paths to keep in sync
 _REGISTRY_PATHS = [
-    Path("/xkagent_infra/brain/infrastructure/config/agentctl/agents_registry.yaml"),
-    Path("/xkagent_infra/groups/org/brain_system/projects/agent_orchestrator/config/agents_registry.yaml"),
+    Path("/brain/infrastructure/config/agentctl/agents_registry.yaml"),
+    Path("/brain/groups/org/brain_system/projects/agent_orchestrator/config/agents_registry.yaml"),
 ]
-
-
-def cmd_profiles(args: argparse.Namespace) -> int:
-    """List available type profiles, optionally filtered by role."""
-    from services.provisioner import list_type_profiles
-
-    profiles = list_type_profiles(role_filter=args.role)
-    if not profiles:
-        print("No profiles found.")
-        return 0
-
-    # Group by role for display
-    from collections import defaultdict
-    by_role: dict = defaultdict(list)
-    for p in profiles:
-        by_role[p["role"]].append(p)
-
-    for role, variants in sorted(by_role.items()):
-        print(f"\n[{role}]")
-        for v in variants:
-            default_mark = " (default)" if v.get("is_default") else ""
-            print(f"  {v['id']}{default_mark}")
-            cli = v.get("agent_cli", "")
-            model = v.get("agent_model") or v.get("model", "")
-            if cli:
-                print(f"    agent_type={v['agent_type']}  agent_cli={cli}  agent_model={model}")
-            else:
-                print(f"    agent_type={v['agent_type']}  agent_model={model}")
-            if v.get("reason"):
-                print(f"    reason: {v['reason']}")
-    print()
-    return 0
 
 
 def cmd_add(args: argparse.Namespace) -> int:
     """Add a single agent to registry, create directory, generate configs."""
     from config.registry_editor import AgentEntry, append_agent_to_group
-    from services.provisioner import ROLE_DEFAULTS, ROLE_FALLBACK, load_type_profile
+    from services.provisioner import ROLE_DEFAULTS, ROLE_FALLBACK
 
     name = args.name
     group = args.group
@@ -1096,29 +886,23 @@ def cmd_add(args: argparse.Namespace) -> int:
         if not role:
             role = "custom"
 
-    # Resolve --profile first; CLI flags override profile values
-    profile_data = None
-    if getattr(args, "profile", None):
-        profile_data = load_type_profile(args.profile)
-        if profile_data is None:
-            print(f"ERROR: profile '{args.profile}' not found. Run 'agentctl profiles' to list available profiles.")
-            return 1
-
+    agent_type = args.agent_type or "claude"
+    cli_type = args.cli_type or ""
+    transport_mode = (args.transport or "proxy").strip().lower()
+    if transport_mode not in ("proxy", "direct"):
+        raise RuntimeError("transport must be proxy|direct")
     role_defaults = ROLE_DEFAULTS.get(role, ROLE_FALLBACK)
-    agent_type = args.agent_type or (profile_data and profile_data["agent_type"]) or "claude"
-    agent_cli = (
-        args.agent_cli
-        or args.cli_type
-        or (profile_data and (profile_data.get("agent_cli") or profile_data.get("cli_type")))
-        or role_defaults.get("agent_cli", "")
-    )
-    agent_model = (
-        args.agent_model
-        or args.model
-        or (profile_data and (profile_data.get("agent_model") or profile_data.get("model")))
-        or role_defaults.get("agent_model", "Sonnet")
-    )
-    effort = (profile_data and profile_data.get("effort")) or ""
+    model = args.model or role_defaults.get("model", "Sonnet")
+    proxy_token_preview = ""
+    model_selector_preview = ""
+    if transport_mode == "proxy":
+        try:
+            from services.config_generator import _build_proxy_auth_token, _build_model_selector
+            preview_spec = {"name": name, "model": model}
+            proxy_token_preview = _build_proxy_auth_token(agent_type, preview_spec)
+            model_selector_preview = _build_model_selector(agent_type, preview_spec)
+        except Exception:
+            pass
 
     # Parse capabilities and tags
     if args.capabilities:
@@ -1131,8 +915,8 @@ def cmd_add(args: argparse.Namespace) -> int:
     else:
         tags = role_defaults.get("tags", [])
 
-    desired_state = args.desired_state or "running"
-    agent_dir = f"/xkagent_infra/groups/org/{group}/agents/{name}"
+    desired_state = args.desired_state or "stopped"
+    agent_dir = f"/brain/groups/org/{group}/agents/{name}"
 
     entry = AgentEntry(
         name=name,
@@ -1144,12 +928,12 @@ def cmd_add(args: argparse.Namespace) -> int:
         group=group,
         path=agent_dir,
         agent_type=agent_type,
-        agent_cli=agent_cli,
-        agent_model=agent_model,
-        effort=effort,
+        cli_type=cli_type,
+        model=model,
         cli_args=["--dangerously-skip-permissions"] if agent_type != "codex" else ["--dangerously-bypass-approvals-and-sandbox"],
-        env={"IS_SANDBOX": "1"},
+        env={"IS_SANDBOX": "1", "BRAIN_TRANSPORT_MODE": transport_mode},
         export_cmd={"BRAIN_AGENT_NAME": name},
+        initial_prompt=name,
         required=False,
         desired_state=desired_state,
         status="active",
@@ -1162,9 +946,15 @@ def cmd_add(args: argparse.Namespace) -> int:
         print(f"  group: {group}")
         print(f"  role: {role}")
         print(f"  agent_type: {agent_type}")
-        if agent_cli:
-            print(f"  agent_cli: {agent_cli}")
-        print(f"  agent_model: {agent_model}")
+        if cli_type:
+            print(f"  cli_type: {cli_type}")
+        print(f"  transport: {transport_mode}")
+        print(f"  model: {model}")
+        if transport_mode == "proxy":
+            if proxy_token_preview:
+                print(f"  proxy_token: {proxy_token_preview}")
+            if model_selector_preview:
+                print(f"  model_selector: {model_selector_preview}")
         print(f"  cwd: {agent_dir}")
         print(f"  desired_state: {desired_state}")
         print(f"  capabilities: {capabilities}")
@@ -1207,17 +997,15 @@ def cmd_add(args: argparse.Namespace) -> int:
         spec = {
             "name": name,
             "agent_type": agent_type,
-            "agent_cli": agent_cli,
-            "agent_model": agent_model,
-            # legacy aliases for older generator code paths
-            "cli_type": agent_cli,
-            "model": agent_model,
-            "effort": effort,
+            "cli_type": cli_type,
+            "transport_mode": transport_mode,
+            "model": model,
             "cwd": agent_dir,
             "role": role,
             "group": group,
             "path": agent_dir,
             "capabilities": capabilities,
+            "env": {"IS_SANDBOX": "1", "BRAIN_TRANSPORT_MODE": transport_mode},
             "hooks": default_hooks,
         }
         result = generate_all_configs(spec, force_claude_md=True)
@@ -1232,6 +1020,11 @@ def cmd_add(args: argparse.Namespace) -> int:
         print(f"⚠ config generation: {e}")
 
     print(f"\n✓ Added {name} to {updated} registry(ies)")
+    if transport_mode == "proxy":
+        if proxy_token_preview:
+            print(f"  proxy_token: {proxy_token_preview}")
+        if model_selector_preview:
+            print(f"  model_selector: {model_selector_preview}")
     return 0
 
 
@@ -1245,11 +1038,11 @@ def cmd_serve(args: argparse.Namespace) -> int:
 
     # Use config from args
     loader = YAMLConfigLoader(config_dir=Path(args.config_dir))
-    audit = AuditLogger(agent_name="service-brain_agentctl", session=os.environ.get("TMUX_SESSION", ""))
+    audit = AuditLogger(agent_name="service-agentctl", session=os.environ.get("TMUX_SESSION", ""))
     daemon = BrainDaemonClient(socket_path="/tmp/brain_ipc.sock")
 
     svc = AgentCtlService(
-        agent_name="service-brain_agentctl",
+        agent_name="service-agentctl",
         daemon=daemon,
         config_loader=loader,
         audit=audit,
@@ -1265,6 +1058,36 @@ def cmd_serve(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_auth(args: argparse.Namespace) -> int:
+    """Proxy auth subcommand passthrough to brain_agent_proxy/bin/brain_agentctl auth."""
+    candidates = [
+        Path("/brain/infrastructure/service/brain_agent_proxy/bin/brain_agentctl"),
+        Path("/xkagent_infra/brain/infrastructure/service/brain_agent_proxy/bin/brain_agentctl"),
+    ]
+    proxy_ctl = next((p for p in candidates if p.exists()), None)
+    if not proxy_ctl:
+        print("brain_agent_proxy brain_agentctl not found")
+        return 1
+    cmd = [str(proxy_ctl), "auth"]
+    action = str(getattr(args, "action", "") or "").strip()
+    if action:
+        cmd.append(action)
+    provider = str(getattr(args, "provider", "") or "").strip()
+    if provider:
+        cmd.extend(["--provider", provider])
+    client_id = str(getattr(args, "client_id", "") or "").strip()
+    if client_id:
+        cmd.extend(["--client-id", client_id])
+    if bool(getattr(args, "all", False)):
+        cmd.append("--all")
+    if bool(getattr(args, "auto_callback", False)):
+        cmd.append("--auto-callback")
+    # backward-compatible passthrough for any extra tokens
+    cmd.extend(list(getattr(args, "auth_args", []) or []))
+    p = subprocess.run(cmd, check=False)
+    return int(p.returncode or 0)
+
+
 # ============================================================
 # Main
 # ============================================================
@@ -1276,7 +1099,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--config-dir",
-        default=os.environ.get("AGENTCTL_CONFIG_DIR", "/xkagent_infra/brain/infrastructure/config/agentctl"),
+        default=os.environ.get("AGENTCTL_CONFIG_DIR", "/brain/infrastructure/config/agentctl"),
         help="Directory containing agents_registry.yaml",
     )
 
@@ -1330,27 +1153,18 @@ def main() -> int:
     p_purge.add_argument("--apply", action="store_true", help="Actually perform action (default: dry-run)")
     p_purge.add_argument("--force", action="store_true", help="Skip confirmation prompt")
 
-    # Rename agent
-    p_rename = sub.add_parser("rename", help="Rename an agent: update registry, move directory, patch config files")
-    p_rename.add_argument("old_name", help="Current agent name")
-    p_rename.add_argument("new_name", help="New agent name")
-    p_rename.add_argument("--group", default="", help="Move to a different group (e.g. foos)")
-    p_rename.add_argument("--apply", action="store_true", help="Actually perform action (default: dry-run)")
-
     # Add single agent
     p_add = sub.add_parser("add", help="Add a single agent to registry and create directory")
     p_add.add_argument("name", help="Agent name (e.g. agent_system_ui-designer)")
     p_add.add_argument("--group", required=True, help="Target group (e.g. brain_system)")
     p_add.add_argument("--role", default="", help="Agent role (default: parsed from name)")
-    p_add.add_argument("--agent-type", default="", help="AI provider: claude|codex|kimi|minimax|chatgpt|gemini|custom (default: claude)")
-    p_add.add_argument("--agent-cli", default="", help="CLI type: claude|native (default: infer from agent_type)")
-    p_add.add_argument("--agent-model", default="", help="Model name (default: from role template)")
-    p_add.add_argument("--cli-type", default="", help="(compat) alias of --agent-cli")
-    p_add.add_argument("--model", default="", help="(compat) alias of --agent-model")
-    p_add.add_argument("--desired-state", default="running", choices=["stopped", "running"], help="Initial desired_state (default: running)")
+    p_add.add_argument("--agent-type", default="claude", help="AI provider: claude|codex|kimi|minimax|chatgpt|gemini|openai|copilot|alibaba|bytedance|custom (default: claude)")
+    p_add.add_argument("--cli-type", default="", help="CLI type: claude|native (default: infer from agent_type)")
+    p_add.add_argument("--transport", default="proxy", choices=["proxy", "direct"], help="Transport for Claude CLI: proxy(default)|direct")
+    p_add.add_argument("--model", default="", help="Model name (default: from role template)")
+    p_add.add_argument("--desired-state", default="stopped", choices=["stopped", "running"], help="Initial desired_state (default: stopped)")
     p_add.add_argument("--capabilities", default="", help="Comma-separated capabilities (default: from role template)")
     p_add.add_argument("--tags", default="", help="Comma-separated tags (default: from role template)")
-    p_add.add_argument("--profile", default="", help="Type profile ID to preset agent_type+agent_model (e.g. TP-SD-ARCHITECT-CODEX-OPUS)")
     p_add.add_argument("--apply", action="store_true", help="Actually perform action (default: dry-run)")
 
     # Group-level commands
@@ -1374,12 +1188,15 @@ def main() -> int:
     p_provision.add_argument("--desired-state", default="stopped", choices=["stopped", "running"], help="Initial desired_state (default: stopped)")
     p_provision.add_argument("--apply", action="store_true", help="Actually perform action (default: dry-run)")
 
-    # Profiles subcommand
-    p_profiles = sub.add_parser("profiles", help="List available type profiles")
-    p_profiles.add_argument("--role", default="", help="Filter by role (e.g. architect, developer, devops)")
-
     # Service command
     sub.add_parser("serve", help="Start IPC service daemon (accepts IPC messages)")
+    p_auth = sub.add_parser("auth", help="Auth passthrough to brain_agent_proxy")
+    p_auth.add_argument("action", nargs="?", default="login", choices=["login", "list", "status", "logout"], help="auth action")
+    p_auth.add_argument("--provider", default="", help="Provider id")
+    p_auth.add_argument("--client-id", default="", help="OAuth client_id override")
+    p_auth.add_argument("--all", action="store_true", help="Use with logout to clear all oauth tokens")
+    p_auth.add_argument("--auto-callback", action="store_true", help="Enable local callback auto-capture for PKCE flow")
+    p_auth.add_argument("auth_args", nargs=argparse.REMAINDER, help="Additional passthrough arguments")
 
     args = parser.parse_args()
 
@@ -1404,8 +1221,6 @@ def main() -> int:
         return cmd_delete(args)
     elif args.cmd == "purge":
         return cmd_purge(args)
-    elif args.cmd == "rename":
-        return cmd_rename(args)
     elif args.cmd == "add":
         return cmd_add(args)
     elif args.cmd == "start-group":
@@ -1414,10 +1229,10 @@ def main() -> int:
         return cmd_stop_group(args)
     elif args.cmd == "provision-group":
         return cmd_provision_group(args)
-    elif args.cmd == "profiles":
-        return cmd_profiles(args)
     elif args.cmd == "serve":
         return cmd_serve(args)
+    elif args.cmd == "auth":
+        return cmd_auth(args)
     else:
         parser.print_help()
         return 1

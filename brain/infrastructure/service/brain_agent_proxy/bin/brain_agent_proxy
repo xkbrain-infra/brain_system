@@ -1,0 +1,206 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+
+# Default values
+DEFAULT_PORT=3456
+DEFAULT_HOST="0.0.0.0"
+DEFAULT_LOG_LEVEL="info"
+RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp}/brain_agent_proxy"
+PID_FILE="$RUNTIME_DIR/proxy.pid"
+LOG_FILE="$RUNTIME_DIR/proxy.log"
+
+log() {
+    printf "[brain-agent-proxy] %s\n" "$*"
+}
+
+usage() {
+    cat <<'EOF'
+Usage:
+    brain_agent_proxy start [--port N] [--host HOST] [--log-level LEVEL]
+    brain_agent_proxy stop
+    brain_agent_proxy restart [--port N]
+    brain_agent_proxy status
+    brain_agent_proxy health [--port N]
+
+Examples:
+    brain_agent_proxy start --port 3456
+    brain_agent_proxy start --port 3456 --log-level DEBUG
+EOF
+}
+
+get_pid() {
+    local port="$1"
+    if [[ -f "$PID_FILE" ]]; then
+        local pid
+        pid="$(cat "$PID_FILE" 2>/dev/null || true)"
+        if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+            echo "$pid"
+            return 0
+        fi
+    fi
+    if command -v lsof >/dev/null 2>&1; then
+        lsof -ti ":$port" 2>/dev/null || true
+    elif command -v ss >/dev/null 2>&1; then
+        ss -tlnp 2>/dev/null | grep ":$port " | grep -oP 'pid=\K[0-9]+' || true
+    elif command -v pgrep >/dev/null 2>&1; then
+        pgrep -f "uvicorn src.main:app --host .* --port $port" | head -n 1 || true
+    fi
+}
+
+is_running() {
+    local port="$1"
+    local pid
+    pid=$(get_pid "$port")
+    if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+        return 0
+    fi
+    return 1
+}
+
+start_proxy() {
+    local port="${1:-$DEFAULT_PORT}"
+    local host="${2:-$DEFAULT_HOST}"
+    local log_level="${3:-$DEFAULT_LOG_LEVEL}"
+
+    if is_running "$port"; then
+        log "Already running on port $port"
+        return 0
+    fi
+
+    log "Starting brain_agent_proxy on $host:$port"
+
+    cd "$SCRIPT_DIR/.."
+    mkdir -p "$RUNTIME_DIR"
+    nohup env PYTHONPATH="$SCRIPT_DIR/.." python3 -m uvicorn src.main:app \
+        --host "$host" \
+        --port "$port" \
+        --log-level "$log_level" \
+        >"$LOG_FILE" 2>&1 < /dev/null &
+    echo $! > "$PID_FILE"
+
+    # Wait for startup
+    local i
+    for i in $(seq 1 30); do
+        if curl -fsS "http://127.0.0.1:$port/health" >/dev/null 2>&1; then
+            log "Started on $host:$port"
+            return 0
+        fi
+        sleep 1
+    done
+
+    log "Failed to start (log: $LOG_FILE)"
+    return 1
+}
+
+stop_proxy() {
+    local port="${1:-$DEFAULT_PORT}"
+    local pid
+    pid=$(get_pid "$port")
+
+    if [[ -z "$pid" ]]; then
+        log "Not running on port $port"
+        return 0
+    fi
+
+    log "Stopping brain_agent_proxy (pid=$pid)"
+    kill "$pid" 2>/dev/null || true
+    sleep 1
+
+    if kill -0 "$pid" 2>/dev/null; then
+        kill -9 "$pid" 2>/dev/null || true
+    fi
+    rm -f "$PID_FILE"
+
+    log "Stopped"
+}
+
+restart_proxy() {
+    local port="${1:-$DEFAULT_PORT}"
+    stop_proxy "$port"
+    sleep 1
+    start_proxy "$port"
+}
+
+status_proxy() {
+    local port="${1:-$DEFAULT_PORT}"
+
+    if is_running "$port"; then
+        local pid
+        pid=$(get_pid "$port")
+        log "Running on port $port (pid=$pid)"
+        return 0
+    else
+        log "Not running on port $port"
+        return 1
+    fi
+}
+
+health_proxy() {
+    local port="${1:-$DEFAULT_PORT}"
+
+    if curl -fsS "http://127.0.0.1:$port/health"; then
+        return 0
+    else
+        log "Unhealthy or not running"
+        return 1
+    fi
+}
+
+# Parse command
+CMD="${1:-}"
+shift || true
+
+case "$CMD" in
+    start)
+        PORT=""
+        HOST="$DEFAULT_HOST"
+        LOG_LEVEL="$DEFAULT_LOG_LEVEL"
+
+        while [[ $# -gt 0 ]]; do
+            case "$1" in
+                --port)
+                    PORT="$2"
+                    shift 2
+                    ;;
+                --host)
+                    HOST="$2"
+                    shift 2
+                    ;;
+                --log-level)
+                    LOG_LEVEL="$2"
+                    shift 2
+                    ;;
+                *)
+                    shift
+                    ;;
+            esac
+        done
+
+        PORT="${PORT:-$DEFAULT_PORT}"
+        start_proxy "$PORT" "$HOST" "$LOG_LEVEL"
+        ;;
+    stop)
+        PORT="${1:-${DEFAULT_PORT}}"
+        stop_proxy "$PORT"
+        ;;
+    restart)
+        PORT="${1:-${DEFAULT_PORT}}"
+        restart_proxy "$PORT"
+        ;;
+    status)
+        PORT="${1:-${DEFAULT_PORT}}"
+        status_proxy "$PORT"
+        ;;
+    health)
+        PORT="${1:-${DEFAULT_PORT}}"
+        health_proxy "$PORT"
+        ;;
+    help|--help|-h)
+        usage
+        ;;
+    *)
+        usage
+        ;;
+esac

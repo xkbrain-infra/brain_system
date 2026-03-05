@@ -1,0 +1,313 @@
+# Provider Configuration
+# ============================================
+# 存储真正的授权凭据（OAuth tokens, API keys）
+
+# Provider 定义
+# 每个 provider 有自己的授权信息
+providers:
+  # Copilot OAuth Provider
+  copilot:
+    type: oauth
+    name: "GitHub Copilot (OAuth)"
+    description: "Copilot with OAuth authentication"
+    account_type: "individual"
+
+    # OAuth 凭据
+    oauth:
+      # GitHub OAuth 配置
+      auth_endpoint: "https://github.com/login/oauth/access_token"
+      client_id: "Iv1.b507a08c87ecfe98"
+      client_secret: "${GITHUB_CLIENT_SECRET}"
+
+      # Token (由授权流程获取)
+      access_token: "gho_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      refresh_token: "gho_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      token_type: "bearer"
+      expires_at: 1738339200  # 2025-02-01 00:00:00 UTC
+      scope: "read:user"
+
+    # 上游 API 端点
+    api_base_url: "https://api.github.com"
+
+    # 支持的模型
+    models:
+      - gpt-5-mini
+      - gpt-5.1
+      - gpt-5.1-mini
+      - gpt-5.1-codex
+      - gpt-5.1-codex-mini
+      - gpt-5.1-codex-max
+      - gpt-5.2-codex
+      - gpt-5.3-codex
+      - gpt-4o
+      - gpt-4o-mini
+      - claude-sonnet-4.6
+      - claude-sonnet-4.5
+      - claude-opus-4.6
+      - claude-opus-4.5
+      - claude-haiku-4.5
+      - gemini-2.5-pro
+      - gemini-3-pro-preview
+      - gemini-3-flash-preview
+      - gemini-3.1-pro-preview
+      - grok-code-fast-1
+
+    # 协议支持
+    protocols:
+      - messages
+      - chat_completions
+      - responses
+
+    # 能力标签
+    capabilities:
+      - code
+      - chat
+      - reasoning
+      - fast
+
+    priority: 20
+    enabled: true
+
+  # Copilot API (local) - 直接调用本地 copilot-api
+  copilot-api-local:
+    type: api_key
+    name: "GitHub Copilot (Local API)"
+    description: "Local Copilot API proxy"
+
+    # API Key 凭据
+    api_key:
+      # 本地 copilot-api 不需要 key
+      require_auth: false
+      api_base_url: "http://127.0.0.1:4141"
+
+    models:
+      - gpt-5-mini
+      - gpt-5.1
+      - gpt-5.1-mini
+      - gpt-5.2-codex
+      - gpt-5.3-codex
+      - gpt-4o
+      - gpt-4o-mini
+      - claude-sonnet-4.6
+      - claude-sonnet-4.5
+      - claude-opus-4.6
+      - claude-opus-4.5
+      - claude-haiku-4.5
+      - gemini-2.5-pro
+      - gemini-3-pro-preview
+      - gemini-3-flash-preview
+      - grok-code-fast-1
+
+    protocols:
+      - chat_completions
+
+    capabilities:
+      - code
+      - chat
+      - reasoning
+      - fast
+
+    priority: 10
+    enabled: true
+
+  # OpenAI OAuth Device Provider
+  openai:
+    type: oauth_device
+    name: "OpenAI (OAuth Device)"
+    description: "OpenAI provider via OAuth Device auth (independent of Copilot)"
+
+    oauth_config:
+      token_file: "~/.local/share/brain_agent_proxy/tokens/openai_oauth_device.json"
+      flow: "openai_deviceauth"
+      auth_url: "https://auth.openai.com/api/accounts/deviceauth/usercode"
+      poll_url: "https://auth.openai.com/api/accounts/deviceauth/token"
+      token_url: "https://auth.openai.com/oauth/token"
+      redirect_uri: "https://auth.openai.com/deviceauth/callback"
+      verification_url: "https://auth.openai.com/codex/device"
+      client_id: "app_EMoamEEZ73f0CkXaXp7hrann"
+      scope: ""
+      upstream_mode: "chatgpt_codex"
+      codex_endpoint: "https://chatgpt.com/backend-api/codex/responses"
+      api_base_url: "https://chatgpt.com"
+      require_auth: true
+      header_name: "Authorization"
+      auth_scheme: "Bearer"
+
+    models:
+      - gpt-5-mini
+      - gpt-5.3-codex
+      - gpt-5
+      - gpt-4.1
+      - gpt-4.1-mini
+      - gpt-4o
+      - gpt-4o-mini
+
+    protocols:
+      - chat_completions
+      - responses
+      - embeddings
+
+    capabilities:
+      - code
+      - chat
+      - reasoning
+
+    priority: 30
+    enabled: true
+
+  # Native Gemini API provider
+  gemini:
+    type: gemini
+    name: "Google Gemini (Native API)"
+    description: "Direct Gemini adapter via Generative Language API"
+
+    oauth_config:
+      flow: "google_code_pkce"
+      auth_url: "https://accounts.google.com/o/oauth2/v2/auth"
+      token_url: "https://oauth2.googleapis.com/token"
+      redirect_uri: "http://localhost:8085/oauth2callback"
+      scope: "https://www.googleapis.com/auth/cloud-platform https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile"
+      client_id: "681255809395-oo8ft2oprdrnp9e3aqf6av3hmdib135j.apps.googleusercontent.com"
+      client_secret: "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"
+      client_id_env: "GEMINI_OAUTH_CLIENT_ID"
+      token_file: "~/.local/share/brain_agent_proxy/tokens/gemini_oauth_device.json"
+      use_code_assist_oauth: true
+      code_assist_endpoint: "https://cloudcode-pa.googleapis.com"
+      # Leave empty to auto-resolve from account binding or GOOGLE_CLOUD_PROJECT.
+      project_id: ""
+
+    api_key:
+      require_auth: true
+      api_base_url: "https://generativelanguage.googleapis.com/v1beta"
+      api_key_env: "GEMINI_API_KEY"
+      header_name: "x-goog-api-key"
+      auth_scheme: ""
+
+    models:
+      - gemini-2.5-pro
+      - gemini-3-pro-preview
+      - gemini-3-flash-preview
+      - gemini-3.1-pro-preview
+
+    protocols:
+      - messages
+      - chat_completions
+      - responses
+
+    capabilities:
+      - code
+      - chat
+      - reasoning
+
+    priority: 40
+    enabled: true
+
+  # Alibaba Qwen (DashScope) - Anthropic-compatible endpoint
+  alibaba:
+    type: api_key
+    name: "Alibaba Qwen (DashScope)"
+    description: "Alibaba DashScope coding endpoint via Anthropic-compatible API"
+
+    api_key:
+      require_auth: true
+      api_base_url: "${QWEN_API_BASE}"
+      api_key_env: "QWEN_API_KEY"
+      header_name: "x-api-key"
+      auth_scheme: ""
+
+    models:
+      - qwen3-coder-plus
+
+    protocols:
+      - messages
+
+    capabilities:
+      - code
+      - chat
+      - reasoning
+
+    priority: 50
+    enabled: true
+
+  # ByteDance Ark - Anthropic-compatible endpoint
+  bytedance:
+    type: api_key
+    name: "ByteDance Ark"
+    description: "ByteDance Ark coding endpoint via Anthropic-compatible API"
+
+    api_key:
+      require_auth: true
+      api_base_url: "${BYTEDANCE_API_BASE}"
+      api_key_env: "BYTEDANCE_API_KEY"
+      header_name: "x-api-key"
+      auth_scheme: ""
+
+    models:
+      - doubao-1.5-thinking-vision-pro
+
+    protocols:
+      - messages
+
+    capabilities:
+      - code
+      - chat
+      - reasoning
+
+    priority: 51
+    enabled: true
+
+  # MiniMax - Anthropic-compatible endpoint
+  minimax:
+    type: api_key
+    name: "MiniMax"
+    description: "MiniMax Anthropic-compatible endpoint"
+
+    api_key:
+      require_auth: true
+      api_base_url: "${MINIMAX_API_BASE}"
+      api_key_env: "MINIMAX_API_KEY"
+      header_name: "x-api-key"
+      auth_scheme: ""
+
+    models:
+      - MiniMax-M2.5
+
+    protocols:
+      - messages
+
+    capabilities:
+      - code
+      - chat
+      - reasoning
+
+    priority: 52
+    enabled: true
+
+  # Anthropic Claude - native API
+  claude:
+    type: api_key
+    name: "Anthropic Claude"
+    description: "Anthropic native Messages API"
+
+    api_key:
+      require_auth: true
+      api_base_url: "https://api.anthropic.com"
+      api_key_env: "ANTHROPIC_API_KEY"
+      header_name: "x-api-key"
+      auth_scheme: ""
+
+    models:
+      - claude-sonnet-4.6
+      - claude-opus-4.6
+      - claude-haiku-4.5
+
+    protocols:
+      - messages
+
+    capabilities:
+      - code
+      - chat
+      - reasoning
+
+    priority: 53
+    enabled: true
