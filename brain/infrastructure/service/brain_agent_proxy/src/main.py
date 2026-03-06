@@ -1135,40 +1135,13 @@ async def route_and_forward(
     except Exception as e:
         err_text = str(e)
         # Preserve upstream Copilot 4xx semantic errors.
-        # Model compatibility fallback is handled inside GitHubCopilotProvider.
+        # Do not hide model/endpoint compatibility errors behind proxy fallbacks.
         if err_text.startswith("Copilot API error: 4"):
             raise
-        # If Copilot OAuth fails, try fallback to copilot-api-local.
-        # Do not fallback for generic oauth_device providers (e.g. openaioauth),
-        # otherwise auth/config errors are masked as connectivity errors.
-        if provider.type in ("oauth", "oauth_device") and getattr(provider, "id", "") == "copilot":
-            fallback_provider = next(
-                (p for p in config.providers if p.id == "copilot-api-local" and p.enabled),
-                None
-            )
-            if fallback_provider:
-                print(f"[brain_agent_proxy] OAuth failed, trying fallback: {e}")
-                response = await forward_to_provider(fallback_provider, normalized, protocol)
-                provider = fallback_provider
-            else:
-                raise
-        else:
-            raise
+        raise
 
     # Format response
     return handler.format_response(response)
-
-
-def _should_allow_copilot_fallback(err_text: str) -> bool:
-    """Allow fallback for known model/endpoint compatibility 4xx errors."""
-    txt = (err_text or "").lower()
-    markers = (
-        "model_not_supported",
-        "unsupported_api_for_model",
-        "the requested model is not supported",
-        "not accessible via the /chat/completions endpoint",
-    )
-    return any(m in txt for m in markers)
 
 
 def _resolve_provider(normalized: Any, protocol: str, api_key: Optional[str]):
@@ -1219,40 +1192,9 @@ async def route_and_forward_stream(
     # Streaming currently supported for Copilot OAuth provider path.
     if provider.type in ("oauth", "oauth_device"):
         if provider.type == "oauth":
-            config = get_config()
             from .providers.github_copilot import GitHubCopilotProvider
             copilot = GitHubCopilotProvider(provider_id=provider.id)
-            primary_stream = copilot.forward_stream(normalized.original_request, protocol)
-            if getattr(provider, "id", "") != "copilot":
-                return primary_stream
-
-            fallback_provider = next(
-                (p for p in config.providers if p.id == "copilot-api-local" and p.enabled),
-                None
-            )
-            if not fallback_provider:
-                return primary_stream
-
-            async def _copilot_stream_with_fallback():
-                try:
-                    async for chunk in primary_stream:
-                        yield chunk
-                except Exception as e:
-                    err_text = str(e)
-                    if err_text.startswith("Copilot API error: 4"):
-                        raise
-                    print(f"[brain_agent_proxy] Copilot stream failed, trying fallback: {e}")
-                    if fallback_provider.type != "api_key":
-                        raise
-                    fallback_stream = _build_api_key_stream_iter(
-                        fallback_provider,
-                        normalized,
-                        protocol,
-                    )
-                    async for chunk in fallback_stream:
-                        yield chunk
-
-            return _copilot_stream_with_fallback()
+            return copilot.forward_stream(normalized.original_request, protocol)
         from .providers.oauth_device import OAuthDeviceProvider
         cfg = provider.oauth_config or {}
         oauth_device = OAuthDeviceProvider(
@@ -1512,8 +1454,7 @@ async def forward_to_provider(provider: Any, normalized: Any, protocol: str) -> 
             "model": normalized.model,
             "messages": messages_data,
             "temperature": normalized.temperature,
-            # copilot-api-local has unstable streamed output for this adapter path.
-            "stream": False if provider.id == "copilot-api-local" else normalized.stream,
+            "stream": normalized.stream,
         }
         tools_data = _build_openai_tools(normalized)
         if tools_data:

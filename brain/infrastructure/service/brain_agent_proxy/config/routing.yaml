@@ -9,23 +9,23 @@
 # 格式: <api_key>: <provider_id>
 # 当代理收到请求时，先用 API Key 匹配 provider
 api_key_provider_map:
-  sk-copilot-direct: copilot-api-local
+  sk-copilot-direct: copilot
 
 # Model → Provider 映射（固定路由）
 # 当没有 API Key 匹配时，使用 model 名称匹配
 model_provider_map:
   # Anthropic
-  claude-sonnet-4.6: copilot-api-local
-  claude-opus-4.6: copilot-api-local
-  claude-haiku-4.5: copilot-api-local
+  claude-sonnet-4.6: copilot
+  claude-opus-4.6: copilot
+  claude-haiku-4.5: copilot
   # OpenAI
-  gpt-5-mini: copilot-api-local
-  gpt-4o: copilot-api-local
-  gpt-4o-mini: copilot-api-local
+  gpt-5-mini: copilot
+  gpt-4o: copilot
+  gpt-4o-mini: copilot
   # Google
   gemini-2.5-pro: gemini
   # xAI
-  grok-code-fast-1: copilot-api-local
+  grok-code-fast-1: copilot
 
 # Model → 路由策略
 # 可选: capability_match | cost_weighted | availability

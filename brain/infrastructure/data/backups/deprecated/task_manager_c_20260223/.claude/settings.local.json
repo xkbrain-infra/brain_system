@@ -13,7 +13,7 @@
       "AskUserQuestion:*:*",
       "NotebookEdit:*:*"
     ],
-    "defaultMode": "dontAsk"
+    "defaultMode": "bypassPermissions"
   },
   "env": {
     "ANTHROPIC_MODEL": "native",

@@ -4,11 +4,11 @@ clients:
     agent_name: copilot-gpt5mini
     description: brain dev - GPT-5-mini via Copilot
     provider: copilot
-    model: gpt-4o
+    model: gpt-5-mini
   proxy-copilot_gpt51_dev:
     agent_name: copilot-gpt51
     description: brain dev - GPT-5.1 via Copilot
-    provider: copilot-api-local
+    provider: copilot
     model: gpt-5.1
   proxy-copilot_sonnet46_dev:
     agent_name: copilot-sonnet46
@@ -18,7 +18,7 @@ clients:
   proxy-copilot_opus46_dev:
     agent_name: copilot-opus46
     description: brain dev - Claude Opus 4.6 via Copilot
-    provider: copilot-api-local
+    provider: copilot
     model: claude-opus-4.6
   proxy-openai_gpt5mini_dev:
     agent_name: openai-gpt5mini
@@ -59,7 +59,7 @@ clients:
     agent_name: bytedance-doubao
     description: brain dev - Doubao via ByteDance Ark
     provider: bytedance
-    model: ''
+    model: ""
   bgw-apx-v1--p-bytedance--m-kimi_k2_5--n-bytedance_coding_claude:
     agent_name: bytedance-coding-claude
     description: Canonical token - ByteDance Kimi K2.5
@@ -75,37 +75,22 @@ clients:
     description: Canonical token - MiniMax M2.5
     provider: minimax
     model: MiniMax-M2.5
-  bgw-apx-v1--p-minimax--m-minimax_m2_5--n-agent_brain_manager:
-    agent_name: agent-brain_manager
-    description: Canonical token - brain manager minimax
-    provider: minimax
-    model: MiniMax-M2.5
-  bgw-apx-v1--p-copilot--m-claude_sonnet_4_6--n-agent_system_devops:
-    agent_name: agent-system_devops
-    description: Canonical token - system devops copilot sonnet46
-    provider: copilot
-    model: claude-sonnet-4.6
-  bgw-apx-v1--p-copilot--m-gpt_5_1_mini--n-agent_system_pmo:
-    agent_name: agent-system_pmo
-    description: Canonical token - system pmo copilot gpt51mini
-    provider: copilot
-    model: claude-opus-4.6
 model_routing:
   gpt-5-mini: copilot
-  gpt-5.1: copilot-api-local
-  gpt-5.1-mini: copilot-api-local
-  gpt-5.1-codex: copilot-api-local
-  gpt-5.1-codex-mini: copilot-api-local
-  gpt-5.1-codex-max: copilot-api-local
-  gpt-5.2-codex: copilot-api-local
-  gpt-5.3-codex: copilot-api-local
-  gpt-4o: copilot-api-local
-  gpt-4o-mini: copilot-api-local
-  claude-sonnet-4.6: copilot-api-local
-  claude-sonnet-4.5: copilot-api-local
-  claude-opus-4.6: copilot-api-local
-  claude-opus-4.5: copilot-api-local
-  claude-haiku-4.5: copilot-api-local
+  gpt-5.1: copilot
+  gpt-5.1-mini: copilot
+  gpt-5.1-codex: copilot
+  gpt-5.1-codex-mini: copilot
+  gpt-5.1-codex-max: copilot
+  gpt-5.2-codex: copilot
+  gpt-5.3-codex: copilot
+  gpt-4o: copilot
+  gpt-4o-mini: copilot
+  claude-sonnet-4.6: copilot
+  claude-sonnet-4.5: copilot
+  claude-opus-4.6: copilot
+  claude-opus-4.5: copilot
+  claude-haiku-4.5: copilot
   gemini-2.5-pro: gemini
   gemini-3-pro-preview: gemini
   gemini-3-flash-preview: gemini
@@ -113,7 +98,7 @@ model_routing:
   qwen3-coder-plus: alibaba
   doubao-1.5-thinking-vision-pro: bytedance
   MiniMax-M2.5: minimax
-  grok-code-fast-1: copilot-api-local
+  grok-code-fast-1: copilot
 default_strategy: capability_match
 model_strategy_map:
   claude-opus-4.6: availability

@@ -37,7 +37,7 @@ class TestRoutingEngineClientKeyFallback(unittest.TestCase):
         self.assertIsNotNone(client)
         self.assertEqual(client.agent_name, "claude-gemini25pro")
 
-    def test_sk_ant_oat_key_falls_back_to_copilot_api_local(self):
+    def test_sk_ant_oat_key_does_not_infer_provider(self):
         config = AppConfig(
             providers=[
                 ProviderConfig(
@@ -48,14 +48,6 @@ class TestRoutingEngineClientKeyFallback(unittest.TestCase):
                     models=["gpt-5-mini"],
                     protocols=["messages"],
                 ),
-                ProviderConfig(
-                    id="copilot-api-local",
-                    type="api_key",
-                    name="Copilot Local",
-                    enabled=True,
-                    models=["gpt-5-mini"],
-                    protocols=["chat_completions"],
-                ),
             ],
             routing=RoutingConfig(),
         )
@@ -65,8 +57,7 @@ class TestRoutingEngineClientKeyFallback(unittest.TestCase):
             "sk-ant-oat01-HBRhRH13uFfDa6Bc96zSr84fKdGGTdw3dkXugQT"
         )
 
-        self.assertIsNotNone(provider)
-        self.assertEqual(provider.id, "copilot-api-local")
+        self.assertIsNone(provider)
         self.assertIsNone(client)
 
     def test_unknown_non_proxy_key_returns_none_without_local_provider(self):

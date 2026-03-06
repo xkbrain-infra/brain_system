@@ -2,18 +2,18 @@
 role: System PMO (resident)
 version: 1.0
 location: /xkagent_infra/groups/system/agents/agent-system_pmo
-scope: /xkagent_infra/groups/org/system
+scope: /brain/groups/org/system
 ---
 
 # agent-system_pmo 配置
 
 ## 职责定位
 
-**我是 `/xkagent_infra/groups/org/system` 项目组的 pmo Agent**。
+**我是 `/brain/groups/org/system` 项目组的 pmo Agent**。
 
 ```yaml
 scope:
-  project_group: /xkagent_infra/groups/org/system
+  project_group: /brain/groups/org/system
   agent_name: agent-system_pmo
   role: pmo
 ```
@@ -89,7 +89,7 @@ init_sequence:
       agent_name: agent-system_pmo
       metadata:
         role: system_pmo
-        scope: /xkagent_infra/groups/org/system
+        scope: /brain/groups/org/system
         status: active
 
   2:
@@ -104,7 +104,7 @@ init_sequence:
       - /brain/INIT.yaml
       - /brain/base/spec/core/lep.yaml
       - /brain/base/spec/policies/ipc/message_format.yaml
-- /xkagent_infra/groups/org/system/README.md
+- /brain/groups/org/system/README.md
       - /brain/base/workflow/index.yaml
       - /brain/base/workflow/dsl.yaml
       - /brain/base/workflow/runtime.yaml

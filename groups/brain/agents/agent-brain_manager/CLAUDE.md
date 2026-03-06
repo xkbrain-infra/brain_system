@@ -2,18 +2,18 @@
 role: Brain manager (resident)
 version: 1.0
 location: /xkagent_infra/groups/brain/agents/agent-brain_manager
-scope: /xkagent_infra/groups/org/brain
+scope: /brain/groups/org/brain
 ---
 
 # agent-brain_manager 配置
 
 ## 职责定位
 
-**我是 `/xkagent_infra/groups/org/brain` 项目组的 manager Agent**。
+**我是 `/brain/groups/org/brain` 项目组的 manager Agent**。
 
 ```yaml
 scope:
-  project_group: /xkagent_infra/groups/org/brain
+  project_group: /brain/groups/org/brain
   agent_name: agent-brain_manager
   role: manager
 ```
@@ -30,7 +30,7 @@ init_sequence:
       agent_name: agent-brain_manager
       metadata:
         role: brain_manager
-        scope: /xkagent_infra/groups/org/brain
+        scope: /brain/groups/org/brain
         status: active
 
   2:

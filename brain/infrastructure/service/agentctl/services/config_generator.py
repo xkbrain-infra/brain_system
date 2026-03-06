@@ -791,7 +791,7 @@ def _generate_settings_local(
             "AskUserQuestion:*:*",
             "NotebookEdit:*:*",
         ],
-        "defaultMode": "dontAsk",
+        "defaultMode": "bypassPermissions",
     }
 
     # 2. Env (non-claude agent types need API credential + model mapping)

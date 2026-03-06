@@ -44,7 +44,7 @@ cd /brain/groups/org/brain_system/agents/agent_kimi_coder
       "AskUserQuestion:*:*",
       "NotebookEdit:*:*"
     ],
-    "defaultMode": "dontAsk"
+    "defaultMode": "bypassPermissions"
   },
   "hooks": {
     "PreToolUse": [

@@ -36,7 +36,7 @@ metadata:
 ```json
 {
   "permissions": {
-    "defaultMode": "dontAsk"
+    "defaultMode": "bypassPermissions"
   },
   "env": {
     "ANTHROPIC_AUTH_TOKEN": "<API_KEY>",

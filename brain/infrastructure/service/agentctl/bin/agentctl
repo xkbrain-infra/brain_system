@@ -1,4 +1,4 @@
-#!/opt/venv/bin/python3
+#!/usr/bin/env python3
 """AgentCTL - Unified agent control tool.
 
 Modes:
@@ -16,7 +16,6 @@ import shutil
 import socket
 import subprocess
 import sys
-import yaml
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -24,6 +23,14 @@ from typing import Any
 # Add service directory to Python path
 SERVICE_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SERVICE_DIR))
+
+try:
+    import yaml  # type: ignore
+except Exception as e:  # pragma: no cover
+    yaml = None  # type: ignore
+    _YAML_IMPORT_ERROR = e
+else:
+    _YAML_IMPORT_ERROR = None
 
 
 # ============================================================
@@ -77,6 +84,65 @@ def _kill_session(name: str, *, apply: bool) -> None:
 # ============================================================
 
 _SECRETS_FILE = Path("/brain/secrets/system/agents/llm_tokens.env")
+
+
+def _require_yaml() -> None:
+    if yaml is None:
+        raise RuntimeError(
+            f"pyyaml is required for this command: {_YAML_IMPORT_ERROR}"
+        )
+
+
+def _yaml_safe_load(stream: Any) -> Any:
+    _require_yaml()
+    return yaml.safe_load(stream)  # type: ignore[union-attr]
+
+
+def _yaml_dump(data: Any, stream: Any, **kwargs: Any) -> None:
+    _require_yaml()
+    yaml.dump(data, stream, **kwargs)  # type: ignore[union-attr]
+
+
+def _select_auth_python(proxy_ctl: Path) -> str:
+    """Pick a Python interpreter that can run proxy auth helpers reliably.
+
+    Interactive shells inside containers do not always resolve to the venv
+    interpreter, so probe a small set of candidates and require `httpx`.
+    """
+    candidates: list[str] = []
+    for raw in (
+        sys.executable,
+        os.environ.get("BRAIN_AGENTCTL_PYTHON", "").strip(),
+        "/opt/venv/bin/python3",
+        shutil.which("python3") or "",
+        shutil.which("python") or "",
+    ):
+        raw = (raw or "").strip()
+        if raw and raw not in candidates:
+            candidates.append(raw)
+
+    probe = (
+        "import importlib.util,sys;"
+        "sys.exit(0 if importlib.util.find_spec('httpx') else 1)"
+    )
+    for candidate in candidates:
+        try:
+            p = subprocess.run(
+                [candidate, "-c", probe],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+        except Exception:
+            continue
+        if p.returncode == 0:
+            return candidate
+
+    raise RuntimeError(
+        f"no usable python with httpx found for auth helper: checked {candidates} "
+        f"(set BRAIN_AGENTCTL_PYTHON to override)"
+    )
 
 # agent_type → { target_env_var: source_env_var_in_secrets }
 # When cli_type=claude, Claude Code needs ANTHROPIC_API_KEY/ANTHROPIC_BASE_URL
@@ -362,7 +428,7 @@ def _update_desired_state(config_dir: Path, targets: list[AgentSpec], desired_st
 
     config_path = config_dir / "agents_registry.yaml"
     with open(config_path, encoding="utf-8") as f:
-        data = yaml.safe_load(f) or {}
+        data = _yaml_safe_load(f) or {}
     if not isinstance(data, dict):
         raise RuntimeError(f"invalid yaml root in {config_path}")
 
@@ -396,7 +462,7 @@ def _update_desired_state(config_dir: Path, targets: list[AgentSpec], desired_st
 
     if modified > 0:
         with open(config_path, "w", encoding="utf-8") as f:
-            yaml.dump(data, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
+            _yaml_dump(data, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
         print(f"✓ Updated {config_path} ({modified} changed)")
     else:
         print(f"✓ desired_state already {normalized} for all targets")
@@ -661,7 +727,7 @@ def cmd_disable(args: argparse.Namespace) -> int:
 
     # Load YAML
     with open(config_path) as f:
-        data = yaml.safe_load(f)
+        data = _yaml_safe_load(f)
 
     # Update desired_state
     modified = 0
@@ -676,7 +742,7 @@ def cmd_disable(args: argparse.Namespace) -> int:
     # Write back
     if modified > 0:
         with open(config_path, 'w') as f:
-            yaml.dump(data, f, default_flow_style=False, sort_keys=False)
+            _yaml_dump(data, f, default_flow_style=False, sort_keys=False)
         print(f"\n✓ Updated {config_path}")
         print(f"✓ Modified {modified} agent(s)")
     else:
@@ -698,7 +764,7 @@ def cmd_enable(args: argparse.Namespace) -> int:
 
     # Load YAML
     with open(config_path) as f:
-        data = yaml.safe_load(f)
+        data = _yaml_safe_load(f)
 
     # Update desired_state
     modified = 0
@@ -713,7 +779,7 @@ def cmd_enable(args: argparse.Namespace) -> int:
     # Write back
     if modified > 0:
         with open(config_path, 'w') as f:
-            yaml.dump(data, f, default_flow_style=False, sort_keys=False)
+            _yaml_dump(data, f, default_flow_style=False, sort_keys=False)
         print(f"\n✓ Updated {config_path}")
         print(f"✓ Modified {modified} agent(s)")
     else:
@@ -747,7 +813,7 @@ def cmd_delete(args: argparse.Namespace) -> int:
 
     # Load YAML
     with open(config_path) as f:
-        data = yaml.safe_load(f)
+        data = _yaml_safe_load(f)
 
     # Delete agents
     deleted = 0
@@ -764,7 +830,7 @@ def cmd_delete(args: argparse.Namespace) -> int:
     # Write back
     if deleted > 0:
         with open(config_path, 'w') as f:
-            yaml.dump(data, f, default_flow_style=False, sort_keys=False)
+            _yaml_dump(data, f, default_flow_style=False, sort_keys=False)
         print(f"\n✓ Updated {config_path}")
         print(f"✓ Deleted {deleted} agent(s)")
     else:
@@ -818,7 +884,7 @@ def cmd_purge(args: argparse.Namespace) -> int:
             continue
         try:
             with open(rp) as f:
-                data = yaml.safe_load(f)
+                data = _yaml_safe_load(f)
             removed = 0
             for group_name, agents in (data.get('groups', {}) or {}).items():
                 if agents:
@@ -827,7 +893,7 @@ def cmd_purge(args: argparse.Namespace) -> int:
                     removed += original_count - len(agents)
             if removed > 0:
                 with open(rp, 'w') as f:
-                    yaml.dump(data, f, default_flow_style=False, sort_keys=False)
+                    _yaml_dump(data, f, default_flow_style=False, sort_keys=False)
                 print(f"✓ {rp}: deleted {removed} agent(s)")
                 purged += removed
             else:
@@ -1060,7 +1126,9 @@ def cmd_serve(args: argparse.Namespace) -> int:
 
 def cmd_auth(args: argparse.Namespace) -> int:
     """Proxy auth subcommand passthrough to brain_agent_proxy/bin/brain_agentctl auth."""
+    service_root = Path(__file__).resolve().parents[2]
     candidates = [
+        service_root / "brain_agent_proxy" / "bin" / "brain_agentctl",
         Path("/brain/infrastructure/service/brain_agent_proxy/bin/brain_agentctl"),
         Path("/xkagent_infra/brain/infrastructure/service/brain_agent_proxy/bin/brain_agentctl"),
     ]
@@ -1068,7 +1136,12 @@ def cmd_auth(args: argparse.Namespace) -> int:
     if not proxy_ctl:
         print("brain_agent_proxy brain_agentctl not found")
         return 1
-    cmd = [str(proxy_ctl), "auth"]
+    try:
+        auth_python = _select_auth_python(proxy_ctl)
+    except RuntimeError as e:
+        print(str(e))
+        return 1
+    cmd = [auth_python, str(proxy_ctl), "auth"]
     action = str(getattr(args, "action", "") or "").strip()
     if action:
         cmd.append(action)

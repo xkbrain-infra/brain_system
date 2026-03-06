@@ -1,4 +1,4 @@
-#!/opt/venv/bin/python3
+#!/usr/bin/env python3
 """brain_agentctl - Manage brain_agent_proxy configuration for Claude Code."""
 import argparse
 import asyncio
@@ -16,12 +16,17 @@ import webbrowser
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
+from typing import Any
 from urllib.parse import parse_qs, urlencode, urlparse
 
 import httpx
 import yaml
 
 OPENAI_CODEX_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
+SECRETS_ENV_CANDIDATES = (
+    Path("/brain/secrets/system/agents/llm_tokens.env"),
+    Path("/xkagent_infra/brain/secrets/system/agents/llm_tokens.env"),
+)
 
 
 def get_claude_settings_path():
@@ -212,6 +217,24 @@ def _default_api_key_token_file(provider_id: str) -> str:
     return f"~/.local/share/brain_agent_proxy/tokens/{provider_id}_api_key.json"
 
 
+def _load_secrets_env() -> dict[str, str]:
+    for path in SECRETS_ENV_CANDIDATES:
+        if not path.exists():
+            continue
+        out: dict[str, str] = {}
+        try:
+            for raw in path.read_text(encoding="utf-8").splitlines():
+                line = raw.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, _, value = line.partition("=")
+                out[key.strip()] = value.strip()
+        except Exception:
+            return {}
+        return out
+    return {}
+
+
 def _claude_cli_exists() -> bool:
     return shutil.which("claude") is not None
 
@@ -383,6 +406,7 @@ def _api_key_status(provider_id: str, provider_data: dict | None = None):
     inline_key = str(api_cfg.get("api_key", "") or "").strip()
     env_name = str(api_cfg.get("api_key_env", "") or "").strip()
     env_val = os.environ.get(env_name, "").strip() if env_name else ""
+    secrets_val = _load_secrets_env().get(env_name, "").strip() if env_name else ""
     token_file = _default_api_key_token_file(provider_id)
     token_data = _read_token_file(token_file) or {}
     token_key = str(token_data.get("api_key", "") or "").strip()
@@ -390,9 +414,79 @@ def _api_key_status(provider_id: str, provider_data: dict | None = None):
         return "configured(inline)", token_file
     if env_name and env_val:
         return f"configured(env:{env_name})", token_file
+    if env_name and secrets_val:
+        return f"configured(secrets:{env_name})", token_file
     if token_key:
         return f"configured(token:{Path(token_file).expanduser()})", token_file
     return "missing", token_file
+
+
+def _default_api_key_env_name(provider_id: str, provider_data: dict | None = None) -> str:
+    pdata = provider_data or _get_provider(provider_id)
+    api_cfg = (pdata or {}).get("api_key") or {}
+    env_name = str(api_cfg.get("api_key_env", "") or "").strip()
+    if env_name:
+        return env_name
+    if provider_id == "openai":
+        return "OPENAI_API_KEY"
+    return "ANTHROPIC_API_KEY"
+
+
+def _provider_supports_api_key_fallback(provider_id: str, provider_data: dict | None = None) -> bool:
+    pdata = provider_data or _get_provider(provider_id)
+    if (pdata or {}).get("api_key"):
+        return True
+    return provider_id == "openai"
+
+
+def _provider_runtime_status(provider_id: str, provider_data: dict | None = None) -> dict[str, Any]:
+    pdata = provider_data or _get_provider(provider_id)
+    result: dict[str, Any] = {
+        "provider_id": provider_id,
+        "oauth": None,
+        "api_key": None,
+    }
+
+    if _provider_is_oauth_capable(provider_id, pdata):
+        if provider_id == "claude":
+            s = _claude_cli_auth_status()
+            result["oauth"] = {
+                "type": "oauth(cli)",
+                "status": "valid" if bool(s.get("loggedIn")) else "missing",
+                "details": s,
+            }
+        else:
+            token_file = _default_oauth_token_file(provider_id, pdata)
+            token_data = _read_token_file(token_file)
+            status, ttl = _token_status(token_data)
+            result["oauth"] = {
+                "type": "oauth",
+                "status": status,
+                "ttl": ttl,
+                "token_file": str(Path(token_file).expanduser()),
+                "token_data": token_data or {},
+                "flow": str(((pdata or {}).get("oauth_config") or {}).get("flow", "oauth_legacy")),
+            }
+
+    if _provider_supports_api_key_fallback(provider_id, pdata):
+        env_name = _default_api_key_env_name(provider_id, pdata)
+        status, token_file = _api_key_status(
+            provider_id,
+            {
+                **(pdata or {}),
+                "api_key": {
+                    **(((pdata or {}).get("api_key") or {})),
+                    "api_key_env": env_name,
+                },
+            },
+        )
+        result["api_key"] = {
+            "status": status,
+            "env_name": env_name,
+            "token_file": str(Path(token_file).expanduser()),
+        }
+
+    return result
 
 
 def cmd_auth_list():
@@ -405,24 +499,32 @@ def cmd_auth_list():
         return
     print("Providers:")
     for pid in providers:
-        if pid in oauth_providers:
+        pdata = _get_provider(pid)
+        runtime = _provider_runtime_status(pid, pdata)
+        oauth_info = runtime.get("oauth")
+        api_info = runtime.get("api_key")
+
+        if oauth_info:
             if pid == "claude":
-                s = _claude_cli_auth_status()
-                status = "valid" if bool(s.get("loggedIn")) else "missing"
-                method = str(s.get("authMethod", "unknown") or "unknown")
-                provider = str(s.get("apiProvider", "unknown") or "unknown")
-                print(f"- {pid}: oauth(cli) | {status} | method={method} provider={provider}")
+                details = oauth_info.get("details", {})
+                method = str(details.get("authMethod", "unknown") or "unknown")
+                provider = str(details.get("apiProvider", "unknown") or "unknown")
+                print(f"- {pid}: oauth(cli) | {oauth_info['status']} | method={method} provider={provider}")
                 continue
-            pdata = _get_provider(pid)
-            token_file = _default_oauth_token_file(pid, pdata)
-            token_data = _read_token_file(token_file)
-            status, ttl = _token_status(token_data)
+
             extra = ""
-            if status == "valid" and ttl:
+            ttl = int(oauth_info.get("ttl", 0) or 0)
+            if oauth_info["status"] == "valid" and ttl:
                 extra = f" (expires in {ttl}s)"
-            print(f"- {pid}: oauth | {status}{extra} | token={Path(token_file).expanduser()}")
+            if api_info:
+                print(
+                    f"- {pid}: oauth | {oauth_info['status']}{extra} | "
+                    f"fallback={api_info['status']} | token={oauth_info['token_file']}"
+                )
+            else:
+                print(f"- {pid}: oauth | {oauth_info['status']}{extra} | token={oauth_info['token_file']}")
         elif pid in api_key_providers:
-            status, token_file = _api_key_status(pid, _get_provider(pid))
+            status, token_file = _api_key_status(pid, pdata)
             print(f"- {pid}: api_key | {status} | token={Path(token_file).expanduser()}")
         else:
             print(f"- {pid}: api_key/static")
@@ -439,10 +541,12 @@ def cmd_auth_status(provider: str = ""):
         if idx:
             print("")
         pdata = _get_provider(pid)
+        runtime = _provider_runtime_status(pid, pdata)
         print(f"provider: {pid}")
-        if pid in oauth_set:
+        if runtime.get("oauth"):
+            oauth_info = runtime["oauth"]
             if pid == "claude":
-                s = _claude_cli_auth_status()
+                s = oauth_info.get("details", {})
                 print("type: oauth(cli)")
                 print(f"loggedIn: {bool(s.get('loggedIn'))}")
                 print(f"authMethod: {s.get('authMethod', 'unknown')}")
@@ -451,31 +555,33 @@ def cmd_auth_status(provider: str = ""):
                 if err:
                     print(f"error: {err}")
                 continue
-            cfg = (pdata or {}).get("oauth_config") or {}
-            token_file = _default_oauth_token_file(pid, pdata)
-            token_data = _read_token_file(token_file)
-            status, ttl = _token_status(token_data)
             print("type: oauth")
-            print(f"flow: {cfg.get('flow', 'oauth_legacy') if cfg else 'oauth_legacy'}")
-            print(f"token_file: {Path(token_file).expanduser()}")
-            print(f"status: {status}")
+            print(f"flow: {oauth_info.get('flow', 'oauth_legacy')}")
+            print(f"token_file: {oauth_info.get('token_file', '')}")
+            print(f"status: {oauth_info.get('status', 'missing')}")
+            token_data = oauth_info.get("token_data") or {}
+            ttl = int(oauth_info.get("ttl", 0) or 0)
             if token_data:
                 expires_at = int(token_data.get("expires_at", 0) or 0)
                 print(f"expires_at: {_format_expire_ts(expires_at)}")
-                if status == "valid" and ttl:
+                if oauth_info.get("status") == "valid" and ttl:
                     print(f"expires_in: {ttl}s")
                 scope = str(token_data.get("scope", "") or "").strip()
                 if scope:
                     print(f"scope: {scope}")
+            if runtime.get("api_key"):
+                api_info = runtime["api_key"]
+                print("fallback_type: api_key")
+                print(f"fallback_api_key_env: {api_info.get('env_name', '')}")
+                print(f"fallback_token_file: {api_info.get('token_file', '')}")
+                print(f"fallback_status: {api_info.get('status', 'missing')}")
         elif pid in api_set:
-            api_cfg = (pdata or {}).get("api_key") or {}
-            env_name = str(api_cfg.get("api_key_env", "") or "").strip()
-            status, token_file = _api_key_status(pid, pdata)
+            api_info = runtime.get("api_key") or {}
             print("type: api_key")
-            print(f"token_file: {Path(token_file).expanduser()}")
-            if env_name:
-                print(f"api_key_env: {env_name}")
-            print(f"status: {status}")
+            print(f"token_file: {api_info.get('token_file', '')}")
+            if api_info.get("env_name"):
+                print(f"api_key_env: {api_info.get('env_name')}")
+            print(f"status: {api_info.get('status', 'missing')}")
         else:
             raise ValueError(f"provider '{pid}' has no auth flow")
 

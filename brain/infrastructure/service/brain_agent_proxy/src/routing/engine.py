@@ -199,12 +199,6 @@ class RoutingEngine:
         if provider:
             return provider, None
 
-        # Compatibility fallback for local Copilot key style.
-        if api_key.startswith("sk-ant-oat"):
-            local = self._find_enabled_provider("copilot-api-local")
-            if local:
-                return local, None
-
         # Do not infer provider from unknown/ephemeral external keys.
         # Leave provider unresolved and let model-based routing decide.
 
