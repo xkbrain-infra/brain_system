@@ -116,3 +116,22 @@ registration:
     3. knowledge/brian_system/_index.yaml — 注册 yaml + md 两个文档
   auto_registration: true
   responsible: generate_stats.py
+
+# ── 全局 bin 目录 symlink ──────────────────────────────────────
+global_bin_symlinks:
+  description: |
+    deploy 时必须自动为所有服务创建 /brain/bin/ 下的 symlink，
+    确保服务可全局调用（无需记忆完整路径）。
+
+  brain_bin_root: /brain/bin/
+
+  rules:
+    - "deploy hooks/mcp 时，扫描所有 services 的 bin/ 目录"
+    - "为每个可执行文件创建 symlink 到 /brain/bin/"
+    - "symlink 路径格式: /brain/bin/{service_name} -> {service_dir}/bin/{executable}"
+    - "已存在的 symlink 如果指向不同目标，先删除再重建"
+    - "deploy 完成后，同步更新 /etc/profile.d/brain.sh 确保 PATH 包含 /brain/bin"
+
+  enforcement:
+    - "deploy 步骤必须包含 symlink 更新"
+    - "验证: ls -la /brain/bin/ 应包含所有已部署服务的 symlink"

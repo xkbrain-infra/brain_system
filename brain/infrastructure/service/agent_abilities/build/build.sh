@@ -57,6 +57,75 @@ _update_releases_current() {
     ln -sfn "v$version" "$RELEASES_DIR/current"
 }
 
+# ─── 全局 bin 目录 symlink 更新 ─────────────────────────────────────
+_update_global_bin_symlinks() {
+    local services_dir="/brain/infrastructure/service"
+    local brain_bin="/brain/bin"
+
+    # 确保 /brain/bin 存在
+    [ -d "$brain_bin" ] || mkdir -p "$brain_bin"
+
+    # 扫描所有服务
+    local count=0
+    for svc_dir in "$services_dir"/*/; do
+        [ -d "$svc_dir" ] || continue
+        local svc_name
+        svc_name=$(basename "$svc_dir")
+
+        # 跳过非服务目录
+        case "$svc_name" in
+            hooks|utils) continue ;;
+        esac
+
+        local bin_dir="$svc_dir/bin"
+        [ -d "$bin_dir" ] || continue
+
+        # 扫描 bin 目录下的可执行文件
+        for exe in "$bin_dir"/*; do
+            [ -f "$exe" ] || continue
+            [ -x "$exe" ] || continue
+
+            local exe_name
+            exe_name=$(basename "$exe")
+
+            # 跳过目录（current 等）
+            [ -d "$exe" ] && continue
+
+            local symlink_path="$brain_bin/$exe_name"
+            local target_path="../infrastructure/service/$svc_name/bin/$exe_name"
+
+            # 如果 symlink 已存在且指向不同目标，先删除
+            if [ -L "$symlink_path" ]; then
+                local existing_target
+                existing_target=$(readlink -f "$symlink_path" 2>/dev/null || true)
+                local new_target
+                new_target=$(realpath "$exe" 2>/dev/null || true)
+                if [ "$existing_target" != "$new_target" ]; then
+                    rm -f "$symlink_path"
+                else
+                    continue  # 已存在且正确
+                fi
+            elif [ -e "$symlink_path" ]; then
+                # 实体文件存在，跳过
+                continue
+            fi
+
+            # 创建 symlink
+            ln -sf "$target_path" "$symlink_path"
+            ok "symlink: $exe_name -> $svc_name/bin/$exe_name"
+            count=$((count + 1))
+        done
+    done
+
+    # 确保 PATH 配置存在
+    if [ ! -f /etc/profile.d/brain.sh ]; then
+        echo 'export PATH="$PATH:/brain/bin"' > /etc/profile.d/brain.sh
+        ok "created /etc/profile.d/brain.sh"
+    fi
+
+    ok "global bin symlinks: $count links updated"
+}
+
 # ─── 版本管理 ─────────────────────────────────────────────────────────
 get_version() {
     grep '^version:' "$VERSION_FILE" 2>/dev/null \
@@ -607,6 +676,10 @@ for agents in data.get('groups', {}).values():
                 [ -z "$agent_path" ] && continue
                 local hooks_dir="$agent_path/.claude/hooks"
                 mkdir -p "$hooks_dir"
+                # 先删除 dangling symlinks
+                for hook in "${HOOKS[@]}"; do
+                    [ -L "$hooks_dir/$hook" ] && ! [ -e "$hooks_dir/$hook" ] && rm -f "$hooks_dir/$hook"
+                done
                 for hook in "${HOOKS[@]}"; do
                     [ -f "$hooks_current/$hook" ] || continue
                     cp -f "$hooks_current/$hook" "$hooks_dir/$hook"
@@ -657,6 +730,10 @@ for agents in data.get('groups', {}).values():
             find "$release_ver/hooks" -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
             _update_releases_current "$version"
             ok "hooks: recorded → releases/v$version/hooks/"
+
+            # 更新全局 bin symlinks
+            _update_global_bin_symlinks
+
             return 0
             ;;
         mcp)

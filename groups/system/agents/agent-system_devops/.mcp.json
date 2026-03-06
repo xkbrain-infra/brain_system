@@ -1,7 +1,7 @@
 {
   "mcpServers": {
     "mcp-brain_ipc_c": {
-      "command": "/xkagent_infra/brain/bin/mcp/mcp-brain_ipc_c",
+      "command": "/brain/bin/mcp/mcp-brain_ipc_c",
       "args": [],
       "env": {
         "BRAIN_AGENT_NAME": "agent-system_devops",
@@ -10,10 +10,10 @@
       }
     },
     "mcp-brain_google_api": {
-      "command": "/xkagent_infra/brain/bin/mcp/mcp-brain_google_api",
+      "command": "/brain/bin/mcp/mcp-brain_google_api",
       "args": [],
       "env": {
-        "GOOGLE_CREDENTIALS_PATH": "/xkagent_infra/brain/secrets/brain_google_api/credentials.json"
+        "GOOGLE_CREDENTIALS_PATH": "/brain/secrets/brain_google_api/credentials.json"
       }
     }
   }
