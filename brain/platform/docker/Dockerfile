@@ -72,8 +72,16 @@ ENV PATH="/opt/venv/bin:$PATH"
 
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
-RUN rm -rf /brain && ln -s /xkagent_infra/brain /brain
+# 从构建上下文复制代码（context 是仓库根目录）
+COPY brain /xkagent_infra/brain
+RUN ln -s /xkagent_infra/brain /brain
 
 WORKDIR /xkagent_infra/brain
 
-CMD ["/bin/bash", "-lc", "if [ ! -L /brain ] || [ \"$(readlink -f /brain 2>/dev/null || true)\" != \"/xkagent_infra/brain\" ]; then rm -rf /brain; ln -s /xkagent_infra/brain /brain; fi; if [ -x /xkagent_infra/brain/platform/docker/scripts/container_bootstrap.sh ]; then /xkagent_infra/brain/platform/docker/scripts/container_bootstrap.sh; else echo '[bootstrap] script not found, skip'; fi; exec /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf"]
+CMD ["/bin/bash", "-lc", "\
+if [ -x /xkagent_infra/brain/platform/docker/scripts/container_bootstrap.sh ]; then \
+    /xkagent_infra/brain/platform/docker/scripts/container_bootstrap.sh; \
+else \
+    echo '[bootstrap] script not found, skip'; \
+fi; \
+exec /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf"]

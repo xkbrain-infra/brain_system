@@ -8,8 +8,8 @@ networks:
 services:
   xk-agent-infra:
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ../..
+      dockerfile: brain/platform/docker/Dockerfile
     image: xk-agent-infra:local
     container_name: XKAgentInfra
     hostname: XKAgentInfra
@@ -18,10 +18,6 @@ services:
       - /bin/bash
       - -lc
       - |
-        if [ ! -L /brain ] || [ "$(readlink -f /brain 2>/dev/null || true)" != "/xkagent_infra/brain" ]; then
-          rm -rf /brain
-          ln -s /xkagent_infra/brain /brain
-        fi
         if [ -x /xkagent_infra/brain/platform/docker/scripts/container_bootstrap.sh ]; then
           /xkagent_infra/brain/platform/docker/scripts/container_bootstrap.sh
         else
@@ -31,9 +27,8 @@ services:
     networks:
       - xk-agent-infra-net
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - ${INFRA_ROOT_HOST_PATH:-/services/xkagent_infra}:/xkagent_infra
-      - ${DOCKER_DATA_ROOT_PATH:-./docker-data/root}:/root
+      - xkagent-infra-data:/xkagent_infra
+      - xkagent-infra-root:/root
     ports:
       - "${SSH_PORT:-8622}:22"
     environment:
@@ -48,3 +43,7 @@ services:
       retries: 5
       start_period: 90s
     restart: unless-stopped
+
+volumes:
+  xkagent-infra-data:
+  xkagent-infra-root:
