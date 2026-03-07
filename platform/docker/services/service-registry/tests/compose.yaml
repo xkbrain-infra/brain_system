@@ -1,0 +1,171 @@
+name: service-registry-test
+
+networks:
+  test-net:
+    name: service-registry-test-net
+    driver: bridge
+
+volumes:
+  registry-data:
+  test-results:
+
+services:
+  # 服务注册中心
+  service-registry:
+    build:
+      context: ../
+      dockerfile: Dockerfile
+    image: service-registry:mvp
+    container_name: service-registry-test
+    hostname: service-registry
+    networks:
+      - test-net
+    ports:
+      - "18500:8500"  # 使用非标准端口避免冲突
+    volumes:
+      - registry-data:/data
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8500
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8500/health\")'"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
+
+  # 模拟服务 1: Gateway
+  mock-gateway:
+    image: python:3.11-slim
+    container_name: mock-gateway
+    hostname: mock-gateway
+    networks:
+      - test-net
+    command: >
+      bash -c "
+        pip install flask requests &&
+        cat > /app.py << 'EOF'
+        from flask import Flask, jsonify
+        import requests
+        import time
+        import threading
+        import os
+
+        app = Flask(__name__)
+        REGISTRY_URL = 'http://service-registry:8500'
+        SERVICE_ID = 'gateway-01'
+
+        def register():
+            while True:
+                try:
+                    resp = requests.post(f'{REGISTRY_URL}/api/v1/registry/services', json={
+                        'service_id': SERVICE_ID,
+                        'service_name': 'brain_gateway',
+                        'service_type': 'http',
+                        'version': '1.0.0',
+                        'endpoints': [{'protocol': 'http', 'host': 'mock-gateway', 'port': 8080}],
+                        'metadata': {'group': 'brain', 'role': 'gateway'},
+                        'ttl': 30
+                    })
+                    print(f'Registered: {resp.status_code}')
+                except Exception as e:
+                    print(f'Register error: {e}')
+                time.sleep(20)
+
+        @app.route('/health')
+        def health():
+            return jsonify({'status': 'healthy'})
+
+        @app.route('/')
+        def index():
+            return jsonify({'service': 'gateway', 'version': '1.0.0'})
+
+        threading.Thread(target=register, daemon=True).start()
+        app.run(host='0.0.0.0', port=8080)
+        EOF
+        python /app.py
+      "
+    depends_on:
+      service-registry:
+        condition: service_healthy
+
+  # 模拟服务 2: Task Manager
+  mock-task-manager:
+    image: python:3.11-slim
+    container_name: mock-task-manager
+    hostname: mock-task-manager
+    networks:
+      - test-net
+    command: >
+      bash -c "
+        pip install flask requests &&
+        cat > /app.py << 'EOF'
+        from flask import Flask, jsonify
+        import requests
+        import time
+        import threading
+
+        app = Flask(__name__)
+        REGISTRY_URL = 'http://service-registry:8500'
+        SERVICE_ID = 'task-manager-01'
+
+        def heartbeat():
+            while True:
+                try:
+                    resp = requests.post(f'{REGISTRY_URL}/api/v1/registry/services/{SERVICE_ID}/heartbeat')
+                    print(f'Heartbeat: {resp.status_code}')
+                except Exception as e:
+                    print(f'Heartbeat error: {e}')
+                time.sleep(15)
+
+        def register():
+            try:
+                resp = requests.post(f'{REGISTRY_URL}/api/v1/registry/services', json={
+                    'service_id': SERVICE_ID,
+                    'service_name': 'brain_task_manager',
+                    'service_type': 'http',
+                    'version': '1.0.0',
+                    'endpoints': [{'protocol': 'http', 'host': 'mock-task-manager', 'port': 8080}],
+                    'metadata': {'group': 'brain', 'role': 'task-manager'},
+                    'ttl': 45
+                })
+                print(f'Registered: {resp.status_code}')
+                threading.Thread(target=heartbeat, daemon=True).start()
+            except Exception as e:
+                print(f'Register error: {e}')
+
+        @app.route('/health')
+        def health():
+            return jsonify({'status': 'healthy'})
+
+        threading.Timer(5, register).start()
+        app.run(host='0.0.0.0', port=8080)
+        EOF
+        python /app.py
+      "
+    depends_on:
+      service-registry:
+        condition: service_healthy
+
+  # 测试执行器
+  test-runner:
+    image: python:3.11-slim
+    container_name: test-runner
+    networks:
+      - test-net
+    volumes:
+      - ./tests:/tests
+      - test-results:/results
+    command: >
+      bash -c "
+        pip install requests pytest pytest-json-report &&
+        sleep 10 &&
+        cd /tests &&
+        pytest test_registry.py -v --json-report --json-report-file=/results/test-report.json || true &&
+        echo 'Tests completed'
+      "
+    depends_on:
+      - service-registry
+      - mock-gateway
+      - mock-task-manager
