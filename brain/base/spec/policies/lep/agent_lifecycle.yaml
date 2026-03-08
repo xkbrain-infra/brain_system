@@ -42,6 +42,10 @@ enforcement:
         message: "检测到 tmux 操作 agent session"
       - pattern: "(?:agent_|codex_).*tmux\\s+(kill-session|send-keys|new-session)"
         message: "检测到 tmux 操作 agent session"
+    tmux_direct_write:
+      - pattern: "tmux\\s+(kill-session|kill-server|send-keys|new-session|kill-pane|kill-window)"
+        message: "检测到直接 tmux 写操作，必须通过 brain_tmux_api"
+        exclude_prefix: "brain_tmux_api"
 
   block_message: |
     🚫 Agent 生命周期操作被拦截 (G-AGENT-LIFECYCLE)

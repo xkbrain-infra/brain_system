@@ -99,6 +99,10 @@ gates:
           pattern: tmux\s+(kill-session|send-keys|new-session).*(?:agent_|codex_)
         - message: 检测到 tmux 操作 agent session
           pattern: (?:agent_|codex_).*tmux\s+(kill-session|send-keys|new-session)
+        tmux_direct_write:
+        - message: 检测到直接 tmux 写操作，必须通过 brain_tmux_api
+          pattern: tmux\s+(kill-session|kill-server|send-keys|new-session|kill-pane|kill-window)
+          exclude_prefix: brain_tmux_api
       priority: CRITICAL
       stage: pre_tool_use
       triggers:

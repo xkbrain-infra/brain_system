@@ -63,6 +63,7 @@ class InlineChecker(BaseChecker):
                         'suggestion': item.get('suggestion', ''),
                         'priority': item.get('priority'),
                         'action': item.get('action'),
+                        'exclude_prefix': item.get('exclude_prefix'),  # 新增
                     })
                 except re.error as e:
                     print(f"Warning: Invalid regex pattern '{pattern_str}': {e}", file=sys.stderr)
@@ -79,6 +80,13 @@ class InlineChecker(BaseChecker):
             for pattern_group in self._compiled.values():
                 for pattern_info in pattern_group:
                     if pattern_info['regex'].search(command):
+                        # Check exclude_prefix - if command starts with excluded prefix, skip
+                        exclude_prefix = pattern_info.get('exclude_prefix')
+                        if exclude_prefix:
+                            cmd_stripped = command.strip()
+                            if cmd_stripped.startswith(exclude_prefix):
+                                continue  # Skip this pattern - excluded
+
                         # Build message from template
                         msg_template = context.enforcement.get('warn_message') or context.enforcement.get('block_message', '')
                         message = self.format_message(
@@ -103,6 +111,13 @@ class InlineChecker(BaseChecker):
             for pattern_group in self._compiled.values():
                 for pattern_info in pattern_group:
                     if pattern_info['regex'].search(file_path):
+                        # Check exclude_prefix - if file_path starts with excluded prefix, skip
+                        exclude_prefix = pattern_info.get('exclude_prefix')
+                        if exclude_prefix:
+                            path_stripped = file_path.strip()
+                            if path_stripped.startswith(exclude_prefix):
+                                continue  # Skip this pattern - excluded
+
                         msg_template = context.enforcement.get('warn_message') or context.enforcement.get('block_message', '')
                         message = self.format_message(
                             msg_template,
