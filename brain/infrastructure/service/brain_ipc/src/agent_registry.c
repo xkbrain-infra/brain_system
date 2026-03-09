@@ -431,7 +431,8 @@ int registry_list_online(AgentRegistry *reg, char *buf, size_t bufsize) {
     return count;
 }
 
-int registry_list_instances(AgentRegistry *reg, char *buf, size_t bufsize, bool include_offline) {
+int registry_list_instances(AgentRegistry *reg, char *buf, size_t bufsize,
+                            bool include_offline, int source_filter) {
     pthread_mutex_lock(&reg->lock);
 
     time_t now = time(NULL);
@@ -443,18 +444,13 @@ int registry_list_instances(AgentRegistry *reg, char *buf, size_t bufsize, bool 
     for (int i = 0; i < reg->count && offset < bufsize - 300; i++) {
         Agent *a = &reg->agents[i];
         if (!a->active) continue;
+        if (!matches_source_filter(a, source_filter)) continue;
 
         bool online = is_agent_online(a, now);
         if (!online && !include_offline) continue;
 
         long idle = now - a->last_heartbeat;
-        const char *source_str = "unknown";
-        switch (a->source) {
-            case AGENT_SOURCE_REGISTER: source_str = "register"; break;
-            case AGENT_SOURCE_HEARTBEAT: source_str = "heartbeat"; break;
-            case AGENT_SOURCE_TMUX_DISCOVERY: source_str = "tmux_discovery"; break;
-            case AGENT_SOURCE_SERVICE: source_str = "service"; break;
-        }
+        const char *source_str = source_to_str(a->source);
 
         if (count > 0) {
             offset += snprintf(buf + offset, bufsize - offset, ",");
@@ -555,6 +551,97 @@ int registry_search(AgentRegistry *reg, const char *query, bool fuzzy,
     snprintf(buf + offset, bufsize - offset, "]");
     pthread_mutex_unlock(&reg->lock);
     return count;
+}
+
+int registry_list_agents_aggregated(AgentRegistry *reg, char *buf, size_t bufsize,
+                                    bool include_offline, int source_filter) {
+    pthread_mutex_lock(&reg->lock);
+
+    time_t now = time(NULL);
+    size_t offset = 0;
+
+    // 临时存储聚合结果: name -> 统计信息
+    typedef struct {
+        char name[MAX_AGENT_NAME];
+        bool online;
+        int instance_count;
+        int online_instance_count;
+        time_t first_registered_at;
+        time_t last_heartbeat;
+    } AgentAggregate;
+
+    AgentAggregate aggregates[MAX_AGENTS] = {0};
+    int aggregate_count = 0;
+
+    // 第一步: 遍历所有实例，聚合统计
+    for (int i = 0; i < reg->count; i++) {
+        Agent *a = &reg->agents[i];
+        if (!a->active) continue;
+        if (!matches_source_filter(a, source_filter)) continue;
+
+        bool online = is_agent_online(a, now);
+        if (!online && !include_offline) continue;
+
+        // 查找是否已有该名称的聚合条目
+        int found = -1;
+        for (int j = 0; j < aggregate_count; j++) {
+            if (strcmp(aggregates[j].name, a->name) == 0) {
+                found = j;
+                break;
+            }
+        }
+
+        if (found >= 0) {
+            // 更新现有聚合条目
+            AgentAggregate *agg = &aggregates[found];
+            agg->instance_count++;
+            if (online) {
+                agg->online = true;
+                agg->online_instance_count++;
+            }
+            if (a->registered_at < agg->first_registered_at) {
+                agg->first_registered_at = a->registered_at;
+            }
+            if (a->last_heartbeat > agg->last_heartbeat) {
+                agg->last_heartbeat = a->last_heartbeat;
+            }
+        } else {
+            // 创建新的聚合条目
+            if (aggregate_count >= MAX_AGENTS) break;
+            AgentAggregate *agg = &aggregates[aggregate_count++];
+            strncpy(agg->name, a->name, MAX_AGENT_NAME - 1);
+            agg->online = online;
+            agg->instance_count = 1;
+            agg->online_instance_count = online ? 1 : 0;
+            agg->first_registered_at = a->registered_at;
+            agg->last_heartbeat = a->last_heartbeat;
+        }
+    }
+
+    // 第二步: 生成JSON
+    offset += snprintf(buf + offset, bufsize - offset, "[");
+
+    for (int i = 0; i < aggregate_count && offset < bufsize - 200; i++) {
+        AgentAggregate *agg = &aggregates[i];
+        long idle = now - agg->last_heartbeat;
+
+        if (i > 0) {
+            offset += snprintf(buf + offset, bufsize - offset, ",");
+        }
+        offset += snprintf(buf + offset, bufsize - offset,
+            "{\"name\":\"%s\",\"online\":%s,"
+            "\"instance_count\":%d,\"online_instance_count\":%d,"
+            "\"first_registered_at\":%ld,\"last_heartbeat\":%ld,"
+            "\"idle_seconds\":%ld}",
+            agg->name, agg->online ? "true" : "false",
+            agg->instance_count, agg->online_instance_count,
+            (long)agg->first_registered_at, (long)agg->last_heartbeat,
+            idle);
+    }
+
+    snprintf(buf + offset, bufsize - offset, "]");
+    pthread_mutex_unlock(&reg->lock);
+    return aggregate_count;
 }
 
 // ============ Target Resolution ============
