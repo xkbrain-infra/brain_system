@@ -99,5 +99,5 @@ bool Router::IsIncoming(const std::string& from) {
 }
 
 bool Router::IsReply(const std::string& from) {
-  return from.rfind("agent_", 0) == 0;
+  return from.rfind("agent_", 0) == 0 || from.rfind("agent-", 0) == 0;
 }
