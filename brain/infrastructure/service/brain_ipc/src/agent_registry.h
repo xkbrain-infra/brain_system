@@ -68,12 +68,15 @@ Agent* registry_get(AgentRegistry *reg, const char *name);
 Agent* registry_get_by_instance(AgentRegistry *reg, const char *instance_id);
 Agent* registry_get_by_tmux_pane(AgentRegistry *reg, const char *tmux_pane);
 int registry_list_online(AgentRegistry *reg, char *buf, size_t bufsize);
-int registry_list_instances(AgentRegistry *reg, char *buf, size_t bufsize, bool include_offline);
+int registry_list_instances(AgentRegistry *reg, char *buf, size_t bufsize,
+                            bool include_offline, int source_filter);
 int registry_list_filtered(AgentRegistry *reg, char *buf, size_t bufsize,
                            bool include_offline, int source_filter);
 int registry_search(AgentRegistry *reg, const char *query, bool fuzzy,
                     bool include_offline, int source_filter, int limit,
                     char *buf, size_t bufsize);
+int registry_list_agents_aggregated(AgentRegistry *reg, char *buf, size_t bufsize,
+                                    bool include_offline, int source_filter);
 
 // Health/pruning
 // Marks active agents as inactive when their tmux_pane is not present in the provided snapshot.

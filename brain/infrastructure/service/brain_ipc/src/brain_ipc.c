@@ -475,25 +475,6 @@ static char* handle_service_heartbeat(json_t *data) {
     return json_ok(extra);
 }
 
-static char* handle_agent_list(json_t *data) {
-    int include_offline = 0;
-    json_t *offline_val = json_object_get(data, "include_offline");
-    if (offline_val && json_is_true(offline_val)) {
-        include_offline = 1;
-    }
-
-    char agents_json[16384];
-    char instances_json[16384];
-    int count = registry_list_online(&g_registry, agents_json, sizeof(agents_json));
-    int inst_count = registry_list_instances(&g_registry, instances_json, sizeof(instances_json), include_offline);
-
-    char *buf = malloc(BUFFER_SIZE);
-    snprintf(buf, BUFFER_SIZE,
-             "{\"status\":\"ok\",\"agents\":%s,\"instances\":%s,\"count\":%d,\"instance_count\":%d}\n",
-             agents_json, instances_json, count, inst_count);
-    return buf;
-}
-
 static int parse_source_filter(const char *source, int default_filter, int *out_filter) {
     if (!out_filter) return -1;
     if (!source || !source[0]) {
@@ -526,6 +507,35 @@ static int parse_source_filter(const char *source, int default_filter, int *out_
         return 0;
     }
     return -1;
+}
+
+static char* handle_agent_list(json_t *data) {
+    int include_offline = 0;
+    json_t *offline_val = json_object_get(data, "include_offline");
+    if (offline_val && json_is_true(offline_val)) {
+        include_offline = 1;
+    }
+
+    // Parse source filter - default to AGENT only (exclude services)
+    int source_filter = REGISTRY_SOURCE_FILTER_AGENT;
+    json_t *source_val = json_object_get(data, "source");
+    if (source_val && json_is_string(source_val)) {
+        const char *source_str = json_string_value(source_val);
+        parse_source_filter(source_str, REGISTRY_SOURCE_FILTER_AGENT, &source_filter);
+    }
+
+    char agents_json[16384];
+    char instances_json[16384];
+    int count = registry_list_agents_aggregated(&g_registry, agents_json, sizeof(agents_json),
+                                                include_offline, source_filter);
+    int inst_count = registry_list_instances(&g_registry, instances_json, sizeof(instances_json),
+                                             include_offline, source_filter);
+
+    char *buf = malloc(BUFFER_SIZE);
+    snprintf(buf, BUFFER_SIZE,
+             "{\"status\":\"ok\",\"agents\":%s,\"instances\":%s,\"count\":%d,\"instance_count\":%d}\n",
+             agents_json, instances_json, count, inst_count);
+    return buf;
 }
 
 static char* handle_service_list(json_t *data) {
@@ -887,6 +897,18 @@ static char* handle_ipc_recv(json_t *data) {
 
     if (!agent || !agent[0]) {
         return json_error("missing 'agent' field");
+    }
+
+    // count_only mode: peek queue without consuming (used by Stop hook)
+    json_t *count_only_j = json_object_get(data, "count_only");
+    if (count_only_j && json_is_true(count_only_j)) {
+        char _cn[MAX_AGENT_NAME], _cs[MAX_TMUX_SESSION], _cp[MAX_TMUX_PANE];
+        parse_instance_id(agent, _cn, sizeof(_cn), _cs, sizeof(_cs), _cp, sizeof(_cp));
+        const char *logical = _cn[0] ? _cn : agent;
+        int cnt = msgqueue_peek(&g_msgqueue, logical);
+        char *buf = malloc(64);
+        snprintf(buf, 64, "{\"status\":\"ok\",\"count\":%d}\n", cnt);
+        return buf;
     }
 
     // Auto-heartbeat receiver
