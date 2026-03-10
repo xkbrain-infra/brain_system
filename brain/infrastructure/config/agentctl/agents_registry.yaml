@@ -1,6 +1,6 @@
 agents_registry:
-  version: '2.1'
-  updated: '2026-02-28'
+  version: '2.2'
+  updated: '2026-03-10'
 group_meta:
   brain:
     type: coding
@@ -16,19 +16,90 @@ groups:
     scope: group
     group: brain
     path: /xkagent_infra/groups/brain/agents/agent-brain_manager
-    agent_type: minimax
-    agent_cli: claude
-    agent_model: MiniMax-M2.5
     tmux_session: agent-brain_manager
-    cwd: /xkagent_infra/groups/brain/agents/agent-brain_manager
-    cli_args: []
-    env:
-      IS_SANDBOX: 1
-    export_cmd:
-      BRAIN_AGENT_NAME: agent-brain_manager
     desired_state: running
     status: active
     required: false
+  - name: agent-brain_dev
+    description: brain 的 dev Agent
+    role: dev
+    scope: group
+    group: brain
+    path: /xkagent_infra/groups/brain/agents/agent-brain_dev
+    tmux_session: agent-brain_dev
+    required: false
+    desired_state: running
+    status: active
+  - name: agent-brain_frontdesk
+    description: Brain 前台接待 Agent
+    role: frontdesk
+    scope: group
+    group: brain
+    path: /xkagent_infra/groups/brain/agents/agent-brain_frontdesk
+    tmux_session: agent-brain_frontdesk
+    required: false
+    desired_state: running
+    status: active
+  - name: tmp-agent-bytedance
+    description: brain 的 dev Agent
+    role: dev
+    scope: group
+    group: brain
+    path: /xkagent_infra/groups/brain/agents/tmp-agent-bytedance
+    tmux_session: tmp-agent-bytedance
+    required: false
+    desired_state: running
+    status: active
+  - name: tmp-agent-alibaba
+    description: brain 的 dev Agent
+    role: dev
+    scope: group
+    group: brain
+    path: /xkagent_infra/groups/brain/agents/tmp-agent-alibaba
+    tmux_session: tmp-agent-alibaba
+    required: false
+    desired_state: running
+    status: active
+  - name: tmp-agent-gemini
+    description: brain 的 dev Agent
+    role: dev
+    scope: group
+    group: brain
+    path: /xkagent_infra/groups/brain/agents/tmp-agent-gemini
+    tmux_session: tmp-agent-gemini
+    required: false
+    desired_state: running
+    status: active
+  - name: tmp-agent-copilot
+    description: brain 的 dev Agent
+    role: dev
+    scope: group
+    group: brain
+    path: /xkagent_infra/groups/brain/agents/tmp-agent-copilot
+    tmux_session: tmp-agent-copilot
+    required: false
+    desired_state: running
+    status: active
+  - name: tmp-openai-codex
+    description: brain 的 dev Agent
+    role: dev
+    scope: group
+    group: brain
+    path: /xkagent_infra/groups/brain/agents/tmp-openai-codex
+    tmux_session: tmp-openai-codex
+    required: false
+    desired_state: running
+    status: active
+  - name: tmp-agent-gemini-cli
+    description: brain 的 dev Agent
+    role: dev
+    scope: group
+    group: brain
+    path: /xkagent_infra/groups/brain/agents/tmp-agent-gemini-cli
+    tmux_session: tmp-agent-gemini-cli
+    required: false
+    desired_state: stopped
+    status: active
   system:
   - name: agent-system_pmo
     description: System PMO (resident)
@@ -36,15 +107,7 @@ groups:
     scope: group
     group: system
     path: /xkagent_infra/groups/system/agents/agent-system_pmo
-    agent_type: claude
-    model: Sonnet
     tmux_session: agent-system_pmo
-    cwd: /xkagent_infra/groups/system/agents/agent-system_pmo
-    cli_args: []
-    env:
-      IS_SANDBOX: 1
-    export_cmd:
-      BRAIN_AGENT_NAME: agent-system_pmo
     desired_state: running
     status: active
     required: false
@@ -54,15 +117,50 @@ groups:
     scope: group
     group: system
     path: /xkagent_infra/groups/system/agents/agent-system_devops
-    agent_type: claude
-    model: Sonnet
     tmux_session: agent-system_devops
-    cwd: /xkagent_infra/groups/system/agents/agent-system_devops
-    cli_args: []
-    env:
-      IS_SANDBOX: 1
-    export_cmd:
-      BRAIN_AGENT_NAME: agent-system_devops
     desired_state: running
     status: active
     required: false
+services:
+  infrastructure:
+  - name: service-brain_task_manager
+    description: Task/Spec SSOT service - 任务状态机、Spec生命周期、项目依赖管理
+    managed_by: supervisord
+    status: active
+    health:
+      endpoint: http://localhost:8091/health
+      interval_s: 30
+      timeout_s: 5
+    recovery_level: 0
+    depends_on: []
+    binary: /xkagent_infra/brain/infrastructure/service/brain_task_manager/bin/brain_task_manager
+    config: /xkagent_infra/brain/infrastructure/config/brain_task_manager/brain_task_manager.json
+    log_stdout: /xkagent_infra/brain/runtime/logs/brain_task_manager.log
+    log_stderr: /xkagent_infra/brain/runtime/logs/brain_task_manager_error.log
+    port: 8091
+    ipc_name: service-brain_task_manager
+    version: v0.1.0
+    language: cpp
+    tags: [infrastructure, task-management, ssot]
+
+  - name: service-brain_timer
+    description: 定时任务调度服务
+    managed_by: supervisord
+    status: active
+    health:
+      endpoint: http://localhost:8090/health
+      interval_s: 30
+      timeout_s: 5
+    recovery_level: 0
+    depends_on: []
+    ipc_name: service-brain_timer
+    tags: [infrastructure, scheduler]
+
+  - name: service-agentctl
+    description: Agent 生命周期管理与编排服务
+    managed_by: supervisord
+    status: active
+    recovery_level: 0
+    depends_on: []
+    ipc_name: service-agentctl
+    tags: [infrastructure, orchestration]

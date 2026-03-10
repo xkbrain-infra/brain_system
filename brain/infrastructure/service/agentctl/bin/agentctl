@@ -12,6 +12,7 @@ import argparse
 import asyncio
 import json
 import os
+import shlex
 import shutil
 import socket
 import subprocess
@@ -162,7 +163,9 @@ _AGENT_TYPE_ENV_MAP: dict[str, dict[str, str]] = {
         "ANTHROPIC_AUTH_TOKEN": "LITELLM_MASTER_KEY",
         "ANTHROPIC_BASE_URL": "LITELLM_ANTHROPIC_BASE",
     },
-    "gemini": {},
+    "gemini": {
+        "GEMINI_API_KEY": "GEMINI_API_KEY",
+    },
 }
 
 
@@ -212,6 +215,8 @@ def _generate_configs(spec: AgentSpec, *, force_claude_md: bool = False) -> None
     elif result.get("claude_md") is None and spec.role:
         md_name = "AGENTS.md" if spec.agent_type == "codex" else "CLAUDE.md"
         print(f"  {spec.name}: {md_name} exists (use --force to overwrite)")
+    if result.get("runtime_manifest"):
+        print(f"  {spec.name}: runtime manifest ready")
 
 
 def _start_session(spec: AgentSpec, *, apply: bool, config_gen: bool = True, force_claude_md: bool = False) -> None:
@@ -236,9 +241,13 @@ def _start_session(spec: AgentSpec, *, apply: bool, config_gen: bool = True, for
     # tmux session is an isolated shell — exports here don't pollute other sessions
     shell_parts: list[str] = [
         "unset CLAUDECODE",  # Prevent nested Claude Code session detection
+    ]
+    if spec.cwd:
+        shell_parts.append(f"cd {shlex.quote(spec.cwd)}")
+    shell_parts.extend([
         f"export TMUX_SESSION={spec.tmux_session}",
         "export TMUX_PANE=$(tmux display-message -p '#{pane_id}' 2>/dev/null)",
-    ]
+    ])
     if spec.agent_type == "codex" and spec.cwd:
         shell_parts.append(f"export CODEX_HOME={spec.cwd}/.codex")
     elif spec.agent_type == "kimi" and spec.cwd:
@@ -278,6 +287,7 @@ def _list_sessions() -> set[str]:
 
 def _load_spec(config_dir: Path) -> dict[str, AgentSpec]:
     from config.loader import YAMLConfigLoader
+    from services.config_generator import load_runtime_manifest
 
     loader = YAMLConfigLoader(config_dir=config_dir)
     cfg = loader.get_agents_registry()
@@ -301,56 +311,51 @@ def _load_spec(config_dir: Path) -> dict[str, AgentSpec]:
             continue
 
         # 构建 start_cmd
-        agent_type = a.get("agent_type", "claude")
-        cli_type = a.get("cli_type", "").strip().lower()  # 新增: 明确指定 CLI 类型
-        cli_args = a.get("cli_args", [])
-        cwd = str(a.get("cwd") or "").strip() or None
-        export_cmd = a.get("export_cmd", {})
-        initial_prompt = a.get("initial_prompt", "")
+        agent_type = str(a.get("agent_type") or "").strip()
+        cwd = str(a.get("path") or a.get("cwd") or "").strip() or None
+        start_cmd = ""
 
-        # 导出环境变量
-        exports = []
-        for key, value in export_cmd.items():
-            exports.append(f"export {key}={value}")
-
-        # 构建完整命令
-        # cli_type 优先级最高，明确指定使用哪个 CLI
-        if cli_type in ("claude", "claude_code"):
-            # 使用 Claude Code CLI
-            cmd = "claude"
-            use_claude_cli = True
-        elif cli_type == "native":
-            # 使用模型原生 CLI
-            cmd = agent_type
-            use_claude_cli = False
+        manifest = load_runtime_manifest(cwd or "") if cwd else None
+        runtime = manifest.get("runtime") if isinstance(manifest, dict) else None
+        if isinstance(runtime, dict) and runtime.get("command"):
+            cmd_parts = [str(runtime.get("command")).strip()]
+            cmd_parts.extend(str(arg).strip() for arg in (runtime.get("args") or []) if str(arg).strip())
+            start_cmd = " ".join(cmd_parts).strip()
+            agent_type = str(runtime.get("agent_type") or agent_type).strip()
         else:
-            # 向后兼容：如果没有指定 cli_type，根据 agent_type 推断
-            if agent_type == "codex":
-                cmd = "codex"
-                use_claude_cli = False
-            elif agent_type in ("claude", "kimi", "minimax", "chatgpt", "gemini", "openai", "copilot", "alibaba", "bytedance"):
+            cli_type = str(a.get("cli_type", "")).strip().lower()
+            cli_args = a.get("cli_args", [])
+            export_cmd = a.get("export_cmd", {})
+            initial_prompt = a.get("initial_prompt", "")
+            exports = [f"export {key}={value}" for key, value in export_cmd.items()]
+
+            if cli_type in ("claude", "claude_code"):
                 cmd = "claude"
                 use_claude_cli = True
-            else:
+            elif cli_type == "native":
                 cmd = agent_type
                 use_claude_cli = False
+            else:
+                if agent_type == "codex":
+                    cmd = "codex"
+                    use_claude_cli = False
+                elif agent_type in ("claude", "kimi", "minimax", "chatgpt", "gemini", "openai", "copilot", "alibaba", "bytedance"):
+                    cmd = "claude"
+                    use_claude_cli = True
+                else:
+                    cmd = agent_type
+                    use_claude_cli = False
 
-        cmd_parts = [cmd]
-
-        # 添加 --model 参数（仅当显式指定时）
-        model = a.get("model", "").strip()
-        if use_claude_cli and model:
-            cmd_parts += ["--model", model]
-        elif not use_claude_cli and model and agent_type in ("kimi", "gemini"):
-            cmd_parts += ["--model", model]
-
-        cmd_parts += cli_args
-
-        # 添加 initial_prompt（使用 Claude Code CLI 时支持）
-        if use_claude_cli and initial_prompt:
-            cmd_parts.append(f"'{initial_prompt}'")
-
-        start_cmd = " && ".join(exports + [" ".join(cmd_parts)]) if exports else " ".join(cmd_parts)
+            cmd_parts = [cmd]
+            model = str(a.get("model") or "").strip()
+            if use_claude_cli and model:
+                cmd_parts += ["--model", model]
+            elif not use_claude_cli and model and agent_type in ("kimi", "gemini"):
+                cmd_parts += ["--model", model]
+            cmd_parts += cli_args
+            if use_claude_cli and initial_prompt:
+                cmd_parts.append(f"'{initial_prompt}'")
+            start_cmd = " && ".join(exports + [" ".join(cmd_parts)]) if exports else " ".join(cmd_parts)
 
         out[name] = AgentSpec(
             name=name,
@@ -468,6 +473,25 @@ def _update_desired_state(config_dir: Path, targets: list[AgentSpec], desired_st
         print(f"✓ desired_state already {normalized} for all targets")
 
 
+def _check_service_health(endpoint: str, timeout_s: float = 5.0) -> tuple[str, str]:
+    """HTTP GET health endpoint. Returns (status, detail)."""
+    import urllib.request
+    import urllib.error
+    try:
+        with urllib.request.urlopen(endpoint, timeout=timeout_s) as resp:
+            body = resp.read(512).decode("utf-8", errors="replace")
+            try:
+                data = json.loads(body)
+                svc_status = str(data.get("status") or "ok")
+            except Exception:
+                svc_status = "ok"
+            return svc_status, ""
+    except urllib.error.URLError as e:
+        return "unreachable", str(e.reason)
+    except Exception as e:
+        return "error", str(e)
+
+
 def cmd_list(args: argparse.Namespace) -> int:
     """List configured agents and tmux status."""
     from config.loader import YAMLConfigLoader
@@ -498,6 +522,29 @@ def cmd_list(args: argparse.Namespace) -> int:
         extra = " ".join([x for x in [desired_state, required] if x])
         extra_str = f" {extra}" if extra else ""
         print(f"{name:16s} {running:8s} session={agent_spec.tmux_session} status={agent_spec.status}{extra_str}")
+
+    # Show services health status from services: section
+    services_section = cfg.get("services", {}) if isinstance(cfg, dict) else {}
+    all_services: list[dict] = []
+    if isinstance(services_section, dict):
+        for _cat, svc_list in services_section.items():
+            if isinstance(svc_list, list):
+                all_services.extend(s for s in svc_list if isinstance(s, dict))
+    if all_services:
+        print()
+        print("services:")
+        for svc in all_services:
+            name = str(svc.get("name") or "")
+            health_cfg = svc.get("health") if isinstance(svc.get("health"), dict) else {}
+            endpoint = str(health_cfg.get("endpoint") or "") if health_cfg else ""
+            timeout_s = float(health_cfg.get("timeout_s") or 5.0) if health_cfg else 5.0
+            if endpoint:
+                svc_status, detail = _check_service_health(endpoint, timeout_s)
+                detail_str = f" ({detail})" if detail else ""
+                print(f"  {name:32s} {svc_status}{detail_str}")
+            else:
+                print(f"  {name:32s} no_health_endpoint")
+
     return 0
 
 
@@ -560,6 +607,42 @@ def cmd_restart(args: argparse.Namespace) -> int:
     return 0
 
 
+def _planned_config_artifacts(agent: AgentSpec) -> list[str]:
+    from services.config_generator import load_runtime_manifest
+
+    raw = agent.raw_spec or {}
+    cli_type = str(raw.get("cli_type") or raw.get("agent_cli") or "").strip().lower()
+    agent_type = str(raw.get("agent_type") or agent.agent_type or "").strip()
+    runtime_cwd = agent.cwd or str(raw.get("path") or "").strip()
+    manifest = load_runtime_manifest(runtime_cwd) if runtime_cwd else None
+    runtime = manifest.get("runtime") if isinstance(manifest, dict) else None
+    if not cli_type and isinstance(runtime, dict):
+        cli_type = "claude" if bool(runtime.get("use_claude_cli")) else "native"
+    if not agent_type and isinstance(runtime, dict):
+        agent_type = str(runtime.get("agent_type") or "").strip()
+
+    if cli_type in ("claude", "claude_code"):
+        return [".mcp.json"]
+    if cli_type == "native":
+        if agent_type == "codex":
+            return [".codex/config.toml"]
+        if agent_type == "kimi":
+            return [".kimi/config.toml", ".kimi/mcp.json"]
+        if agent_type == "gemini":
+            return [".gemini/settings.json"]
+        return []
+
+    if agent_type == "codex":
+        return [".codex/config.toml"]
+    if agent_type == "kimi":
+        return [".kimi/config.toml", ".kimi/mcp.json"]
+    if agent_type == "gemini":
+        return [".gemini/settings.json"]
+    if agent_type:
+        return [".mcp.json"]
+    return []
+
+
 def cmd_apply_config(args: argparse.Namespace) -> int:
     """Generate config files without restarting agents."""
     from services.config_generator import generate_all_configs
@@ -573,19 +656,25 @@ def cmd_apply_config(args: argparse.Namespace) -> int:
             print(f"- {agent.name}: skip (no raw_spec)")
             continue
         if not args.apply:
-            mcp_file = ".codex/config.toml" if agent.agent_type == "codex" else ".mcp.json"
-            print(f"- {agent.name}: would generate {mcp_file}", end="")
-            if agent.role:
-                md_name = "AGENTS.md" if agent.agent_type == "codex" else "CLAUDE.md"
-                print(f" + {md_name}", end="")
-            print()
+            preview_parts = _planned_config_artifacts(agent)
+            if agent.role and agent.agent_type:
+                preview_parts.append("AGENTS.md" if agent.agent_type == "codex" else "CLAUDE.md")
+            preview_parts.append(".brain/agent_runtime.json")
+            print(f"- {agent.name}: would generate {', '.join(preview_parts)}")
             continue
 
         result = generate_all_configs(agent.raw_spec, force_claude_md=force)
-        mcp_file = ".codex/config.toml" if agent.agent_type == "codex" else ".mcp.json"
-        parts = [f"{mcp_file}"]
+        parts: list[str] = []
+        if result.get("mcp_config"):
+            parts.extend(_planned_config_artifacts(agent))
         if result.get("claude_md"):
             parts.append(os.path.basename(result["claude_md"]))
+        if result.get("settings_local"):
+            parts.append(".claude/settings.local.json")
+        if result.get("runtime_manifest"):
+            parts.append(".brain/agent_runtime.json")
+        if not parts:
+            parts.append("no-op")
         print(f"- {agent.name}: generated {', '.join(parts)}")
     return 0
 
@@ -926,6 +1015,7 @@ _REGISTRY_PATHS = [
     Path("/brain/infrastructure/config/agentctl/agents_registry.yaml"),
     Path("/brain/groups/org/brain_system/projects/agent_orchestrator/config/agents_registry.yaml"),
 ]
+_GROUPS_BASE_DIR = Path("/xkagent_infra/groups")
 
 
 def cmd_add(args: argparse.Namespace) -> int:
@@ -954,14 +1044,14 @@ def cmd_add(args: argparse.Namespace) -> int:
 
     agent_type = args.agent_type or "claude"
     cli_type = args.cli_type or ""
-    transport_mode = (args.transport or "proxy").strip().lower()
-    if transport_mode not in ("proxy", "direct"):
-        raise RuntimeError("transport must be proxy|direct")
+    transport_mode = (args.transport or "proxy_v2").strip().lower()
+    if transport_mode not in ("proxy", "proxy_v2", "direct"):
+        raise RuntimeError("transport must be proxy|proxy_v2|direct")
     role_defaults = ROLE_DEFAULTS.get(role, ROLE_FALLBACK)
     model = args.model or role_defaults.get("model", "Sonnet")
     proxy_token_preview = ""
     model_selector_preview = ""
-    if transport_mode == "proxy":
+    if transport_mode in ("proxy", "proxy_v2"):
         try:
             from services.config_generator import _build_proxy_auth_token, _build_model_selector
             preview_spec = {"name": name, "model": model}
@@ -982,24 +1072,22 @@ def cmd_add(args: argparse.Namespace) -> int:
         tags = role_defaults.get("tags", [])
 
     desired_state = args.desired_state or "stopped"
-    agent_dir = f"/brain/groups/org/{group}/agents/{name}"
+    agent_dir = str(_GROUPS_BASE_DIR / group / "agents" / name)
 
     entry = AgentEntry(
         name=name,
         tmux_session=name,
-        cwd=agent_dir,
+        cwd="",
         description=f"{group} 的 {role} Agent",
         role=role,
         scope="group",
         group=group,
         path=agent_dir,
-        agent_type=agent_type,
-        cli_type=cli_type,
-        model=model,
-        cli_args=["--dangerously-skip-permissions"] if agent_type != "codex" else ["--dangerously-bypass-approvals-and-sandbox"],
-        env={"IS_SANDBOX": "1", "BRAIN_TRANSPORT_MODE": transport_mode},
-        export_cmd={"BRAIN_AGENT_NAME": name},
-        initial_prompt=name,
+        agent_type="",
+        agent_cli="",
+        agent_model="",
+        cli_type="",
+        model="",
         required=False,
         desired_state=desired_state,
         status="active",
@@ -1016,7 +1104,7 @@ def cmd_add(args: argparse.Namespace) -> int:
             print(f"  cli_type: {cli_type}")
         print(f"  transport: {transport_mode}")
         print(f"  model: {model}")
-        if transport_mode == "proxy":
+        if transport_mode in ("proxy", "proxy_v2"):
             if proxy_token_preview:
                 print(f"  proxy_token: {proxy_token_preview}")
             if model_selector_preview:
@@ -1086,7 +1174,7 @@ def cmd_add(args: argparse.Namespace) -> int:
         print(f"⚠ config generation: {e}")
 
     print(f"\n✓ Added {name} to {updated} registry(ies)")
-    if transport_mode == "proxy":
+    if transport_mode in ("proxy", "proxy_v2"):
         if proxy_token_preview:
             print(f"  proxy_token: {proxy_token_preview}")
         if model_selector_preview:
@@ -1233,7 +1321,7 @@ def main() -> int:
     p_add.add_argument("--role", default="", help="Agent role (default: parsed from name)")
     p_add.add_argument("--agent-type", default="claude", help="AI provider: claude|codex|kimi|minimax|chatgpt|gemini|openai|copilot|alibaba|bytedance|custom (default: claude)")
     p_add.add_argument("--cli-type", default="", help="CLI type: claude|native (default: infer from agent_type)")
-    p_add.add_argument("--transport", default="proxy", choices=["proxy", "direct"], help="Transport for Claude CLI: proxy(default)|direct")
+    p_add.add_argument("--transport", default="proxy_v2", choices=["proxy", "proxy_v2", "direct"], help="Transport for Claude CLI: proxy_v2(default)|proxy|direct")
     p_add.add_argument("--model", default="", help="Model name (default: from role template)")
     p_add.add_argument("--desired-state", default="stopped", choices=["stopped", "running"], help="Initial desired_state (default: stopped)")
     p_add.add_argument("--capabilities", default="", help="Comma-separated capabilities (default: from role template)")
