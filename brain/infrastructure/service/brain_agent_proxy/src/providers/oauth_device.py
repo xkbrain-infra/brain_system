@@ -440,20 +440,24 @@ class OAuthDeviceProvider(BaseProvider):
         return tool_choice
 
     @classmethod
-    def _to_responses_input_content(cls, content: Any) -> list[Dict[str, Any]]:
+    def _to_responses_input_content(cls, content: Any, *, role: str = "user") -> list[Dict[str, Any]]:
         """Normalize mixed message content into OpenAI Responses input content items."""
+        text_type = "output_text" if role == "assistant" else "input_text"
         if isinstance(content, str):
             text = content
-            return [{"type": "input_text", "text": text}] if text else []
+            return [{"type": text_type, "text": text}] if text else []
 
         if isinstance(content, dict):
             ctype = str(content.get("type", "") or "")
             if ctype == "text":
                 text = str(content.get("text", "") or "")
-                return [{"type": "input_text", "text": text}] if text else []
-            if ctype == "input_text":
+                return [{"type": text_type, "text": text}] if text else []
+            if ctype in {"input_text", "output_text"}:
                 text = str(content.get("text", "") or "")
-                return [{"type": "input_text", "text": text}] if text else []
+                return [{"type": text_type, "text": text}] if text else []
+            if ctype == "refusal":
+                text = str(content.get("text", "") or "")
+                return [{"type": "refusal", "text": text}] if text else []
             if ctype in {"image", "input_image"}:
                 image_url = None
                 if isinstance(content.get("image_url"), str):
@@ -471,15 +475,15 @@ class OAuthDeviceProvider(BaseProvider):
                     return [{"type": "input_image", "image_url": image_url}]
                 return []
             # Fallback: stringify unknown block.
-            return [{"type": "input_text", "text": json.dumps(content, ensure_ascii=False)}]
+            return [{"type": text_type, "text": json.dumps(content, ensure_ascii=False)}]
 
         if isinstance(content, list):
             out: list[Dict[str, Any]] = []
             for item in content:
-                out.extend(cls._to_responses_input_content(item))
+                out.extend(cls._to_responses_input_content(item, role=role))
             return out
 
-        return [{"type": "input_text", "text": str(content)}]
+        return [{"type": text_type, "text": str(content)}]
 
     @classmethod
     def _build_codex_payload(cls, request: Dict[str, Any]) -> Dict[str, Any]:
@@ -498,7 +502,7 @@ class OAuthDeviceProvider(BaseProvider):
                     {
                         "type": "message",
                         "role": role,
-                        "content": cls._to_responses_input_content(item.get("content", "")),
+                        "content": cls._to_responses_input_content(item.get("content", ""), role=role),
                     }
                 )
             payload["input"] = normalized_input
@@ -525,7 +529,7 @@ class OAuthDeviceProvider(BaseProvider):
                 {
                     "type": "message",
                     "role": role,
-                    "content": cls._to_responses_input_content(content),
+                    "content": cls._to_responses_input_content(content, role=role),
                 }
             )
 

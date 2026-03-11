@@ -93,6 +93,7 @@ providers:
 
     models:
       - gpt-5-mini
+      - gpt-5.4
       - gpt-5.3-codex
       - gpt-5
       - gpt-4.1
@@ -175,6 +176,7 @@ providers:
 
     models:
       - qwen3-coder-plus
+      - kimi-k2.5
 
     protocols:
       - messages
@@ -201,6 +203,7 @@ providers:
       auth_scheme: ""
 
     models:
+      - kimi-k2.5
       - doubao-1.5-thinking-vision-pro
 
     protocols:

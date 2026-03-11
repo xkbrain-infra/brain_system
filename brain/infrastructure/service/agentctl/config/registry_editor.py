@@ -71,8 +71,10 @@ def render_agent_yaml_v2(entry: AgentEntry) -> str:
     if entry.group:
         lines.append(f"  group: {entry.group}")
     path = entry.path or entry.cwd
-    lines.append(f"  path: {path}")
-    lines.append(f"  agent_type: {entry.agent_type}")
+    if path:
+        lines.append(f"  path: {path}")
+    if entry.agent_type:
+        lines.append(f"  agent_type: {entry.agent_type}")
     cli = entry.agent_cli or entry.cli_type
     model = entry.agent_model or entry.model
     if cli:
@@ -82,7 +84,8 @@ def render_agent_yaml_v2(entry: AgentEntry) -> str:
     if entry.effort:
         lines.append(f"  effort: {entry.effort}")
     lines.append(f"  tmux_session: {entry.tmux_session}")
-    lines.append(f"  cwd: {entry.cwd}")
+    if entry.cwd:
+        lines.append(f"  cwd: {entry.cwd}")
 
     # cli_args
     if entry.cli_args:

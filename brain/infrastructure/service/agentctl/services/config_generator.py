@@ -29,6 +29,10 @@ DEFAULT_MCP_SERVER = {
 }
 
 TEMPLATE_DIR = Path("/brain/base/spec/templates/agent")
+CORE_TEMPLATE_DIR = Path("/brain/base/spec/templates/core")
+ROLE_TEMPLATE_DIR = Path("/brain/base/spec/templates/roles")
+LEGACY_TEMPLATE_DIR = Path("/brain/base/spec/templates/agent")
+RUNTIME_MANIFEST_RELATIVE_PATH = ".brain/agent_runtime.json"
 
 
 # ------------------------------------------------------------------
@@ -93,6 +97,142 @@ def generate_mcp_config(
         else:
             # Unknown agent_type - fallback to Claude
             _write_claude_mcp(cwd, mcp_servers)
+
+
+def runtime_manifest_path(cwd: str) -> Path:
+    return Path(cwd) / RUNTIME_MANIFEST_RELATIVE_PATH
+
+
+def load_runtime_manifest(cwd: str) -> dict[str, Any] | None:
+    path = runtime_manifest_path(cwd)
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+
+
+def _resolve_runtime_command(spec: dict[str, Any]) -> tuple[str, bool]:
+    agent_type = str(spec.get("agent_type") or "").strip()
+    cli_type = str(spec.get("cli_type") or spec.get("agent_cli") or "").strip().lower()
+    if cli_type in ("claude", "claude_code"):
+        return "claude", True
+    if cli_type == "native":
+        return agent_type, False
+    if agent_type == "codex":
+        return "codex", False
+    if agent_type in ("claude", "kimi", "minimax", "chatgpt", "gemini", "openai", "copilot", "alibaba", "bytedance"):
+        return "claude", True
+    return agent_type, False
+
+
+def generate_runtime_manifest(spec: dict[str, Any]) -> str | None:
+    """Persist launch-time runtime details into the agent directory."""
+    cwd = str(spec.get("cwd") or spec.get("path") or "").strip()
+    agent_name = str(spec.get("name") or "").strip()
+    agent_type = str(spec.get("agent_type") or "").strip()
+    if not cwd or not agent_name or not agent_type:
+        return None
+
+    command, use_claude_cli = _resolve_runtime_command(spec)
+    if not command:
+        return None
+
+    cli_args = [str(arg).strip() for arg in (spec.get("cli_args") or []) if str(arg).strip()]
+    model = str(spec.get("model") or spec.get("agent_model") or "").strip()
+    initial_prompt = str(spec.get("initial_prompt") or "").strip()
+    env_map: dict[str, str] = {}
+
+    raw_env = spec.get("env") or {}
+    if isinstance(raw_env, dict):
+        for key, value in raw_env.items():
+            key = str(key).strip()
+            value = str(value).strip()
+            if key:
+                env_map[key] = value
+
+    raw_export = spec.get("export_cmd") or {}
+    if isinstance(raw_export, dict):
+        for key, value in raw_export.items():
+            key = str(key).strip()
+            value = str(value).strip()
+            if key:
+                env_map[key] = value
+
+    if agent_type == "codex":
+        env_map.setdefault("CODEX_HOME", f"{cwd}/.codex")
+    elif agent_type == "kimi":
+        env_map.setdefault("KIMI_HOME", f"{cwd}/.kimi")
+
+    args: list[str] = []
+    if model:
+        if use_claude_cli:
+            args.extend(["--model", model])
+        elif agent_type in ("kimi", "gemini"):
+            args.extend(["--model", model])
+
+    if agent_type == "kimi" and not use_claude_cli:
+        args.extend(["--mcp-config-file", f"{cwd}/.kimi/mcp.json"])
+        kimi_subcommand = str(spec.get("kimi_subcommand") or "").strip()
+        args.append(kimi_subcommand or "acp")
+
+    args.extend(cli_args)
+    if initial_prompt and use_claude_cli:
+        args.append(initial_prompt)
+
+    payload = {
+        "version": 1,
+        "agent_name": agent_name,
+        "runtime": {
+            "command": command,
+            "args": args,
+            "env": env_map,
+            "agent_type": agent_type,
+            "use_claude_cli": use_claude_cli,
+        },
+    }
+
+    path = runtime_manifest_path(cwd)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    return str(path)
+
+
+def _extract_model_from_runtime(runtime: dict[str, Any]) -> str:
+    args = runtime.get("args") or []
+    if not isinstance(args, list):
+        return ""
+    normalized = [str(arg).strip() for arg in args]
+    for idx, arg in enumerate(normalized):
+        if arg == "--model" and idx + 1 < len(normalized):
+            return normalized[idx + 1]
+    return ""
+
+
+def _extract_launch_overrides_from_runtime(runtime: dict[str, Any]) -> tuple[list[str], str]:
+    args = runtime.get("args") or []
+    if not isinstance(args, list):
+        return [], ""
+
+    normalized = [str(arg).strip() for arg in args if str(arg).strip()]
+    filtered: list[str] = []
+    skip_next = False
+    for arg in normalized:
+        if skip_next:
+            skip_next = False
+            continue
+        if arg == "--model":
+            skip_next = True
+            continue
+        filtered.append(arg)
+
+    use_claude_cli = bool(runtime.get("use_claude_cli"))
+    initial_prompt = ""
+    if use_claude_cli and filtered and not filtered[-1].startswith("-"):
+        initial_prompt = filtered.pop()
+
+    return filtered, initial_prompt
 
 
 def _write_claude_mcp(cwd: str, mcp_servers: dict[str, Any]) -> None:
@@ -300,7 +440,9 @@ def _write_gemini_mcp(cwd: str, mcp_servers: dict[str, Any], spec: dict[str, Any
 
 def _load_role_sections(role: str) -> dict[str, str]:
     """Load role template and extract sections by ## heading."""
-    role_file = TEMPLATE_DIR / "roles" / f"{role}.md"
+    role_file = ROLE_TEMPLATE_DIR / f"{role}.md"
+    if not role_file.exists():
+        role_file = LEGACY_TEMPLATE_DIR / "roles" / f"{role}.md"
     if not role_file.exists():
         return {}
 
@@ -360,14 +502,16 @@ def generate_claude_md(
     Args:
         agent_name: Agent name.
         role: Role name (pmo, devops, architect, etc.).
-        group: Group name (brain_system, xkquant).
+        group: Group name.
         spec: Full agent spec dict from registry.
         force: If False, skip generation when target file already exists.
 
     Returns:
         Path of generated file, or None if skipped.
     """
-    base_template_path = TEMPLATE_DIR / "base_template.md"
+    base_template_path = CORE_TEMPLATE_DIR / "base_template.md"
+    if not base_template_path.exists():
+        base_template_path = LEGACY_TEMPLATE_DIR / "base_template.md"
     if not base_template_path.exists():
         return None
 
@@ -403,7 +547,7 @@ def generate_claude_md(
     role_sections = _load_role_sections(role)
 
     # Build scope_path from group
-    scope_path = f"/brain/groups/org/{group}"
+    scope_path = str(_GROUPS_BASE_DIR / group) if group else str(_GROUPS_BASE_DIR)
 
     # Build capabilities list
     capabilities = spec.get("capabilities") or []
@@ -458,8 +602,7 @@ def generate_all_configs(
         Dict summarizing what was generated.
     """
     agent_name = str(spec.get("name") or "").strip()
-    agent_type = str(spec.get("agent_type") or "claude").strip()
-    cwd = str(spec.get("cwd") or "").strip()
+    cwd = str(spec.get("cwd") or spec.get("path") or "").strip()
     role = str(spec.get("role") or "").strip()
     group = str(spec.get("group") or spec.get("_group") or "").strip()
 
@@ -473,19 +616,53 @@ def generate_all_configs(
         result["error"] = "missing agent_name or cwd"
         return result
 
+    existing_runtime_manifest = load_runtime_manifest(cwd)
+    runtime = existing_runtime_manifest.get("runtime") if isinstance(existing_runtime_manifest, dict) else None
+    agent_type = str(spec.get("agent_type") or "").strip()
+    if not agent_type and isinstance(runtime, dict):
+        agent_type = str(runtime.get("agent_type") or "").strip()
+    cli_type = str(spec.get("cli_type") or spec.get("agent_cli") or "").strip().lower()
+    if not cli_type and isinstance(runtime, dict):
+        cli_type = "claude" if bool(runtime.get("use_claude_cli")) else "native"
+
+    effective_spec = dict(spec)
+    effective_spec.setdefault("cwd", cwd)
+    if agent_type:
+        effective_spec["agent_type"] = agent_type
+    if cli_type:
+        effective_spec["cli_type"] = cli_type
+    if isinstance(runtime, dict):
+        model = str(effective_spec.get("model") or "").strip()
+        if not model:
+            runtime_model = _extract_model_from_runtime(runtime)
+            if runtime_model:
+                effective_spec["model"] = runtime_model
+        cli_args = effective_spec.get("cli_args")
+        initial_prompt = str(effective_spec.get("initial_prompt") or "").strip()
+        if not cli_args or not isinstance(cli_args, list) or not initial_prompt:
+            runtime_cli_args, runtime_initial_prompt = _extract_launch_overrides_from_runtime(runtime)
+            if (not cli_args or not isinstance(cli_args, list)) and runtime_cli_args:
+                effective_spec["cli_args"] = runtime_cli_args
+            if not initial_prompt and runtime_initial_prompt:
+                effective_spec["initial_prompt"] = runtime_initial_prompt
+        if "env" not in effective_spec and isinstance(runtime.get("env"), dict):
+            effective_spec["env"] = dict(runtime.get("env") or {})
+    if existing_runtime_manifest:
+        result["runtime_manifest"] = str(runtime_manifest_path(cwd))
+
     # 1. Generate MCP config (.mcp.json or .codex/config.toml)
-    generate_mcp_config(agent_name, agent_type, cwd, spec)
-    result["mcp_config"] = True
+    if agent_type:
+        generate_mcp_config(agent_name, agent_type, cwd, effective_spec)
+        result["mcp_config"] = True
 
     # 2. Generate CLAUDE.md / AGENTS.md (only if role is specified)
-    if role:
+    if role and agent_type:
         md_path = generate_claude_md(
-            agent_name, role, group, spec, force=force_claude_md,
+            agent_name, role, group, effective_spec, force=force_claude_md,
         )
         result["claude_md"] = md_path
 
     # 3. Generate .claude/settings.local.json (only for Claude Code CLI agents)
-    cli_type = str(spec.get("cli_type") or "").strip().lower()
     # Only generate Claude settings for agents that use Claude CLI
     # - Explicitly set cli_type=claude
     # - Legacy implicit claude-cli agent types
@@ -495,10 +672,14 @@ def generate_all_configs(
             "claude", "minimax", "chatgpt", "kimi", "gemini", "alibaba", "bytedance", "openai", "copilot"
         ))
     )
-    if needs_claude_settings:
-        settings_path = _generate_settings_local(cwd, role, group, spec)
+    if needs_claude_settings and agent_type:
+        settings_path = _generate_settings_local(cwd, role, group, effective_spec)
         if settings_path:
             result["settings_local"] = settings_path
+
+    runtime_path = generate_runtime_manifest(effective_spec)
+    if runtime_path:
+        result["runtime_manifest"] = runtime_path
 
     return result
 
@@ -508,6 +689,7 @@ def generate_all_configs(
 # ------------------------------------------------------------------
 
 _SECRETS_FILE = Path("/brain/secrets/system/agents/llm_tokens.env")
+_GROUPS_BASE_DIR = Path("/xkagent_infra/groups")
 
 # agent_type -> provider_id in brain_agent_proxy (proxy-first defaults)
 _AGENT_TYPE_PROXY_PROVIDER_MAP: dict[str, str] = {
@@ -691,7 +873,7 @@ def _build_settings_env(agent_type: str, spec: dict[str, Any]) -> dict[str, str]
     # 1. Proxy-first defaults for provider-backed agent types.
     proxy_token = _build_proxy_auth_token(agent_type, spec)
     if proxy_token and transport_mode != "direct":
-        env["ANTHROPIC_BASE_URL"] = os.environ.get("BRAIN_PROXY_BASE_URL", "http://127.0.0.1:3456")
+        env["ANTHROPIC_BASE_URL"] = os.environ.get("BRAIN_PROXY_BASE_URL", "http://127.0.0.1:8210")
         env["ANTHROPIC_AUTH_TOKEN"] = proxy_token
     else:
         # 1b. Legacy direct mode for non-proxy agent types.
@@ -832,7 +1014,7 @@ def _generate_settings_local(
             hook_bin_dir = f"{hooks_base}/bin/hooks/current"
 
         role_group = f"{role}-{group}" if role and group else role or "default"
-        scope_path = f"/brain/groups/org/{group}" if group else "/brain"
+        scope_path = str(_GROUPS_BASE_DIR / group) if group else str(_GROUPS_BASE_DIR)
 
         # Role context env vars - passed to every hook process
         hook_env = {

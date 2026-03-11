@@ -1044,14 +1044,14 @@ def cmd_add(args: argparse.Namespace) -> int:
 
     agent_type = args.agent_type or "claude"
     cli_type = args.cli_type or ""
-    transport_mode = (args.transport or "proxy_v2").strip().lower()
-    if transport_mode not in ("proxy", "proxy_v2", "direct"):
-        raise RuntimeError("transport must be proxy|proxy_v2|direct")
+    transport_mode = (args.transport or "proxy").strip().lower()
+    if transport_mode not in ("proxy", "direct"):
+        raise RuntimeError("transport must be proxy|direct")
     role_defaults = ROLE_DEFAULTS.get(role, ROLE_FALLBACK)
     model = args.model or role_defaults.get("model", "Sonnet")
     proxy_token_preview = ""
     model_selector_preview = ""
-    if transport_mode in ("proxy", "proxy_v2"):
+    if transport_mode == "proxy":
         try:
             from services.config_generator import _build_proxy_auth_token, _build_model_selector
             preview_spec = {"name": name, "model": model}
@@ -1104,7 +1104,7 @@ def cmd_add(args: argparse.Namespace) -> int:
             print(f"  cli_type: {cli_type}")
         print(f"  transport: {transport_mode}")
         print(f"  model: {model}")
-        if transport_mode in ("proxy", "proxy_v2"):
+        if transport_mode == "proxy":
             if proxy_token_preview:
                 print(f"  proxy_token: {proxy_token_preview}")
             if model_selector_preview:
@@ -1174,7 +1174,7 @@ def cmd_add(args: argparse.Namespace) -> int:
         print(f"⚠ config generation: {e}")
 
     print(f"\n✓ Added {name} to {updated} registry(ies)")
-    if transport_mode in ("proxy", "proxy_v2"):
+    if transport_mode == "proxy":
         if proxy_token_preview:
             print(f"  proxy_token: {proxy_token_preview}")
         if model_selector_preview:
@@ -1321,7 +1321,7 @@ def main() -> int:
     p_add.add_argument("--role", default="", help="Agent role (default: parsed from name)")
     p_add.add_argument("--agent-type", default="claude", help="AI provider: claude|codex|kimi|minimax|chatgpt|gemini|openai|copilot|alibaba|bytedance|custom (default: claude)")
     p_add.add_argument("--cli-type", default="", help="CLI type: claude|native (default: infer from agent_type)")
-    p_add.add_argument("--transport", default="proxy_v2", choices=["proxy", "proxy_v2", "direct"], help="Transport for Claude CLI: proxy_v2(default)|proxy|direct")
+    p_add.add_argument("--transport", default="proxy", choices=["proxy", "direct"], help="Transport for Claude CLI: proxy(default)|direct")
     p_add.add_argument("--model", default="", help="Model name (default: from role template)")
     p_add.add_argument("--desired-state", default="stopped", choices=["stopped", "running"], help="Initial desired_state (default: stopped)")
     p_add.add_argument("--capabilities", default="", help="Comma-separated capabilities (default: from role template)")

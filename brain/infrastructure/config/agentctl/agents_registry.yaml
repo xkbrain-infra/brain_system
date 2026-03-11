@@ -40,56 +40,6 @@ groups:
     required: false
     desired_state: running
     status: active
-  - name: tmp-agent-bytedance
-    description: brain 的 dev Agent
-    role: dev
-    scope: group
-    group: brain
-    path: /xkagent_infra/groups/brain/agents/tmp-agent-bytedance
-    tmux_session: tmp-agent-bytedance
-    required: false
-    desired_state: running
-    status: active
-  - name: tmp-agent-alibaba
-    description: brain 的 dev Agent
-    role: dev
-    scope: group
-    group: brain
-    path: /xkagent_infra/groups/brain/agents/tmp-agent-alibaba
-    tmux_session: tmp-agent-alibaba
-    required: false
-    desired_state: running
-    status: active
-  - name: tmp-agent-gemini
-    description: brain 的 dev Agent
-    role: dev
-    scope: group
-    group: brain
-    path: /xkagent_infra/groups/brain/agents/tmp-agent-gemini
-    tmux_session: tmp-agent-gemini
-    required: false
-    desired_state: running
-    status: active
-  - name: tmp-agent-copilot
-    description: brain 的 dev Agent
-    role: dev
-    scope: group
-    group: brain
-    path: /xkagent_infra/groups/brain/agents/tmp-agent-copilot
-    tmux_session: tmp-agent-copilot
-    required: false
-    desired_state: running
-    status: active
-  - name: tmp-openai-codex
-    description: brain 的 dev Agent
-    role: dev
-    scope: group
-    group: brain
-    path: /xkagent_infra/groups/brain/agents/tmp-openai-codex
-    tmux_session: tmp-openai-codex
-    required: false
-    desired_state: running
-    status: active
   - name: tmp-agent-gemini-cli
     description: brain 的 dev Agent
     role: dev
@@ -141,8 +91,10 @@ services:
     ipc_name: service-brain_task_manager
     version: v0.1.0
     language: cpp
-    tags: [infrastructure, task-management, ssot]
-
+    tags:
+    - infrastructure
+    - task-management
+    - ssot
   - name: service-brain_timer
     description: 定时任务调度服务
     managed_by: supervisord
@@ -154,8 +106,9 @@ services:
     recovery_level: 0
     depends_on: []
     ipc_name: service-brain_timer
-    tags: [infrastructure, scheduler]
-
+    tags:
+    - infrastructure
+    - scheduler
   - name: service-agentctl
     description: Agent 生命周期管理与编排服务
     managed_by: supervisord
@@ -163,4 +116,6 @@ services:
     recovery_level: 0
     depends_on: []
     ipc_name: service-agentctl
-    tags: [infrastructure, orchestration]
+    tags:
+    - infrastructure
+    - orchestration

@@ -1057,7 +1057,7 @@ def main():
 
     # enable
     enable_parser = subparsers.add_parser("enable", help="Enable brain_agent_proxy for Claude Code")
-    enable_parser.add_argument("--port", type=int, default=3456, help="Proxy port")
+    enable_parser.add_argument("--port", type=int, default=8210, help="Proxy port")
     enable_parser.add_argument("--model", type=str, default="", help="Default model")
     enable_parser.add_argument("--provider", type=str, default="openai", help="Provider id for model selector/token")
     enable_parser.add_argument("--name", type=str, default="dev", help="Agent/env name for token")
@@ -1067,11 +1067,11 @@ def main():
 
     # status
     status_parser = subparsers.add_parser("status", help="Check status")
-    status_parser.add_argument("--port", type=int, default=3456, help="Proxy port")
+    status_parser.add_argument("--port", type=int, default=8210, help="Proxy port")
 
     # test
     test_parser = subparsers.add_parser("test", help="Test brain_agent_proxy with a request")
-    test_parser.add_argument("--port", type=int, default=3456, help="Proxy port")
+    test_parser.add_argument("--port", type=int, default=8210, help="Proxy port")
     test_parser.add_argument("--model", type=str, default="gpt-5-mini", help="Model to test")
 
     # auth

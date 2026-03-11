@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 
@@ -27,6 +28,13 @@ def _collect_agents_from_groups(root: dict[str, Any]) -> list[dict[str, Any]]:
                 if isinstance(a, dict):
                     agents.append(a)
     return agents
+
+
+def _has_runtime_manifest(agent: dict[str, Any]) -> bool:
+    base = _as_str(agent.get("path") or agent.get("cwd"))
+    if not base:
+        return False
+    return (Path(base) / ".brain" / "agent_runtime.json").exists()
 
 
 def validate_agents_registry(cfg: dict[str, Any]) -> list[ValidationIssue]:
@@ -86,7 +94,7 @@ def validate_agents_registry(cfg: dict[str, Any]) -> list[ValidationIssue]:
         agent_type = _as_str(a.get("agent_type"))
         start_cmd = _as_str(a.get("start_cmd"))
         should_run = desired_state == "running" or required
-        if should_run and status != "inactive" and not start_cmd and not agent_type:
+        if should_run and status != "inactive" and not start_cmd and not agent_type and not _has_runtime_manifest(a):
             issues.append(ValidationIssue(level="error", message="missing start_cmd or agent_type for running/required agent", agent=name))
 
         telegram_enabled = a.get("telegram_enabled", None)

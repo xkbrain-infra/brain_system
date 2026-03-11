@@ -27,7 +27,7 @@
 ### 启动服务
 
 ```bash
-brain_agent_proxy start --port 3456
+brain_agent_proxy start --port 8210
 ```
 
 ### 测试
@@ -43,7 +43,7 @@ brain_agentctl test
 ```json
 {
   "env": {
-    "ANTHROPIC_BASE_URL": "http://127.0.0.1:3456",
+    "ANTHROPIC_BASE_URL": "http://127.0.0.1:8210",
     "ANTHROPIC_AUTH_TOKEN": "bgw-apx-v1--p-openai--m-gpt_5_mini--n-dev",
     "ANTHROPIC_MODEL": "openai/gpt-5-mini"
   }
@@ -60,7 +60,7 @@ brain_agentctl test
 ### brain_agent_proxy
 
 ```bash
-brain_agent_proxy start --port 3456          # 启动
+brain_agent_proxy start --port 8210          # 启动
 brain_agent_proxy stop                        # 停止
 brain_agent_proxy restart                     # 重启
 brain_agent_proxy status                     # 状态

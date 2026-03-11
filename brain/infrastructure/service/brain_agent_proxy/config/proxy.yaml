@@ -55,6 +55,21 @@ clients:
     description: Canonical token - Alibaba Qwen3 Coder Plus
     provider: alibaba
     model: qwen3-coder-plus
+  bgw-apx-v1--p-alibaba--m-kimi_k2_5--n-agent_brain_manager:
+    agent_name: agent-brain_manager
+    description: Agent token - Alibaba Kimi K2.5 for manager
+    provider: alibaba
+    model: kimi-k2.5
+  bgw-apx-v1--p-alibaba--m-kimi_k2_5--n-agent_brain_dev:
+    agent_name: agent-brain_dev
+    description: Agent token - Alibaba Kimi K2.5 for dev
+    provider: alibaba
+    model: kimi-k2.5
+  bgw-apx-v1--p-alibaba--m-kimi_k2_5--n-agent_brain_devops:
+    agent_name: agent-brain_devops
+    description: Agent token - Alibaba Kimi K2.5 for devops
+    provider: alibaba
+    model: kimi-k2.5
   proxy-bytedance_doubao_dev:
     agent_name: bytedance-doubao
     description: brain dev - Doubao via ByteDance Ark
@@ -96,6 +111,7 @@ model_routing:
   gemini-3-flash-preview: gemini
   gemini-3.1-pro-preview: gemini
   qwen3-coder-plus: alibaba
+  kimi-k2.5: alibaba
   doubao-1.5-thinking-vision-pro: bytedance
   MiniMax-M2.5: minimax
   grok-code-fast-1: copilot

@@ -115,10 +115,13 @@ class MessagesProtocolHandler(ProtocolHandler):
 
     def format_error(self, error: Exception) -> Dict[str, Any]:
         """Format error response."""
+        message = str(error).strip()
+        if not message:
+            message = repr(error).strip() or error.__class__.__name__
         return {
             "type": "error",
             "error": {
                 "type": "api_error",
-                "message": str(error),
+                "message": message,
             },
         }

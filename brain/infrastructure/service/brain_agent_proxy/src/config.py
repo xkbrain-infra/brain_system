@@ -104,7 +104,7 @@ class ProxyConfig(BaseModel):
 class AppConfig(BaseModel):
     """Application configuration."""
     host: str = "0.0.0.0"
-    port: int = 3456
+    port: int = 8210
     log_level: str = "INFO"
 
     providers: List[ProviderConfig] = Field(default_factory=list)

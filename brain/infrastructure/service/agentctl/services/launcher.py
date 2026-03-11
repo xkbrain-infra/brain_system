@@ -4,6 +4,7 @@ from __future__ import annotations
 import importlib.util as _ilu
 import json
 import os
+import shlex
 import subprocess
 import time
 import yaml
@@ -13,13 +14,18 @@ from pathlib import Path
 from typing import Any
 
 from config.loader import DEFAULT_CONFIG_DIR, YAMLConfigLoader
-from services.config_generator import generate_all_configs as _generate_all_configs
+from services.config_generator import (
+    generate_all_configs as _generate_all_configs,
+    load_runtime_manifest as _load_runtime_manifest,
+)
 
 # SSOT: /xkagent_infra/brain/infrastructure/service/utils/ipc/bin/current/daemon_client.py
 _spec = _ilu.spec_from_file_location("ipc_daemon_client", "/xkagent_infra/brain/infrastructure/service/utils/ipc/bin/current/daemon_client.py")
 _mod = _ilu.module_from_spec(_spec)
 _spec.loader.exec_module(_mod)
 _DaemonClient = _mod.DaemonClient
+
+_SECRETS_FILE = Path("/brain/secrets/system/agents/llm_tokens.env")
 
 
 @dataclass
@@ -436,14 +442,25 @@ class Launcher:
         )
 
     def _build_start_command(self, spec: dict[str, Any]) -> str:
-        """Build start command from V2 spec (agent_type + cli_type + model + cli_args).
+        """Build start command from directory runtime manifest or legacy registry fields.
 
         cli_type resolution (aligned with bin/agentctl _load_spec):
           - cli_type: claude/claude_code → use 'claude' CLI
           - cli_type: native             → use agent_type as CLI command
           - cli_type: (empty)            → infer from agent_type:
-              codex → 'codex'; claude/kimi/minimax/chatgpt → 'claude'; else → agent_type
+              codex → 'codex';
+              claude/kimi/minimax/chatgpt/gemini/openai/copilot/alibaba/bytedance → 'claude';
+              else → agent_type
         """
+        cwd = str(spec.get("cwd") or spec.get("path") or "").strip()
+        manifest = _load_runtime_manifest(cwd) if cwd else None
+        runtime = manifest.get("runtime") if isinstance(manifest, dict) else None
+        if isinstance(runtime, dict):
+            command = str(runtime.get("command") or "").strip()
+            args = [str(arg).strip() for arg in (runtime.get("args") or []) if str(arg).strip()]
+            if command:
+                return " ".join([command, *args]).strip()
+
         agent_type = str(spec.get("agent_type") or "").strip()
         cli_type = str(spec.get("cli_type") or "").strip().lower()
         model = str(spec.get("model") or "").strip()
@@ -468,7 +485,17 @@ class Launcher:
             if agent_type == "codex":
                 cmd = "codex"
                 use_claude_cli = False
-            elif agent_type in ("claude", "kimi", "minimax", "chatgpt"):
+            elif agent_type in (
+                "claude",
+                "kimi",
+                "minimax",
+                "chatgpt",
+                "gemini",
+                "openai",
+                "copilot",
+                "alibaba",
+                "bytedance",
+            ):
                 cmd = "claude"
                 use_claude_cli = True
             else:
@@ -484,7 +511,6 @@ class Launcher:
             parts += ["--model", model]
 
         # KIMI-specific: MCP config file and subcommand
-        cwd = str(spec.get("cwd") or "").strip()
         if agent_type == "kimi" and not use_claude_cli:
             if cwd:
                 parts += ["--mcp-config-file", f"{cwd}/.kimi/mcp.json"]
@@ -512,7 +538,10 @@ class Launcher:
 
     def _build_env_string(self, spec: dict[str, Any]) -> str:
         """Build inline environment variable prefix (VAR=val) for tmux command."""
-        env_spec = spec.get("env") or {}
+        cwd = str(spec.get("cwd") or spec.get("path") or "").strip()
+        manifest = _load_runtime_manifest(cwd) if cwd else None
+        runtime = manifest.get("runtime") if isinstance(manifest, dict) else None
+        env_spec = (runtime.get("env") or {}) if isinstance(runtime, dict) and isinstance(runtime.get("env"), dict) else (spec.get("env") or {})
         if not isinstance(env_spec, dict):
             return ""
 
@@ -525,14 +554,16 @@ class Launcher:
             # Expand ${VAR} from current environment
             if value.startswith("${") and value.endswith("}"):
                 var_name = value[2:-1]
-                value = os.environ.get(var_name, "")
+                value = os.environ.get(var_name, "") or self._lookup_secret(var_name)
             env_parts.append(f"{key}={value}")
 
         return " ".join(env_parts)
 
     def _build_export_string(self, spec: dict[str, Any]) -> str:
         """Build export environment variable string (export VAR=val) for tmux command."""
-        export_spec = spec.get("export_cmd") or {}
+        cwd = str(spec.get("cwd") or spec.get("path") or "").strip()
+        manifest = _load_runtime_manifest(cwd) if cwd else None
+        export_spec = {} if manifest else (spec.get("export_cmd") or {})
         if not isinstance(export_spec, dict):
             return ""
 
@@ -545,12 +576,28 @@ class Launcher:
             # Expand ${VAR} from current environment
             if value.startswith("${") and value.endswith("}"):
                 var_name = value[2:-1]
-                value = os.environ.get(var_name, "")
+                value = os.environ.get(var_name, "") or self._lookup_secret(var_name)
             export_parts.append(f"{key}={value}")
 
         if not export_parts:
             return ""
         return "export " + " ".join(export_parts)
+
+    @staticmethod
+    def _lookup_secret(var_name: str) -> str:
+        if not _SECRETS_FILE.exists():
+            return ""
+        try:
+            for line in _SECRETS_FILE.read_text(encoding="utf-8").splitlines():
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, _, value = line.partition("=")
+                if key.strip() == var_name:
+                    return value.strip()
+        except Exception:
+            return ""
+        return ""
 
     def _ensure_codex_auth_symlink(self, codex_home: str) -> None:
         """Symlink global auth.json into per-agent CODEX_HOME if missing."""
@@ -654,7 +701,7 @@ class Launcher:
             return RestartResult(False, agent_name, reason, 0, error=f"Unknown agent: {agent_name}")
 
         tmux_session = str(spec.get("tmux_session") or "").strip()
-        cwd = str(spec.get("cwd") or "").strip() or None
+        cwd = str(spec.get("cwd") or spec.get("path") or "").strip() or None
 
         if not tmux_session:
             return RestartResult(False, agent_name, reason, 0, error="missing tmux_session")
@@ -677,7 +724,7 @@ class Launcher:
 
         shell_parts = []
         if cwd:
-            shell_parts.append(f"cd {cwd}")
+            shell_parts.append(f"cd {shlex.quote(cwd)}")
         if env_export:
             shell_parts.append(env_export)
 
@@ -726,7 +773,10 @@ class Launcher:
             if tmux_session in sessions:
                 subprocess.run(["tmux", "kill-session", "-t", tmux_session], capture_output=True, text=True, timeout=10, check=False)
 
-            cmd = ["tmux", "new-session", "-d", "-s", tmux_session, full_shell_cmd]
+            cmd = ["tmux", "new-session", "-d", "-s", tmux_session]
+            if cwd:
+                cmd += ["-c", cwd]
+            cmd.append(full_shell_cmd)
             p = subprocess.run(cmd, capture_output=True, text=True, timeout=12, check=False)
             if p.returncode != 0:
                 raise RuntimeError((p.stderr or p.stdout or "").strip() or "tmux new-session failed")

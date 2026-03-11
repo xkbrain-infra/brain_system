@@ -21,6 +21,11 @@ class TestMessagesProtocolFormat(unittest.TestCase):
         self.assertEqual(resp["content"][0]["type"], "text")
         self.assertEqual(resp["content"][0]["text"], "OK")
 
+    def test_format_error_falls_back_to_exception_type_when_message_empty(self):
+        handler = MessagesProtocolHandler()
+        resp = handler.format_error(Exception())
+        self.assertEqual(resp["error"]["message"], "Exception()")
+
 
 if __name__ == "__main__":
     unittest.main()

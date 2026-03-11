@@ -131,16 +131,32 @@ ROLE_FALLBACK: dict[str, Any] = {
 
 
 
-_TYPE_PROFILES_DIR = Path("/xkagent_infra/brain/base/spec/templates/agent/type_profiles")
+_TYPE_PROFILE_DIRS = [
+    Path("/xkagent_infra/brain/base/spec/templates/type_profiles"),
+    Path("/xkagent_infra/brain/base/spec/templates/agent/type_profiles"),
+]
+
+
+def _iter_type_profile_files():
+    seen: set[str] = set()
+    for base_dir in _TYPE_PROFILE_DIRS:
+        if not base_dir.exists():
+            continue
+        for yaml_file in sorted(base_dir.glob("*.yaml")):
+            key = yaml_file.name
+            if key in seen:
+                continue
+            seen.add(key)
+            yield yaml_file
 
 
 def load_type_profile(profile_id: str) -> "dict | None":
     """按 variant id 查找 type profile，返回三字段配置或 None。"""
     import yaml as _yaml
 
-    if not _TYPE_PROFILES_DIR.exists():
+    if not any(d.exists() for d in _TYPE_PROFILE_DIRS):
         return None
-    for yaml_file in _TYPE_PROFILES_DIR.glob("*.yaml"):
+    for yaml_file in _iter_type_profile_files():
         try:
             data = _yaml.safe_load(yaml_file.read_text())
         except Exception:
@@ -168,9 +184,9 @@ def list_type_profiles(role_filter: str = "") -> "list[dict]":
     import yaml as _yaml
 
     results = []
-    if not _TYPE_PROFILES_DIR.exists():
+    if not any(d.exists() for d in _TYPE_PROFILE_DIRS):
         return results
-    for yaml_file in sorted(_TYPE_PROFILES_DIR.glob("*.yaml")):
+    for yaml_file in _iter_type_profile_files():
         try:
             data = _yaml.safe_load(yaml_file.read_text())
         except Exception:

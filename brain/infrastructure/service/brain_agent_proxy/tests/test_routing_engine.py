@@ -91,6 +91,16 @@ class TestRoutingEngineClientKeyFallback(unittest.TestCase):
         self.assertEqual(parsed["model"], "minimax_m25")
         self.assertEqual(parsed["name"], "dev")
 
+    def test_parse_legacy_gateway_proxy_token_without_model(self):
+        config = AppConfig(providers=[], routing=RoutingConfig())
+        engine = RoutingEngine(config)
+        parsed = engine.parse_client_key("bgw-apx-v1--p-alibaba--n-agent-brain_devops")
+        self.assertIsNotNone(parsed)
+        assert parsed is not None
+        self.assertEqual(parsed["provider"], "alibaba")
+        self.assertEqual(parsed["model"], "")
+        self.assertEqual(parsed["name"], "agent-brain_devops")
+
     def test_provider_model_selector_prefers_provider_hint(self):
         config = AppConfig(
             providers=[

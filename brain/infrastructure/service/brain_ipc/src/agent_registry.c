@@ -134,8 +134,18 @@ static const char *source_to_str(AgentSource source) {
 static bool matches_source_filter(const Agent *a, int source_filter) {
     if (!a) return false;
     if (source_filter == REGISTRY_SOURCE_FILTER_ALL) return true;
-    if (source_filter == REGISTRY_SOURCE_FILTER_AGENT) return a->source != AGENT_SOURCE_SERVICE;
-    if (source_filter == REGISTRY_SOURCE_FILTER_SERVICE) return a->source == AGENT_SOURCE_SERVICE;
+    if (source_filter == REGISTRY_SOURCE_FILTER_AGENT) {
+        // Exclude both AGENT_SOURCE_SERVICE and names starting with service-
+        if (a->source == AGENT_SOURCE_SERVICE) return false;
+        if (strncmp(a->name, "service-", 8) == 0) return false;
+        return true;
+    }
+    if (source_filter == REGISTRY_SOURCE_FILTER_SERVICE) {
+        // Include either AGENT_SOURCE_SERVICE or names starting with service-
+        if (a->source == AGENT_SOURCE_SERVICE) return true;
+        if (strncmp(a->name, "service-", 8) == 0) return true;
+        return false;
+    }
     return (int)a->source == source_filter;
 }
 
@@ -290,7 +300,12 @@ int registry_heartbeat_full(AgentRegistry *reg, const char *name,
     if (!agent) {
         pthread_mutex_unlock(&reg->lock);
         // Auto-register on heartbeat
-        return registry_register_full(reg, name, tmux_session, tmux_pane, NULL, AGENT_SOURCE_HEARTBEAT);
+        // Fix: Use AGENT_SOURCE_SERVICE for service-* names
+        AgentSource source = AGENT_SOURCE_HEARTBEAT;
+        if (strncmp(name, "service-", 8) == 0) {
+            source = AGENT_SOURCE_SERVICE;
+        }
+        return registry_register_full(reg, name, tmux_session, tmux_pane, NULL, source);
     }
 
     agent->last_heartbeat = time(NULL);

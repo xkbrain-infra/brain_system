@@ -27,6 +27,7 @@ enforcement:
       - "/brain/groups/org/xkquant/spec/**"
       - "/brain/groups/org/commerce/spec/**"
       - "/brain/base/spec/**"
+      - "/brain/base/spec/templates/**"
 
   content_triggers:
     - "spec_id:"

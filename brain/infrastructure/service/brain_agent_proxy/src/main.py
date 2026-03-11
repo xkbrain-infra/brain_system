@@ -1,7 +1,9 @@
 """FastAPI application for brain_agent_proxy."""
 import asyncio
+import hashlib
 import json
 import os
+import re
 import time
 import uuid
 from contextlib import asynccontextmanager
@@ -21,6 +23,7 @@ from .routing.engine import RoutingEngine
 # Allow any API key for local testing (skip validation)
 # When "*" is in the list, any key is allowed
 ALLOWED_API_KEYS = ["*"]
+MODEL_ID_MODE = os.environ.get("BRAIN_AGENT_PROXY_MODEL_ID_MODE", "bare").strip().lower() or "bare"
 
 
 class ProxyPolicyError(Exception):
@@ -50,6 +53,73 @@ PROTOCOL_HANDLERS = {
     "chat_completions": chat_completions.ChatCompletionsProtocolHandler(),
     "responses": responses.ResponsesProtocolHandler(),
 }
+
+
+def _normalize_model_id_mode(mode: Optional[str] = None) -> str:
+    value = str(mode or MODEL_ID_MODE or "bare").strip().lower()
+    if value in {"bare", "prefixed", "both"}:
+        return value
+    return "bare"
+
+
+def _build_exposed_model_ids(model_id: str, provider_id: str, mode: Optional[str] = None) -> list[str]:
+    """Return external model ids for /v1/models.
+
+    `bare` keeps current behavior.
+    `prefixed` exposes provider/model only.
+    `both` exposes both ids to support migration.
+    """
+    bare_id = str(model_id or "").strip()
+    provider = str(provider_id or "").strip()
+    if not bare_id:
+        return []
+
+    prefixed_id = bare_id
+    if provider and "/" not in bare_id:
+        prefixed_id = f"{provider}/{bare_id}"
+
+    selected_mode = _normalize_model_id_mode(mode)
+    if selected_mode == "prefixed":
+        return [prefixed_id]
+    if selected_mode == "both":
+        if prefixed_id == bare_id:
+            return [bare_id]
+        return [bare_id, prefixed_id]
+    return [bare_id]
+
+
+def _append_model_entries(
+    models: list[Dict[str, Any]],
+    *,
+    model_id: str,
+    provider_id: str,
+    provider_type: str,
+    cli_type: str,
+    capabilities: list[str],
+    name: str = "",
+    vendor: str = "",
+) -> None:
+    for exposed_id in _build_exposed_model_ids(model_id, provider_id):
+        models.append({
+            "id": exposed_id,
+            "object": "model",
+            "provider": provider_id,
+            "provider_type": provider_type,
+            "cli_type": cli_type,
+            "capabilities": capabilities,
+            "name": name,
+            "vendor": vendor,
+        })
+
+
+def _copilot_prefers_native_messages(model: str) -> bool:
+    core_model = str(model or "").strip().lower()
+    return not (
+        core_model.startswith("gpt-")
+        or core_model.startswith("grok-")
+        or core_model.startswith("text-embedding-")
+        or core_model.startswith("oswe-")
+    )
 
 
 async def _enforce_rate_limit() -> None:
@@ -136,6 +206,26 @@ def _default_api_base_url(provider: Any) -> str:
     if getattr(provider, "id", "") == "openai":
         return "https://api.openai.com"
     return "http://127.0.0.1:4141"
+
+
+def _model_token_key(model_name: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "_", str(model_name or "").strip().lower()).strip("_")
+
+
+def _resolve_model_from_token(provider: Any, token_model: str, request_model: str) -> str:
+    token_model = str(token_model or "").strip()
+    request_model = str(request_model or "").strip()
+    if not token_model:
+        return request_model
+    if token_model == request_model:
+        return request_model
+    if _model_token_key(request_model) == token_model:
+        return request_model
+    for candidate in getattr(provider, "models", []) or []:
+        candidate_str = str(candidate or "").strip()
+        if candidate_str and _model_token_key(candidate_str) == token_model:
+            return candidate_str
+    return token_model
 
 
 def _resolve_api_key_settings(provider: Any) -> tuple[str, bool, str, str, str]:
@@ -721,36 +811,48 @@ async def list_models(authorization: Optional[str] = Header(None)):
 
     config = get_config()
     models = []
+    seen_model_ids: set[str] = set()
+
+    def _append_unique_entries(**kwargs: Any) -> None:
+        before = len(models)
+        _append_model_entries(models, **kwargs)
+        if len(models) == before:
+            return
+        unique_models = []
+        for entry in models:
+            model_id = str(entry.get("id", "") or "")
+            if not model_id or model_id in seen_model_ids:
+                continue
+            seen_model_ids.add(model_id)
+            unique_models.append(entry)
+        models[:] = unique_models
 
     # 尝试从 Copilot API 动态获取模型列表
     copilot_models = await _get_copilot_models()
     if copilot_models:
         for m in copilot_models:
-            models.append({
-                "id": m["id"],
-                "object": "model",
-                "provider": "copilot-default",
-                "provider_type": "oauth_device",
-                "cli_type": "chat_completions",
-                "capabilities": ["code", "chat", "reasoning", "fast"],
-                "name": m.get("name", ""),
-                "vendor": m.get("vendor", ""),
-            })
+            _append_unique_entries(
+                model_id=m["id"],
+                provider_id="copilot",
+                provider_type="oauth",
+                cli_type="chat_completions",
+                capabilities=["code", "chat", "reasoning", "fast"],
+                name=m.get("name", ""),
+                vendor=m.get("vendor", ""),
+            )
 
-    # 如果没有获取到，使用配置中的模型
-    if not models:
-        for provider in config.providers:
-            if not provider.enabled:
-                continue
-            for model in provider.models:
-                models.append({
-                    "id": model,
-                    "object": "model",
-                    "provider": provider.id,
-                    "provider_type": provider.type,
-                    "cli_type": getattr(provider, "cli_type", "chat_completions"),
-                    "capabilities": getattr(provider, "capabilities", []) or [],
-                })
+    # 追加静态 provider 配置，确保 proxy /v1/models 对所有 provider 一致可见。
+    for provider in config.providers:
+        if not provider.enabled:
+            continue
+        for model in provider.models:
+            _append_unique_entries(
+                model_id=model,
+                provider_id=provider.id,
+                provider_type=provider.type,
+                cli_type=getattr(provider, "cli_type", "chat_completions"),
+                capabilities=getattr(provider, "capabilities", []) or [],
+            )
 
     return {
         "object": "list",
@@ -786,8 +888,22 @@ async def handle_messages(
         normalized = handler.parse_request(body)
         if normalized.stream:
             provider, _ = _resolve_provider(normalized, "messages", api_key)
+            if provider.id == "copilot" and _copilot_prefers_native_messages(normalized.model):
+                # Copilot native /v1/messages works for these model families, but the
+                # upstream streaming endpoint can still reject otherwise valid requests.
+                # Use a non-stream request and synthesize Anthropic SSE locally.
+                non_stream_request = dict(normalized.original_request or {})
+                non_stream_request["stream"] = False
+                non_stream_normalized = normalized.model_copy(
+                    update={"stream": False, "original_request": non_stream_request}
+                )
+                result = await route_and_forward(non_stream_normalized, "messages", handler, api_key)
+                return StreamingResponse(_anthropic_message_to_sse(result), media_type="text/event-stream")
             stream_iter = await route_and_forward_stream(normalized, "messages", api_key)
-            if provider.type == "api_key" and _provider_supports_protocol(provider, "messages"):
+            if (
+                (provider.type == "api_key" and _provider_supports_protocol(provider, "messages"))
+                or (provider.id == "copilot" and _copilot_prefers_native_messages(normalized.model))
+            ):
                 return StreamingResponse(stream_iter, media_type="text/event-stream")
             return StreamingResponse(_openai_sse_to_anthropic_sse(stream_iter), media_type="text/event-stream")
         result = await route_and_forward(normalized, "messages", handler, api_key)
@@ -1054,6 +1170,104 @@ def _build_openai_tools(normalized: Any) -> list[Dict[str, Any]]:
     return tools_data
 
 
+def _tool_name_limit_for_provider(provider: Any) -> int:
+    """Return provider-specific tool name max length; 0 means unlimited."""
+    pid = str(getattr(provider, "id", "") or "").lower()
+    if pid in {"alibaba", "bytedance"}:
+        return 64
+    return 0
+
+
+def _alias_tool_name(name: str, max_len: int) -> str:
+    if max_len <= 0 or len(name) <= max_len:
+        return name
+    digest = hashlib.sha1(name.encode("utf-8")).hexdigest()[:10]
+    reserve = len("__") + len(digest)
+    prefix_len = max(1, max_len - reserve)
+    return f"{name[:prefix_len]}__{digest}"
+
+
+def _rewrite_tool_names_for_provider(
+    payload: Dict[str, Any],
+    provider: Any,
+) -> Dict[str, str]:
+    """Rewrite too-long tool names in request payload; return alias->original map."""
+    max_len = _tool_name_limit_for_provider(provider)
+    if max_len <= 0:
+        return {}
+
+    alias_to_original: Dict[str, str] = {}
+    original_to_alias: Dict[str, str] = {}
+
+    def _rewrite_name(name: Any) -> Any:
+        if not isinstance(name, str) or not name:
+            return name
+        alias = _alias_tool_name(name, max_len)
+        if alias != name:
+            alias_to_original[alias] = name
+            original_to_alias[name] = alias
+        return alias
+
+    tools = payload.get("tools")
+    if isinstance(tools, list):
+        for t in tools:
+            if not isinstance(t, dict):
+                continue
+            if isinstance(t.get("name"), str):
+                t["name"] = _rewrite_name(t.get("name"))
+                continue
+            fn = t.get("function")
+            if isinstance(fn, dict) and isinstance(fn.get("name"), str):
+                fn["name"] = _rewrite_name(fn.get("name"))
+
+    tc = payload.get("tool_choice")
+    if isinstance(tc, dict):
+        if tc.get("type") == "tool" and isinstance(tc.get("name"), str):
+            tc_name = tc.get("name")
+            if tc_name in original_to_alias:
+                tc["name"] = original_to_alias[tc_name]
+        elif tc.get("type") == "function":
+            fn = tc.get("function")
+            if isinstance(fn, dict) and isinstance(fn.get("name"), str):
+                tc_name = fn.get("name")
+                if tc_name in original_to_alias:
+                    fn["name"] = original_to_alias[tc_name]
+
+    return alias_to_original
+
+
+def _restore_tool_names_in_response(result: Dict[str, Any], alias_to_original: Dict[str, str]) -> None:
+    """Restore aliased tool names back to original names in non-stream response."""
+    if not alias_to_original:
+        return
+
+    content = result.get("content")
+    if isinstance(content, list):
+        for block in content:
+            if isinstance(block, dict) and block.get("type") == "tool_use":
+                name = block.get("name")
+                if isinstance(name, str) and name in alias_to_original:
+                    block["name"] = alias_to_original[name]
+
+    choices = result.get("choices")
+    if isinstance(choices, list):
+        for choice in choices:
+            if not isinstance(choice, dict):
+                continue
+            msg = choice.get("message")
+            if not isinstance(msg, dict):
+                continue
+            for tc in msg.get("tool_calls", []) or []:
+                if not isinstance(tc, dict):
+                    continue
+                fn = tc.get("function")
+                if not isinstance(fn, dict):
+                    continue
+                name = fn.get("name")
+                if isinstance(name, str) and name in alias_to_original:
+                    fn["name"] = alias_to_original[name]
+
+
 def _provider_supports_protocol(provider: Any, protocol: str) -> bool:
     protocols = set(getattr(provider, "protocols", []) or [])
     return protocol in protocols if protocols else False
@@ -1145,38 +1359,70 @@ async def route_and_forward(
 
 
 def _resolve_provider(normalized: Any, protocol: str, api_key: Optional[str]):
-    """Resolve provider and optional client info from request context."""
+    """Resolve provider and optional client info from request context.
+    严格前后端分离: 前端配置什么就用什么, 服务端只做校验, 不做自动兜底
+    """
     config = get_config()
     routing_engine = RoutingEngine(config)
     provider = None
     client_info = None
 
-    if api_key:
-        provider, client_info = routing_engine.find_provider_by_client_key(api_key)
-        if provider:
-            print(f"[brain_agent_proxy] DEBUG: client_key={api_key} -> provider={provider.id} type={provider.type}")
-        else:
-            print(f"[brain_agent_proxy] DEBUG: client_key={api_key} -> provider NOT FOUND")
-
-    if not provider:
-        provider = routing_engine.find_provider(normalized.model, protocol)
-
-    if not provider:
-        raise ValueError(f"No provider found for model {normalized.model} with protocol {protocol}")
-
-    # Support canonical selector "provider/model" while preserving legacy plain model.
+    # 1. 优先从请求的model字段解析provider (前端指定的优先级最高)
     model_selector = str(getattr(normalized, "model", "") or "")
     provider_hint, _, selected_model = model_selector.partition("/")
+
     if provider_hint and selected_model:
+        # 前端明确指定了provider, 必须严格匹配, 不做兜底
+        provider = routing_engine._find_enabled_provider(provider_hint)
+        if not provider:
+            raise ValueError(f"Provider '{provider_hint}' specified in model selector '{model_selector}' not found or disabled")
+
+        # 校验provider是否支持该模型
+        if selected_model not in provider.models:
+            raise ValueError(f"Model '{selected_model}' is not supported by provider '{provider_hint}'. Supported models: {provider.models}")
+
+        print(f"[brain_agent_proxy] DEBUG: model_selector={model_selector} -> provider={provider.id}, model={selected_model} (strict match from model prefix)")
+
+        # 更新normalized.model为去掉前缀的模型名
         normalized.model = selected_model
         if isinstance(getattr(normalized, "original_request", None), dict):
             normalized.original_request["model"] = selected_model
 
-    if client_info and getattr(client_info, "model", ""):
-        normalized.model = client_info.model
-        if isinstance(getattr(normalized, "original_request", None), dict):
-            normalized.original_request["model"] = client_info.model
-    return provider, client_info
+        return provider, client_info
+
+    # 2. 如果model里没有provider前缀, 必须从token解析, 不做兜底
+    if api_key:
+        parsed = routing_engine.parse_client_key(api_key)
+        if not parsed:
+            raise ValueError(f"Invalid API key format. Expected canonical format: bgw-apx-v1--p-{{provider}}--m-{{model}}--n-{{name}}")
+
+        # 校验provider存在
+        provider = routing_engine._find_enabled_provider(parsed["provider"])
+        if not provider:
+            raise ValueError(f"Provider '{parsed['provider']}' from API key not found or disabled")
+
+        parsed_model = _resolve_model_from_token(provider, parsed.get("model", ""), normalized.model)
+
+        # 校验token里的模型和请求的模型一致
+        if parsed_model and parsed_model != normalized.model:
+            raise ValueError(f"Model mismatch: API key specifies model '{parsed['model']}', but request specifies model '{normalized.model}'")
+
+        # 校验provider是否支持该模型
+        if normalized.model not in provider.models:
+            raise ValueError(f"Model '{normalized.model}' is not supported by provider '{provider.id}'. Supported models: {provider.models}")
+
+        if parsed_model:
+            print(f"[brain_agent_proxy] DEBUG: client_key={api_key} -> provider={provider.id}, model={normalized.model} (strict match from token)")
+        else:
+            print(f"[brain_agent_proxy] DEBUG: client_key={api_key} -> provider={provider.id}, model={normalized.model} (legacy token without model)")
+        return provider, client_info
+
+    # 3. 两者都没有的话直接报错, 不做任何自动路由兜底
+    raise ValueError(
+        "No provider specified. You must either:\n"
+        "1. Specify provider in model selector format: 'provider/model_name'\n"
+        "2. Use a valid canonical API key that includes provider information"
+    )
 
 
 async def route_and_forward_stream(
@@ -1266,6 +1512,7 @@ def _build_api_key_stream_iter(provider: Any, normalized: Any, protocol: str):
         payload = dict(normalized.original_request or {})
         payload["model"] = normalized.model
         payload["stream"] = True
+    _rewrite_tool_names_for_provider(payload, provider)
 
     async def _iter():
         url = f"{api_base_url}{endpoint}"
@@ -1463,6 +1710,10 @@ async def forward_to_provider(provider: Any, normalized: Any, protocol: str) -> 
         if normalized.max_tokens:
             payload["max_tokens"] = normalized.max_tokens
 
+    alias_to_original: Dict[str, str] = {}
+    if provider.type == "api_key":
+        alias_to_original = _rewrite_tool_names_for_provider(payload, provider)
+
     # Forward request
     async with httpx.AsyncClient(timeout=120.0) as client:
         resp = await client.post(url, json=payload, headers=headers)
@@ -1471,6 +1722,8 @@ async def forward_to_provider(provider: Any, normalized: Any, protocol: str) -> 
         raise ValueError(f"Provider returned {resp.status_code}: {resp.text}")
 
     result = _parse_json_response(resp)
+    if provider.type == "api_key" and alias_to_original:
+        _restore_tool_names_in_response(result, alias_to_original)
 
     # Normalize response based on effective_protocol (actual API format used)
     if effective_protocol == "messages":

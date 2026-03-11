@@ -111,6 +111,9 @@ class RoutingEngine:
         New canonical format:
             bgw-apx-v1--p-{provider}--m-{model}--n-{name}
 
+        Legacy canonical format:
+            bgw-apx-v1--p-{provider}--n-{name}
+
         Legacy format:
             proxy-{provider}_{model}_{name}
 
@@ -128,6 +131,15 @@ class RoutingEngine:
                 "provider": match_new.group(1),
                 "model": match_new.group(2),
                 "name": match_new.group(3),
+            }
+
+        pattern_legacy_gateway = r"^bgw-apx-v1--p-([a-z0-9._-]+)--n-([a-z0-9._-]+)$"
+        match_legacy_gateway = re.match(pattern_legacy_gateway, api_key, re.IGNORECASE)
+        if match_legacy_gateway:
+            return {
+                "provider": match_legacy_gateway.group(1),
+                "model": "",
+                "name": match_legacy_gateway.group(2),
             }
 
         # Match format: proxy-{provider}_{model}_{name}
