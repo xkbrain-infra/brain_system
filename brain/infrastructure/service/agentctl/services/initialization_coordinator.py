@@ -36,12 +36,12 @@ class RecoveryStatus(Enum):
 class RecoveryConfig:
     """Recovery configuration."""
     levels: dict[int, list[str]] = field(default_factory=lambda: {
-        0: ["service-agentctl", "service-timer", "service-task_manager"],
-        1: ["agent_system_devops"],
-        2: ["agent_system_frontdesk"],
+        0: ["service-agentctl", "service-brain_timer", "service-brain_task_manager"],
+        1: ["agent-system_devops"],
+        2: ["agent-brain_frontdesk"],
         3: ["*"],  # All remaining agents
     })
-    level_timeout_s: int = 10
+    level_timeout_s: int = 15  # Increased for C++ services (brain_task_manager needs ~12s)
     overall_timeout_s: int = 60
     lock_file: str = "/tmp/recovery.lock"
     heartbeat_interval_s: int = 5
@@ -165,7 +165,7 @@ class InitializationCoordinator:
     def _build_recovery_start_payload(self) -> dict[str, Any]:
         """Build RECOVERY_START message payload."""
         return {
-            "event": "RECOVERY_START",
+            "event_type": "RECOVERY_START",
             "run_id": self._run_id,
             "coordinator": self._self_name,
             "timestamp": time.time(),
@@ -179,7 +179,7 @@ class InitializationCoordinator:
     def _build_system_ready_payload(self, result: RecoveryResult) -> dict[str, Any]:
         """Build SYSTEM_READY message payload."""
         return {
-            "event": "SYSTEM_READY",
+            "event_type": "SYSTEM_READY",
             "run_id": self._run_id,
             "coordinator": self._self_name,
             "timestamp": time.time(),
