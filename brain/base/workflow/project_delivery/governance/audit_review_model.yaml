@@ -1,0 +1,33 @@
+audit_review_model:
+  id: "MWF-AUDIT-REVIEW-001"
+  version: "0.1"
+  intent: "定义 audit review 的检查视角与输出结构"
+
+review_flow:
+  - "load audit_input_bundle"
+  - "reconstruct project timeline"
+  - "identify critical deviations"
+  - "group findings by domain"
+  - "perform root cause analysis"
+  - "propose improvement actions"
+  - "materialize required follow-up items"
+
+finding_categories:
+  - planning_gap
+  - execution_gap
+  - quality_gap
+  - release_gap
+  - environment_gap
+  - governance_gap
+
+required_report_sections:
+  - executive_summary
+  - timeline_summary
+  - major_findings
+  - root_causes
+  - recurring_patterns
+  - improvement_actions
+  - materialization_status
+
+rule:
+  - "audit report 不得只有问题列表，必须包含 root causes 和 action routing"

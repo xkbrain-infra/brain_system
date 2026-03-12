@@ -1,0 +1,51 @@
+workflow:
+  id: "MWF-WF-EXEC-001"
+  name: "Project Execution Workflow"
+  owner: "project_orchestrator"
+  trigger: "project passed task modeling and entered EXECUTING"
+  note: "execution 负责 dispatch、状态推进、handoff、review/test/rework，不负责替代 planning 或 task modeling"
+  steps:
+    - "load approved execution plan and task graph"
+    - "spawn or assign worker agents"
+    - "align task/todo ownership across related agents before execution lock"
+    - "write task records, participants, todo_list, trigger_policy into task manager"
+    - "compute READY set and dispatch non-conflicting tasks in parallel"
+    - "register task/project timers with timer service"
+    - "dispatch READY tasks"
+    - "persist assignment and state changes for every dispatch cycle"
+    - "collect task reports, review results, test results"
+    - "perform handoff between implementation/review/test/rework steps"
+    - "advance task states and milestone states"
+    - "recompute READY set after every meaningful state change"
+    - "handle blocked tasks by retry, reassign, or replan"
+    - "record evidence and artifact refs for completed work"
+    - "prepare release candidate when deliverables complete"
+  outputs:
+    - task runtime state
+    - milestone summaries
+    - release candidate ready signal
+    - parallelism metrics
+  guardrails:
+    - "all execution details remain inside sandbox unless promoted as summaries"
+    - "orchestrator is single writer for project snapshot"
+    - "task assignment must be persisted before or alongside worker dispatch"
+    - "worker may propose status changes, but orchestrator decides committed task state"
+
+pass_gate:
+  id: "EXECUTION_READY_FOR_RELEASE"
+  rule: "只有 deliverables 完成、必要 review/test 证据齐全、关键 task 达到 DONE/VERIFIED，项目才可进入 release"
+  required_checks:
+    deliverables_completed:
+      description: "project plan 中定义的交付物已完成"
+    required_reviews_completed:
+      description: "所有需要 review 的 task 已通过 REVIEW/VERIFIED"
+    required_tests_completed:
+      description: "所有需要测试的任务具有通过证据"
+    unresolved_blockers_absent:
+      description: "没有未处理的 release-critical blockers"
+    evidence_recorded:
+      description: "关键任务已有 artifact_refs 和 event history"
+
+fail_gate:
+  id: "EXECUTION_CONTINUE"
+  rule: "任一 required_checks 不满足时，项目继续停留在 execution/rework/block 状态"

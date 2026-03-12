@@ -1,0 +1,101 @@
+compatibility_mapping:
+  id: "MWF-COMPAT-001"
+  version: "0.1"
+  intent: "定义现有实现状态与 multicore workflow 状态之间的兼容映射"
+
+legacy_to_multicore:
+  task_status:
+    Pending:
+      mapped_to:
+        - BACKLOG
+        - READY
+      rule: "若 owner/inputs/depends_on 尚未满足则视为 BACKLOG；满足后视为 READY"
+    InProgress:
+      mapped_to:
+        - ACTIVE
+        - REVIEW
+      rule: "默认视为 ACTIVE；若已提交产物并等待 review，则视为 REVIEW"
+    Blocked:
+      mapped_to:
+        - BLOCKED
+      rule: "直接映射"
+    Completed:
+      mapped_to:
+        - VERIFIED
+        - DONE
+      rule: "若仅完成执行但未完成最终验收，则视为 VERIFIED；完成验收后视为 DONE"
+    Failed:
+      mapped_to:
+        - FAILED
+      rule: "直接映射"
+    Cancelled:
+      mapped_to:
+        - CANCELLED
+      rule: "直接映射"
+    Archived:
+      mapped_to:
+        - DONE
+        - CANCELLED
+      rule: "仅作为归档态，不作为 multicore 执行态；归档前必须先决议为 DONE 或 CANCELLED"
+
+multicore_to_legacy:
+  task_status:
+    BACKLOG:
+      mapped_to: "Pending"
+      note: "legacy 无法区分 BACKLOG/READY，需通过额外字段补足"
+    READY:
+      mapped_to: "Pending"
+      note: "需要 readiness 字段或 derived rule 区分"
+    ACTIVE:
+      mapped_to: "InProgress"
+    REVIEW:
+      mapped_to: "InProgress"
+      note: "legacy 无 REVIEW 态，需附加 review_pending=true"
+    VERIFIED:
+      mapped_to: "Completed"
+      note: "legacy 无 VERIFIED/DONE 分层，需附加 acceptance_pending=false/close_pending=true"
+    DONE:
+      mapped_to: "Completed"
+    BLOCKED:
+      mapped_to: "Blocked"
+    FAILED:
+      mapped_to: "Failed"
+    CANCELLED:
+      mapped_to: "Cancelled"
+
+compatibility_fields:
+  task:
+    derived_fields:
+      - name: "readiness"
+        values: ["backlog", "ready"]
+        purpose: "在 legacy Pending 内区分 BACKLOG 和 READY"
+      - name: "review_pending"
+        values: [true, false]
+        purpose: "在 legacy InProgress 内区分 ACTIVE 和 REVIEW"
+      - name: "acceptance_state"
+        values: ["pending", "verified", "done"]
+        purpose: "在 legacy Completed 内区分 VERIFIED 和 DONE"
+
+project_mapping:
+  note: "当前实现缺少正式 project state machine，应以 multicore project 状态为新 SSOT"
+  rule:
+    - "旧项目记录若仅有运行标记，则先映射为 EXECUTING/BLOCKED/FAILED 三类"
+    - "发布后统一切换到 multicore project state machine"
+
+agent_mapping:
+  note: "当前实现缺少标准 agent state machine，应以 multicore agent 状态为新 SSOT"
+  bootstrap_rule:
+    - "未分配任务且在线 -> IDLE"
+    - "已分配但未开始 -> ASSIGNED"
+    - "运行中 -> WORKING"
+    - "等待 review/dependency -> WAITING"
+    - "上报阻塞 -> BLOCKED"
+    - "heartbeat 超时 -> OFFLINE"
+
+release_mapping:
+  note: "当前实现缺少 release state machine，应直接采用 multicore release 状态作为首个正式版本"
+
+constraints:
+  - "兼容映射仅用于过渡期"
+  - "新实现不得继续扩大 legacy 状态语义"
+  - "一旦 project orchestrator 和 global sync 落地，应逐步消除 derived compatibility fields"

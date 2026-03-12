@@ -1,0 +1,150 @@
+workflow:
+  id: "MWF-WF-PLANNING-001"
+  name: "Project Planning Workflow"
+  owner: "architect + project_orchestrator + manager"
+  trigger: "project passed RESEARCH_PASS and BOOTSTRAP_PASS"
+  note: "planning 负责把 intake/research 的输入收敛成完整交付导向的项目计划；此阶段先形成 plan，再进入 task modeling"
+  inputs:
+    - intake_record
+    - research_report
+    - bootstrap_verification_report
+    - workflow_profile
+  steps:
+    - "select implementation language, runtime stack, and technical baseline"
+    - "define engineering standards, coding rules, quality gates, and repository strategy"
+    - "declare complete-delivery target and explicit non-goals"
+    - "define project deliverables and delivery boundaries"
+    - "design target architecture and module decomposition"
+    - "estimate modules, interfaces, integration points, and major work packages"
+    - "define execution phases and milestones"
+    - "define role roster and capacity assumptions"
+    - "define project agent strategy, template mapping, and scale plan"
+    - "define external dependencies, integration plan, and coordination owners"
+    - "define dev/stage/prod environment usage strategy"
+    - "define test and QA strategy: unit/integration/e2e/regression/smoke/performance/security as applicable"
+    - "define dependency strategy and parallelism strategy"
+    - "define task design principles, decomposition rules, and assignment strategy"
+    - "define task manager state machine, task storage layout, and dispatch acknowledgement policy"
+    - "define project tracking model, boards, reporting cadence, and escalation visibility"
+    - "define validation path: review/test/release/audit checkpoints"
+    - "define risk handling and escalation thresholds"
+    - "write project_plan record for task modeling phase"
+  outputs:
+    - project_plan
+    - technical_baseline
+    - architecture_plan
+    - module_interface_estimate
+    - milestone_plan
+    - role_roster
+    - project_agent_strategy
+    - integration_plan
+    - test_plan
+    - qa_plan
+    - environment_usage_plan
+    - dependency_strategy
+    - task_design_strategy
+    - task_storage_strategy
+    - task_manager_state_model
+    - dispatch_ack_policy
+    - tracking_plan
+    - release_path
+    - audit_checkpoints
+
+pass_gate:
+  id: "PLANNING_PASS"
+  rule: "只有形成完整 project_plan，项目才可进入 task modeling"
+  required_checks:
+    full_delivery_target_defined:
+      description: "project_delivery 目标被定义为完整交付；任何范围压缩都已显式审批"
+    tech_baseline_defined:
+      description: "开发语言、运行时、技术栈、工程规范和质量门明确"
+    deliverables_defined:
+      description: "交付物边界明确"
+    architecture_defined:
+      description: "目标架构、模块划分、接口边界和关键设计决策明确"
+    estimation_defined:
+      description: "模块数、接口数、主要工作包和复杂度估算明确"
+    milestones_defined:
+      description: "里程碑与阶段划分明确"
+    role_roster_defined:
+      description: "所需角色和资源假设明确"
+    project_agent_strategy_defined:
+      description: "project-scoped agent 命名、模板来源、容量与扩缩策略明确"
+    integration_plan_defined:
+      description: "外部系统联调对象、时序、责任人和前置条件明确"
+    environment_usage_defined:
+      description: "dev/stage/prod 各自承担什么验证职责明确"
+    test_plan_defined:
+      description: "测试范围、测试层级、环境需求和通过门明确"
+    qa_plan_defined:
+      description: "QA 责任、验证链路、stage 验证和 prod smoke 规则明确"
+    dependency_strategy_defined:
+      description: "依赖和并行策略明确"
+    task_design_strategy_defined:
+      description: "task 分解粒度、owner 规则、分配策略和 handoff 规则明确"
+    task_manager_strategy_defined:
+      description: "task manager 状态机、task list 落盘方式、forward 机制和 dispatch ack 双重确认策略明确"
+    tracking_plan_defined:
+      description: "项目跟踪指标、snapshot cadence、report cadence 和升级可见性明确"
+    validation_path_defined:
+      description: "review/test/release/audit 检查点明确"
+    risks_defined:
+      description: "主要风险和升级阈值明确"
+
+fail_gate:
+  id: "PLANNING_HOLD"
+  rule: "没有完整 project_plan 时，不得进入 task modeling"
+  typical_reasons:
+    - "delivery target degraded to MVP without approval"
+    - "language or stack undecided"
+    - "deliverables unclear"
+    - "architecture/module design missing"
+    - "interface/integration scope missing"
+    - "environment usage strategy missing"
+    - "test strategy missing"
+    - "QA validation chain missing"
+    - "milestones missing"
+    - "resource assumptions missing"
+    - "project agent strategy missing"
+    - "task manager state/ack strategy missing"
+    - "validation path missing"
+    - "parallelism strategy missing"
+    - "tracking/reporting model missing"
+
+required_record:
+  name: "project_plan"
+  required_fields:
+    - project_id
+    - plan_version
+    - delivery_target_mode
+    - scope_compression_approvals
+    - implementation_language
+    - runtime_stack
+    - engineering_standards
+    - deliverables
+    - architecture_summary
+    - modules
+    - interfaces
+    - complexity_estimate
+    - execution_phases
+    - milestones
+    - role_roster
+    - project_agent_strategy
+    - external_integrations
+    - integration_plan
+    - environment_usage_plan
+    - test_plan
+    - qa_plan
+    - dependency_strategy
+    - parallelism_strategy
+    - task_design_strategy
+    - task_storage_strategy
+    - task_manager_state_model
+    - dispatch_ack_policy
+    - assignment_strategy
+    - tracking_plan
+    - validation_path
+    - release_path
+    - audit_checkpoints
+    - planning_decision
+  note: "没有完整 project_plan 的项目不得进入 task modeling"

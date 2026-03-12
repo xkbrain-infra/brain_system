@@ -1,0 +1,146 @@
+state_machines:
+  id: "MWF-STATE-001"
+  version: "0.1"
+  intent: "定义 project/task/agent/sandbox/release/audit 状态机"
+
+project:
+  states:
+    - INTAKE
+    - RESEARCHING
+    - BOOTSTRAPPING
+    - BOOTSTRAP_HOLD
+    - PLANNING
+    - TASK_MODELING
+    - EXECUTING
+    - RECOVERING
+    - BLOCKED
+    - RELEASE_READY
+    - RELEASING
+    - RELEASED
+    - FAILED
+    - AUDITING
+    - CLOSED
+  transitions:
+    - "INTAKE -> RESEARCHING: intake pass + sponsor confirmed"
+    - "RESEARCHING -> BOOTSTRAPPING: research pass + bootstrap approved"
+    - "BOOTSTRAPPING -> PLANNING: sandbox healthy + orchestrator online"
+    - "BOOTSTRAPPING -> BOOTSTRAP_HOLD: bootstrap checks failed or provisioning blocked"
+    - "BOOTSTRAP_HOLD -> BOOTSTRAPPING: retry approved"
+    - "PLANNING -> TASK_MODELING: project plan approved"
+    - "TASK_MODELING -> EXECUTING: task graph approved + ready set seeded"
+    - "EXECUTING -> BLOCKED: critical blocker unresolved"
+    - "EXECUTING -> RECOVERING: orchestrator crash or local runtime recovery started"
+    - "RECOVERING -> EXECUTING: orchestrator re-attached + runtime restored"
+    - "BLOCKED -> EXECUTING: blocker cleared + replan accepted"
+    - "BLOCKED -> PLANNING: major replanning required"
+    - "EXECUTING -> RELEASE_READY: deliverables complete + candidate prepared"
+    - "RELEASE_READY -> RELEASING: release manager accepted candidate"
+    - "RELEASING -> RELEASED: prod deploy + smoke pass"
+    - "RELEASING -> FAILED: deploy fail or rollback fail"
+    - "RELEASED -> AUDITING: audit triggered"
+    - "FAILED -> AUDITING: failed project still requires audit"
+    - "AUDITING -> CLOSED: feedback dispatched + closure gate passed"
+
+task:
+  states:
+    - BACKLOG
+    - READY
+    - ACTIVE
+    - REVIEW
+    - VERIFIED
+    - DONE
+    - BLOCKED
+    - FAILED
+    - CANCELLED
+  transitions:
+    - "BACKLOG -> READY: scope locked + owner assigned + inputs complete"
+    - "READY -> ACTIVE: dependencies resolved"
+    - "ACTIVE -> REVIEW: implementation or analysis delivered"
+    - "REVIEW -> VERIFIED: reviewer accepted"
+    - "VERIFIED -> DONE: acceptance passed"
+    - "ACTIVE -> BLOCKED: blocker reported"
+    - "BLOCKED -> READY: blocker cleared + plan refreshed"
+    - "ACTIVE -> FAILED: unrecoverable execution failure"
+    - "任意 -> CANCELLED: scope removed or task superseded"
+
+agent:
+  states:
+    - IDLE
+    - ASSIGNED
+    - WORKING
+    - WAITING
+    - BLOCKED
+    - OFFLINE
+    - ERROR
+  transitions:
+    - "IDLE -> ASSIGNED: orchestrator assigned task"
+    - "ASSIGNED -> WORKING: agent accepted task and started"
+    - "WORKING -> WAITING: waiting on review/dependency/external result"
+    - "WORKING -> BLOCKED: blocker reported"
+    - "WORKING -> IDLE: current task handed off or done"
+    - "任意 -> OFFLINE: heartbeat timeout"
+    - "任意 -> ERROR: runtime error or repeated task failure"
+    - "OFFLINE -> IDLE: recovered and re-registered"
+
+sandbox:
+  states:
+    - PROVISIONING
+    - READY
+    - HOLD
+    - DEGRADED
+    - STOPPED
+    - ARCHIVE_HOLD
+    - ARCHIVED
+  transitions:
+    - "PROVISIONING -> READY: image ready + health checks pass"
+    - "PROVISIONING -> HOLD: provisioning/bootstrap failure requires retry or destroy"
+    - "HOLD -> PROVISIONING: retry accepted"
+    - "READY -> DEGRADED: resource/runtime checks fail"
+    - "DEGRADED -> READY: recovered"
+    - "READY -> STOPPED: project suspended or finished"
+    - "STOPPED -> ARCHIVE_HOLD: archive dump incomplete"
+    - "ARCHIVE_HOLD -> STOPPED: archive retry pending"
+    - "STOPPED -> ARCHIVED: artifacts retained and sandbox retired"
+
+release:
+  states:
+    - CANDIDATE_PENDING
+    - BUILD_READY
+    - TESTED
+    - REVIEW_APPROVED
+    - AUDIT_APPROVED
+    - STAGED
+    - PROD_APPROVED
+    - RELEASED
+    - ROLLBACK_PENDING
+    - ROLLBACK_FAILED
+    - ROLLED_BACK
+    - REJECTED
+  transitions:
+    - "CANDIDATE_PENDING -> BUILD_READY: candidate artifact frozen"
+    - "BUILD_READY -> TESTED: test gate passed"
+    - "TESTED -> REVIEW_APPROVED: review gate passed"
+    - "REVIEW_APPROVED -> AUDIT_APPROVED: audit gate passed"
+    - "AUDIT_APPROVED -> STAGED: staging deploy complete"
+    - "STAGED -> PROD_APPROVED: production approval granted"
+    - "PROD_APPROVED -> RELEASED: production deploy + smoke pass"
+    - "任意 -> ROLLBACK_PENDING: deploy fail or smoke fail requires rollback"
+    - "ROLLBACK_PENDING -> ROLLED_BACK: rollback executed successfully"
+    - "ROLLBACK_PENDING -> ROLLBACK_FAILED: rollback attempt failed"
+    - "任意 -> ROLLED_BACK: rollback executed"
+    - "任意 -> REJECTED: gate rejected candidate"
+
+audit:
+  states:
+    - PENDING
+    - COLLECTING
+    - ANALYZING
+    - ACTIONS_DRAFTED
+    - FEEDBACK_SYNCED
+    - DONE
+  transitions:
+    - "PENDING -> COLLECTING: release complete or project failed"
+    - "COLLECTING -> ANALYZING: logs/artifacts/snapshots loaded"
+    - "ANALYZING -> ACTIONS_DRAFTED: findings and root causes compiled"
+    - "ACTIONS_DRAFTED -> FEEDBACK_SYNCED: knowledge/workflow/evolution targets assigned"
+    - "FEEDBACK_SYNCED -> DONE: all follow-up records written"

@@ -1,0 +1,301 @@
+domain_model:
+  id: "MWF-DOMAIN-001"
+  version: "0.1"
+  intent: "定义 multicore workflow 的核心实体与关系"
+
+entities:
+  project:
+    description: "最小交付单元"
+    required_fields:
+      - group_id
+      - group_root
+      - project_id
+      - project_root
+      - title
+      - goal
+      - scope
+      - acceptance
+      - owner_orchestrator_id
+      - sandbox_id
+      - status
+      - priority
+      - created_at
+      - updated_at
+
+  sandbox:
+    description: "项目隔离执行单元"
+    required_fields:
+      - group_id
+      - project_root_ref
+      - sandbox_id
+      - project_id
+      - sandbox_strategy
+      - sandbox_provider
+      - template_profile
+      - baseline_source_ref
+      - brain_runtime_version_ref
+      - sandbox_parent_image_ref
+      - project_payload_ref
+      - workspace_root
+      - brain_workspace_root
+      - project_workspace_root
+      - runtime_version
+      - health_status
+      - provider_evidence_ref
+      - created_at
+      - updated_at
+
+  orchestrator:
+    description: "项目容器内的执行 owner"
+    required_fields:
+      - group_id
+      - orchestrator_id
+      - project_id
+      - sandbox_id
+      - status
+      - heartbeat_at
+      - assigned_agents
+      - active_task_count
+
+  agent:
+    description: "执行 worker"
+    required_fields:
+      - group_id
+      - agent_id
+      - agent_scope
+      - role
+      - sandbox_id
+      - project_id
+      - orchestrator_id
+      - template_source_ref
+      - template_bundle_ref
+      - runtime_home
+      - runtime_created_in_sandbox
+      - state
+      - workload
+      - heartbeat_at
+
+  task:
+    description: "项目内最小执行单元"
+    required_fields:
+      - group_id
+      - task_id
+      - project_id
+      - title
+      - kind
+      - owner_agent_id
+      - status
+      - execution_state
+      - dispatch_state
+      - priority
+      - depends_on
+      - participants
+      - todo_list
+      - trigger_policy
+      - conflict_keys
+      - acceptance
+      - updated_at
+
+  task_dispatch:
+    description: "task forward 与 ack double-check 的权威记录"
+    required_fields:
+      - dispatch_id
+      - group_id
+      - project_id
+      - task_id
+      - target_agent_id
+      - ipc_sent_at
+      - delivery_state
+      - ack_at
+      - execution_started_at
+      - last_heartbeat_at
+      - retry_count
+      - updated_at
+
+  task_summary:
+    description: "同步到 global task manager 的轻量摘要"
+    required_fields:
+      - group_id
+      - task_id
+      - project_id
+      - title
+      - owner_agent_id
+      - status
+      - kind
+      - artifact_refs
+      - updated_at
+
+  log_stream:
+    description: "按类别组织的结构化日志流"
+    required_fields:
+      - stream_id
+      - group_id
+      - project_id
+      - sandbox_id
+      - log_class
+      - storage_scope
+      - latest_log_id
+      - updated_at
+
+  log_bundle:
+    description: "供 report、audit、归档引用的日志集合"
+    required_fields:
+      - bundle_id
+      - group_id
+      - project_id
+      - timeline_log_ref
+      - task_progress_log_ref
+      - service_runtime_log_ref
+      - created_at
+
+  config_version:
+    description: "runtime 配置版本记录"
+    required_fields:
+      - config_id
+      - group_id
+      - scope
+      - environment
+      - version
+      - payload_ref
+      - created_at
+
+  project_payload:
+    description: "进入 sandbox 的项目内容冻结包"
+    required_fields:
+      - payload_id
+      - group_id
+      - project_id
+      - project_root
+      - payload_version
+      - payload_archive_ref
+      - payload_manifest_ref
+      - payload_hash
+      - payload_archive_format
+      - created_at
+
+  brain_runtime_version:
+    description: "sandbox bootstrap 使用的 brain runtime 版本记录"
+    required_fields:
+      - version_id
+      - brain_git_commit
+      - brain_git_tag_or_version
+      - brain_git_dirty
+      - brain_image_tag
+      - brain_image_id
+      - brain_image_digest
+      - version_control_mode
+      - created_at
+
+  project_agent_provision_plan:
+    description: "bootstrap 或扩容时使用的 project agent 生成计划"
+    required_fields:
+      - plan_id
+      - group_id
+      - project_id
+      - sandbox_id
+      - requested_roles
+      - template_resolution_map
+      - template_bundle_plan
+      - project_agent_roster_ref
+      - created_at
+
+  project_agent_roster:
+    description: "项目 agent roster 的 SSOT manifest"
+    required_fields:
+      - roster_id
+      - group_id
+      - project_id
+      - sandbox_id
+      - roster_ref
+      - agent_ids
+      - template_bundle_refs
+      - status
+      - created_at
+
+  service_registration:
+    description: "正式 service 的注册与发现记录"
+    required_fields:
+      - service_id
+      - group_id
+      - project_id
+      - sandbox_id
+      - service_name
+      - endpoint_ref
+      - config_version_ref
+      - health_status
+      - created_at
+
+  milestone:
+    description: "阶段性交付节点"
+    required_fields:
+      - group_id
+      - milestone_id
+      - project_id
+      - name
+      - status
+      - due_at
+
+  release_candidate:
+    description: "候选发布单元"
+    required_fields:
+      - group_id
+      - candidate_id
+      - project_id
+      - source_revision
+      - artifact_refs
+      - test_summary
+      - review_summary
+      - audit_summary
+      - status
+
+  audit_report:
+    description: "项目执行与发布审计报告"
+    required_fields:
+      - group_id
+      - audit_id
+      - project_id
+      - candidate_id
+      - findings
+      - root_causes
+      - improvement_actions
+      - status
+      - created_at
+
+  knowledge_patch:
+    description: "从 audit 萃取出的知识更新提议"
+    required_fields:
+      - group_id
+      - patch_id
+      - source_audit_id
+      - target_domain
+      - summary
+      - status
+
+relations:
+  - "one project -> one active sandbox at a time"
+  - "one project -> many project_payload revisions"
+  - "one project -> many project_agent_provision_plan revisions"
+  - "one project -> one or more project_agent_roster revisions"
+  - "one sandbox -> one primary project orchestrator"
+  - "one project orchestrator -> many worker agents"
+  - "one project -> many tasks"
+  - "one project -> many task_dispatch records"
+  - "one project -> many log_streams"
+  - "one project -> one or more log_bundles"
+  - "one project -> many service_registrations"
+  - "one project -> zero or more milestones"
+  - "one project -> zero or more release_candidates"
+  - "one audit_report -> may create many knowledge_patch / evolution proposals"
+
+ownership_rules:
+  - "project execution ownership belongs to project orchestrator"
+  - "project worker identity ownership belongs to project-scoped roster under project_root/config/agents"
+  - "task state ownership belongs to task manager records written by orchestrator"
+  - "project directory ownership belongs to group_root/projects/{project}"
+  - "global visibility ownership belongs to global task manager"
+  - "publish ownership belongs to release manager after candidate is ready"
+  - "optimization ownership belongs to audit orchestrator"
+
+references:
+  schema_contract: "/brain/runtime/architecture/multicore/contracts/unified_schemas.yaml"
+  identifier_contract: "/brain/runtime/architecture/multicore/contracts/identifier_conventions.yaml"

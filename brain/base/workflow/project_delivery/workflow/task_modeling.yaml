@@ -1,0 +1,71 @@
+workflow:
+  id: "MWF-WF-TASKMODEL-001"
+  name: "Task Modeling Workflow"
+  owner: "project_orchestrator + architect"
+  trigger: "project passed PLANNING_PASS"
+  note: "task modeling 负责把 project_plan 实例化为 task graph，不直接替代 execution dispatch"
+  inputs:
+    - project_plan
+    - workflow_profile
+    - planning_outputs
+  steps:
+    - "map deliverables and work packages into candidate tasks"
+    - "separate true tasks from internal todo items"
+    - "assign owner / participants / reviewer for each task"
+    - "explicitly model QA/verification tasks where validation cannot stay implicit"
+    - "derive depends_on, conflict_keys, and trigger_policy"
+    - "label tasks by stage, kind, priority, and validation path"
+    - "group tasks into READY, deferred, or blocked-by-design sets"
+    - "write task graph into local task runtime and task manager"
+  outputs:
+    - task_graph
+    - ready_set_seed
+    - task_design_report
+
+pass_gate:
+  id: "TASK_MODELING_PASS"
+  rule: "只有 task graph 完整、粒度受控、依赖和角色清晰时，项目才可进入 execution"
+  required_checks:
+    deliverables_covered:
+      description: "所有 deliverables 都有对应 task 或 task group 覆盖"
+    task_granularity_valid:
+      description: "task 粒度适中，未把全部 todo 误升格为 task"
+    ownership_defined:
+      description: "每个 task 都有 owner，必要时有 participants/reviewer"
+    qa_validation_modeled:
+      description: "需要 QA/verification 的交付物已显式建模为 task 或 validation path"
+    dependency_defined:
+      description: "depends_on 和 validation path 明确"
+    trigger_defined:
+      description: "需要检查/触发的 task 已定义 trigger_policy"
+    conflict_defined:
+      description: "共享资源或互斥路径已声明 conflict_keys"
+    ready_seed_defined:
+      description: "初始 READY set 可计算"
+
+fail_gate:
+  id: "TASK_MODELING_HOLD"
+  rule: "task graph 不完整或粒度失衡时，不得进入 execution"
+  typical_reasons:
+    - "deliverables not mapped"
+    - "tasks too coarse or too fine"
+    - "missing owner/reviewer"
+    - "QA/verification path missing"
+    - "dependency graph unclear"
+    - "trigger policy missing"
+    - "parallel/serial rule unresolved"
+
+required_record:
+  name: "task_design_report"
+  required_fields:
+    - project_id
+    - task_graph_ref
+    - granularity_policy
+    - owner_assignment_rules
+    - reviewer_assignment_rules
+    - dependency_rules
+    - trigger_rules
+    - conflict_rules
+    - initial_ready_set
+    - task_modeling_decision
+  note: "没有完整 task_design_report 的项目不得进入 execution"

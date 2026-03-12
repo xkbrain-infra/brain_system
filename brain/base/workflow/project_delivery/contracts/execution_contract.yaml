@@ -1,0 +1,76 @@
+execution_contract:
+  id: "MWF-EXEC-001"
+  version: "0.1"
+  intent: "细化 execution 阶段的 dispatch、状态流转、handoff、review/test/rework 规则"
+
+execution_positioning:
+  role: "runtime delivery phase"
+  description: "execution 在 task_modeling 之后，负责把 task graph 推进到 deliverables ready"
+
+dispatch_cycle:
+  steps:
+    - "orchestrator computes READY set from current task graph"
+    - "orchestrator filters tasks by conflict_keys and resource window"
+    - "orchestrator persists assignment intent"
+    - "orchestrator sends TASK_ASSIGN IPC"
+    - "agent replies TASK_ACCEPT or TASK_BLOCKED"
+    - "orchestrator updates task state and event history"
+
+state_transition_rules:
+  required_path:
+    - "BACKLOG -> READY"
+    - "READY -> ACTIVE"
+    - "ACTIVE -> REVIEW or BLOCKED or FAILED"
+    - "REVIEW -> VERIFIED or ACTIVE"
+    - "VERIFIED -> DONE"
+  rule:
+    - "所有状态变更必须由 orchestrator 决议并写入 task manager"
+    - "worker 只能提议状态，不直接决定全局状态"
+
+handoff_rules:
+  implementation_to_review:
+    required_fields:
+      - task_id
+      - artifact_refs
+      - summary
+      - reviewer
+  review_to_rework:
+    required_fields:
+      - task_id
+      - review_findings
+      - rework_scope
+  implementation_to_test:
+    required_fields:
+      - task_id
+      - test_entrypoint
+      - environment_requirements
+      - artifact_refs
+
+review_and_test:
+  review:
+    rule:
+      - "需要 review 的 task 不得绕过 REVIEW 状态直接 DONE"
+      - "review rejection 必须生成 rework event"
+  test:
+    rule:
+      - "需要测试验证的 deliverable 不得绕过 test evidence"
+      - "测试失败必须进入 FAILED 或回到 ACTIVE/rework"
+  qa:
+    rule:
+      - "需要 QA 介入的 deliverable 必须有显式 QA task 或 validation path"
+      - "stage 验证和 prod smoke 不得省略 QA 或等价自动化 evidence"
+
+rework:
+  triggers:
+    - "review rejected"
+    - "test failed"
+    - "integration failed"
+    - "release gate rejected"
+  rule:
+    - "rework 必须记录原因、范围和回归验证要求"
+    - "高影响 rework 可新建 follow-up task，不强制复用原 task"
+
+evidence_requirements:
+  - "task 完成必须有 artifact_refs"
+  - "review/test 必须有结果记录"
+  - "执行阶段所有关键动作必须追加 event history"

@@ -1,0 +1,113 @@
+sandbox_version_and_packaging:
+  id: "MWF-SANDBOX-VPKG-001"
+  version: "0.1"
+  intent: "定义 sandbox bootstrap 中 brain image 版本控制、runtime clone、project payload 打包与追踪规则"
+
+positioning:
+  note:
+    - "brain runtime baseline 与 group project payload 必须分别版本化"
+    - "git 负责冻结源码基线，payload package 负责冻结实际项目内容"
+    - "brain image 与 group project data 分离管理，sandbox 启动时再组合"
+
+brain_runtime_versioning:
+  required_fields:
+    - "brain_git_commit"
+    - "brain_git_tag_or_version"
+    - "brain_git_dirty"
+    - "brain_image_tag"
+    - "brain_image_id"
+    - "brain_image_digest"
+  rules:
+    - "brain sandbox provisioning 必须基于可追溯的 brain image version"
+    - "不允许仅使用 latest 或无版本 tag 作为 bootstrap 依据"
+    - "brain_git_commit 与 brain_image_ref 必须可相互追溯"
+    - "brain runtime versioning 默认采用 git_commit + image_tag + image_digest 三联追踪"
+
+provision_modes:
+  docker_runtime_clone:
+    status: "preferred_for_brain_domain"
+    description: "从当前运行中的 brain 容器或其 image 派生 sandbox parent image"
+    required_fields:
+      - "parent_container_name"
+      - "parent_image_id"
+      - "sandbox_parent_image_tag"
+      - "sandbox_parent_image_digest_or_id"
+      - "derived_at"
+    rules:
+      - "若当前 brain runtime 已通过验证，优先使用 runtime clone"
+      - "runtime clone 产生的 parent image 必须记录来源容器和父 image"
+  docker_template_build:
+    status: "fallback"
+    description: "无可用 runtime snapshot 时，从内置 Docker 模板构建"
+    required_fields:
+      - "template_dockerfile_ref"
+      - "template_build_context"
+      - "build_started_at"
+      - "build_finished_at"
+    rules:
+      - "template build 只作为 fallback，不是 brain 域项目的默认首选"
+
+project_payload_packaging:
+  source_of_truth:
+    project_root: "/xkagent_infra/groups/{group_id}/projects/{project_key}"
+  required_fields:
+    - "project_payload_version"
+    - "project_payload_archive"
+    - "project_payload_manifest"
+    - "project_payload_hash"
+    - "project_payload_archive_format"
+    - "project_payload_created_at"
+    - "project_payload_source_root"
+  optional_fields:
+    - "project_payload_source_git_commit"
+    - "project_payload_source_git_dirty"
+    - "project_payload_packaging_command_ref"
+  rules:
+    - "project payload 打包必须发生在 sandbox bootstrap 前"
+    - "payload package 必须覆盖实际进入 sandbox 的项目内容"
+    - "即使 project_root 尚未纳入独立 git 管理，也必须生成 payload hash"
+    - "payload package 不得用 sandbox 临时目录替代 group project root"
+    - "payload archive 应优先使用本地 tarball/zip 等不可变归档格式并计算 sha256"
+
+project_payload_manifest_contract:
+  required_fields:
+    - "group_id"
+    - "project_id"
+    - "project_root"
+    - "included_paths"
+    - "excluded_paths"
+    - "payload_hash"
+    - "created_at"
+    - "created_by"
+  recommended_fields:
+    - "source_git_commit"
+    - "source_git_dirty"
+    - "brain_runtime_version_ref"
+
+bootstrap_integration:
+  order:
+    - "freeze brain runtime version"
+    - "resolve provisioning mode"
+    - "package project payload from group project root"
+    - "create or select sandbox parent image"
+    - "start sandbox container"
+    - "import project payload into sandbox workspace"
+    - "write bootstrap verification record"
+  bootstrap_record_required_fields:
+    - "brain_runtime_version_ref"
+    - "sandbox_provision_mode"
+    - "sandbox_parent_image_ref"
+    - "project_payload_version"
+    - "project_payload_hash"
+    - "project_payload_manifest_ref"
+
+forbidden_patterns:
+  - "only record git commit without image reference"
+  - "only record image tag without git/source reference"
+  - "skip payload packaging and directly trust mutable host directory"
+  - "bake mutable group project content into generic brain base image"
+  - "treat brain image as project payload carrier"
+
+rules:
+  - "brain image versioning 与 project payload packaging 必须同时存在"
+  - "sandbox 必须可回答自己基于哪版 brain runtime 与哪版 project payload 创建"

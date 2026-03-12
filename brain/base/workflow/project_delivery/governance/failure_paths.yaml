@@ -1,0 +1,287 @@
+failure_paths:
+  id: "MWF-FAIL-001"
+  version: "0.1"
+  intent: "定义 multicore workflow 的关键失败路径、恢复路径和清理路径"
+
+principles:
+  - "failure path is a first-class workflow branch, not an exception note"
+  - "hold state must always have retry, destroy, or escalate semantics"
+  - "failed release is not equal to recovered release"
+  - "recovery actions must leave auditable evidence"
+
+failure_domains:
+  bootstrap:
+    cases:
+      - code: "BRAIN_RUNTIME_VERSION_MISSING"
+        trigger: "brain runtime image/git/version metadata missing or not traceable"
+        target_state: "BOOTSTRAP_HOLD"
+        required_actions:
+          - "block sandbox provisioning"
+          - "record missing version evidence"
+          - "require runtime version freeze before retry"
+      - code: "PROJECT_PAYLOAD_INVALID"
+        trigger: "project payload archive/hash/manifest missing, stale, or not generated from project_root"
+        target_state: "BOOTSTRAP_HOLD"
+        required_actions:
+          - "invalidate bootstrap preparation"
+          - "repackage project payload from group project root"
+          - "record payload mismatch evidence"
+      - code: "PROJECT_AGENT_PLAN_MISSING"
+        trigger: "project agent provision plan or roster manifest missing during bootstrap"
+        target_state: "BOOTSTRAP_HOLD"
+        required_actions:
+          - "block sandbox worker provisioning"
+          - "rebuild provision plan from requested_roles and approved templates"
+          - "record missing roster evidence"
+      - code: "AGENT_TEMPLATE_UNRESOLVED"
+        trigger: "requested role cannot be resolved to approved group agent template/capability profile"
+        target_state: "BOOTSTRAP_HOLD"
+        required_actions:
+          - "block agent creation"
+          - "require template mapping clarification"
+          - "record unresolved role and template gap"
+      - code: "AGENT_TEMPLATE_BUNDLE_MISSING"
+        trigger: "resolved template source was not packaged into sandbox-consumable bundle or bundle was not imported"
+        target_state: "BOOTSTRAP_HOLD"
+        required_actions:
+          - "block sandbox agent startup"
+          - "rebuild template bundle from approved source"
+          - "record bundle import evidence gap"
+      - code: "TASK_STORAGE_MISSING"
+        trigger: "project_root/spec/06_tasks or sandbox writable task storage missing required files such as task_manager.yaml"
+        target_state: "BOOTSTRAP_HOLD"
+        required_actions:
+          - "block planning transition"
+          - "create task storage baseline and task_manager.yaml"
+          - "record missing task storage evidence"
+      - code: "TASK_MANAGER_WRITE_UNREADY"
+        trigger: "orchestrator cannot execute required task manager writes such as CREATE_PROJECT/TASK_CREATE/TASK_UPDATE"
+        target_state: "BOOTSTRAP_HOLD"
+        required_actions:
+          - "block task dispatch"
+          - "repair task manager write path or permissions"
+          - "record write readiness failure evidence"
+      - code: "DISPATCH_ACK_POLICY_MISSING"
+        trigger: "dispatch acknowledgement thresholds or retry/escalate policy not defined in project task manager contract"
+        target_state: "BOOTSTRAP_HOLD"
+        required_actions:
+          - "block worker forward"
+          - "materialize ack policy into task_manager.yaml and planning artifacts"
+          - "record policy gap"
+      - code: "SYSTEM_AGENT_REUSE_DETECTED"
+        trigger: "system/group agent ids or runtime homes are being reused as project worker instances"
+        target_state: "BOOTSTRAP_HOLD"
+        required_actions:
+          - "invalidate bootstrap agent roster"
+          - "regenerate project-scoped identities"
+          - "record reuse evidence"
+      - code: "GROUP_OWNERSHIP_UNRESOLVED"
+        trigger: "project group ownership or group_root cannot be resolved"
+        target_state: "INTAKE_HOLD"
+        required_actions:
+          - "block project creation"
+          - "require manager to assign valid group"
+          - "record missing ownership evidence"
+      - code: "PROJECT_ROOT_INVALID"
+        trigger: "project_root not created under group_root/projects or points into sandbox path"
+        target_state: "BOOTSTRAP_HOLD"
+        required_actions:
+          - "block sandbox provisioning"
+          - "create or repair project_root under group/projects"
+          - "record invalid path evidence"
+      - code: "SANDBOX_CONTRACT_UNDEFINED"
+        trigger: "sandbox strategy/provider/template profile missing or internally inconsistent"
+        target_state: "BOOTSTRAP_HOLD"
+        required_actions:
+          - "block provisioning start"
+          - "emit bootstrap_verification_report with contract_gap"
+          - "require strategy clarification before retry"
+      - code: "SANDBOX_PROVIDER_UNSUPPORTED"
+        trigger: "selected sandbox provider is not in approved provider list"
+        target_state: "BOOTSTRAP_HOLD"
+        required_actions:
+          - "reject provisioning request"
+          - "notify manager and sandbox owner"
+          - "require provider approval or provider switch"
+      - code: "BASELINE_UNAVAILABLE"
+        trigger: "base image or baseline config missing"
+        target_state: "BOOTSTRAP_HOLD"
+        required_actions:
+          - "emit bootstrap_verification_report with failure_reason"
+          - "notify config registry / manager"
+          - "allow retry after baseline fix"
+      - code: "SANDBOX_BOUNDARY_VIOLATION"
+        trigger: "project execution detected outside declared sandbox boundary"
+        target_state: "BOOTSTRAP_HOLD"
+        required_actions:
+          - "stop planning transition"
+          - "record host-path or cross-sandbox violation evidence"
+          - "destroy and recreate sandbox when boundary cannot be restored"
+      - code: "SANDBOX_USED_AS_PROJECT_ROOT"
+        trigger: "sandbox path is being treated as authoritative project root"
+        target_state: "BOOTSTRAP_HOLD"
+        required_actions:
+          - "restore project_root as group-owned SSOT"
+          - "reseed sandbox from valid project_root"
+          - "invalidate previous bootstrap evidence"
+      - code: "PARENT_IMAGE_UNTRACEABLE"
+        trigger: "sandbox parent image cannot be traced back to approved brain runtime image"
+        target_state: "BOOTSTRAP_HOLD"
+        required_actions:
+          - "block runtime clone bootstrap"
+          - "re-resolve parent image"
+          - "record parent image lineage gap"
+      - code: "PORT_ALLOCATION_FAILED"
+        trigger: "config registry cannot allocate required runtime port"
+        target_state: "BOOTSTRAP_HOLD"
+        retry_policy:
+          max_attempts: 3
+          backoff: "exponential"
+        final_action:
+          on_exhausted: "destroy_sandbox_and_recreate"
+      - code: "IPC_CONNECTIVITY_FAILED"
+        trigger: "sandbox cannot reach task manager / timer / control IPC"
+        target_state: "BOOTSTRAP_HOLD"
+        required_actions:
+          - "run connectivity diagnostics"
+          - "block transition to PLANNING"
+          - "escalate if > bootstrap_timeout"
+
+  provisioning:
+    cases:
+      - code: "SANDBOX_CREATE_FAILED"
+        trigger: "provider-specific sandbox create/start failure"
+        target_state: "PROVISIONING_FAILED"
+        required_actions:
+          - "cleanup partial workspace"
+          - "release allocated ports and reserved service names"
+          - "emit provisioning_failure_report"
+      - code: "SANDBOX_TEMPLATE_INVALID"
+        trigger: "built-in provider template missing required assets or health contract"
+        target_state: "PROVISIONING_FAILED"
+        required_actions:
+          - "mark provider template unusable"
+          - "block project bootstrap"
+          - "notify workflow owner"
+      - code: "TEMPLATE_ADAPTATION_FAILED"
+        trigger: "project-specific adaptation over built-in template failed validation"
+        target_state: "BOOTSTRAP_HOLD"
+        required_actions:
+          - "discard invalid adaptation layer"
+          - "retry from clean template instance"
+          - "emit adaptation failure evidence"
+      - code: "BASELINE_COPY_INCOMPLETE"
+        trigger: "complete brain baseline not materialized into project workspace"
+        target_state: "BOOTSTRAP_HOLD"
+        required_actions:
+          - "mark sandbox unusable"
+          - "prevent planning start"
+          - "re-seed workspace from approved baseline"
+      - code: "TOOLCHAIN_INIT_FAILED"
+        trigger: "git/runtime/test toolchain not ready"
+        target_state: "BOOTSTRAP_HOLD"
+        required_actions:
+          - "mark sandbox unusable"
+          - "prevent planning start"
+          - "retry or rebuild from baseline"
+      - code: "PROJECT_AGENT_CREATE_FAILED"
+        trigger: "sandbox failed to create or start one or more project-scoped agents"
+        target_state: "BOOTSTRAP_HOLD"
+        required_actions:
+          - "mark bootstrap roster incomplete"
+          - "cleanup failed runtime homes"
+          - "retry agent creation or destroy and recreate sandbox"
+
+  execution:
+    cases:
+      - code: "ORCHESTRATOR_CRASH"
+        trigger: "project orchestrator exits unexpectedly"
+        target_state: "RECOVERING"
+        required_actions:
+          - "restart orchestrator process"
+          - "reload local task runtime"
+          - "re-register timer triggers"
+          - "rebuild agent assignment index"
+          - "emit recovery_snapshot"
+      - code: "LOCAL_RUNTIME_CORRUPTED"
+        trigger: "local task runtime cannot be loaded or is inconsistent"
+        target_state: "BLOCKED"
+        required_actions:
+          - "freeze dispatch"
+          - "restore from last valid runtime checkpoint"
+          - "escalate if checkpoint unavailable"
+      - code: "TASK_STUCK_UNRECOVERABLE"
+        trigger: "task remains blocked after max retry / reassign budget"
+        target_state: "ESCALATED"
+        required_actions:
+          - "materialize blocker report"
+          - "request PMO/manager decision"
+      - code: "DISPATCH_ACK_TIMEOUT"
+        trigger: "IPC was sent but receipt_acknowledged or execution_started heartbeat evidence did not arrive before timeout"
+        target_state: "BLOCKED"
+        required_actions:
+          - "do not mark task as in_progress"
+          - "append timeout event to task manager and local dispatch log"
+          - "retry dispatch or reassign according to orchestration policy"
+          - "escalate if retry budget exhausted"
+
+  release:
+    cases:
+      - code: "RELEASE_DEPLOY_FAILED"
+        trigger: "stage or prod deploy failed"
+        target_state: "ROLLBACK_PENDING"
+        required_actions:
+          - "capture failed deployment evidence"
+          - "start rollback path"
+      - code: "ROLLBACK_FAILED"
+        trigger: "rollback action failed or left environment inconsistent"
+        target_state: "ROLLBACK_FAILED"
+        required_actions:
+          - "freeze further release attempts"
+          - "emit critical escalation"
+          - "require manual intervention record"
+      - code: "POST_RELEASE_SMOKE_FAILED"
+        trigger: "smoke test fails after deploy"
+        target_state: "ROLLBACK_PENDING"
+        required_actions:
+          - "treat as release-critical"
+          - "start rollback unless explicit override approved"
+
+  archival:
+    cases:
+      - code: "ARCHIVE_DUMP_FAILED"
+        trigger: "sandbox archive dump incomplete"
+        target_state: "ARCHIVE_HOLD"
+        required_actions:
+          - "block sandbox destroy"
+          - "retry dump"
+          - "escalate if dump remains incomplete"
+
+recovery_rules:
+  orchestrator_recovery:
+    required_inputs:
+      - "latest local task runtime checkpoint"
+      - "latest project snapshot"
+      - "last timer registration set"
+      - "active assignment registry"
+    success_criteria:
+      - "orchestrator online"
+      - "local runtime loaded"
+      - "timer triggers re-registered"
+      - "snapshot re-synced to global task manager"
+  sandbox_hold_resolution:
+    allowed_exits:
+      - "retry_in_place"
+      - "destroy_and_recreate"
+      - "manual_cancel"
+    forbidden:
+      - "silent hold indefinitely"
+
+cleanup_contract:
+  on_destroy:
+    required:
+      - "release reserved ports"
+      - "release reserved service names"
+      - "release provider-specific runtime resources"
+      - "archive runtime dump if available"
+      - "emit sandbox_destroy_report"

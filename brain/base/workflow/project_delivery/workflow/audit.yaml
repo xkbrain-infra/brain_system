@@ -1,0 +1,46 @@
+workflow:
+  id: "MWF-WF-AUDIT-001"
+  name: "Audit Workflow"
+  owner: "audit_orchestrator"
+  trigger:
+    - "project released"
+    - "project failed"
+    - "major incident after release"
+  note: "audit 负责执行后/发布后复查，并将问题 materialize 为可追踪改进项"
+  steps:
+    - "collect execution trace, snapshots, release records, blockers, retries"
+    - "analyze bottlenecks, missed gates, repeated failure patterns"
+    - "produce findings and root causes"
+    - "draft improvement actions"
+    - "route actions into knowledge, workflow, spec, or evolution"
+    - "close project only after feedback is synced"
+  outputs:
+    - audit_report
+    - improvement_actions
+    - knowledge_patch proposals
+    - evolution proposals
+    - archive verification dependency
+
+pass_gate:
+  id: "AUDIT_PASS"
+  rule: "只有 audit report 完整且高优先级 findings 已 materialize，audit 才可标记 DONE"
+  required_checks:
+    audit_report_complete:
+      description: "audit report 含 findings/root causes/actions"
+    major_findings_classified:
+      description: "主要问题已按 domain 分类"
+    root_causes_recorded:
+      description: "高优先级 findings 已有 root cause"
+    followups_materialized:
+      description: "高优先级与重复问题已生成 follow-up items 或 patch proposals"
+    feedback_routed:
+      description: "改进项已路由到 knowledge/workflow/spec/evolution"
+
+fail_gate:
+  id: "AUDIT_ACTIONS_PENDING"
+  rule: "report 已形成但 materialization 不完整时，audit 不得标记 DONE"
+
+archive_dependency:
+  rule: "project close and sandbox destroy require archive dump completion for runtime/log/trace evidence"
+  references:
+    - "47_sandbox_archive_contract.yaml"

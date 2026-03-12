@@ -1,0 +1,161 @@
+unified_schemas:
+  id: "MWF-SCHEMA-001"
+  version: "0.1"
+  intent: "统一 project snapshot、task summary、log record、delivery/release/audit report 的字段契约"
+
+common_fields:
+  project_ref:
+    - group_id
+    - project_id
+    - sandbox_id
+    - orchestrator_id
+  audit_fields:
+    - created_at
+    - updated_at
+    - source_ref
+  config_ref:
+    - config_version_ref
+    - env_baseline_ref
+
+log_record:
+  required_fields:
+    - log_id
+    - ts
+    - level
+    - log_class
+    - group_id
+    - project_id
+    - sandbox_id
+    - source_service
+    - source_role
+    - message
+    - event_type
+    - workflow_stage
+    - correlation_id
+  optional_fields:
+    - task_id
+    - agent_id
+    - orchestrator_id
+    - progress_pct
+    - status_before
+    - status_after
+    - artifact_refs
+    - payload_ref
+
+project_snapshot:
+  required_fields:
+    - group_id
+    - project_id
+    - sandbox_id
+    - orchestrator_id
+    - profile
+    - project_status
+    - workflow_stage
+    - progress_pct
+    - active_tasks
+    - ready_tasks
+    - blocked_tasks
+    - pending_reviews
+    - parallelism_width
+    - role_utilization
+    - release_candidate_status
+    - last_event_id
+    - updated_at
+  optional_fields:
+    - current_risks
+    - current_milestone
+    - stale_flags
+
+task_summary:
+  required_fields:
+    - task_id
+    - group_id
+    - project_id
+    - sandbox_id
+    - owner_agent_id
+    - status
+    - stage
+    - kind
+    - priority
+    - depends_on
+    - participants
+    - trigger_mode
+    - artifact_refs
+    - last_event_id
+    - updated_at
+  optional_fields:
+    - review_by
+    - conflict_keys
+    - next_check_at
+    - escalation_state
+
+delivery_report:
+  required_fields:
+    - report_id
+    - group_id
+    - project_id
+    - sandbox_id
+    - scope_summary
+    - deliverables
+    - completed_tasks
+    - incomplete_tasks
+    - cancelled_tasks
+    - milestone_summary
+    - risk_summary
+    - execution_timeline_ref
+    - log_bundle_ref
+    - generated_by
+    - created_at
+  optional_fields:
+    - quality_summary
+    - known_gaps
+
+release_report:
+  required_fields:
+    - report_id
+    - group_id
+    - project_id
+    - candidate_id
+    - release_status
+    - build_summary
+    - test_summary
+    - review_summary
+    - audit_gate_summary
+    - staging_result
+    - production_result
+    - smoke_result
+    - rollback_result
+    - deployment_timeline
+    - log_bundle_ref
+    - config_version_refs
+    - created_at
+  optional_fields:
+    - deployment_refs
+    - incident_refs
+
+audit_report:
+  required_fields:
+    - audit_id
+    - group_id
+    - project_id
+    - candidate_id
+    - audit_status
+    - findings
+    - root_causes
+    - improvement_actions
+    - materialized_followups
+    - target_domains
+    - delivery_report_ref
+    - release_report_ref
+    - supporting_log_refs
+    - created_at
+  optional_fields:
+    - recurring_patterns
+    - severity_summary
+
+rules:
+  - "所有 summary/report 必须包含 project_id"
+  - "所有 summary/report/log 必须包含 group_id"
+  - "所有跨容器记录必须包含 sandbox_id"
+  - "所有状态快照和报告必须包含 created_at 或 updated_at"
+  - "所有 summary/report 必须可追溯到 source_ref 或 last_event_id"

@@ -1,0 +1,60 @@
+group_project_layout:
+  id: "MWF-GROUP-PATH-001"
+  version: "0.1"
+  intent: "定义 project_delivery 中 group 归属、项目根目录和 sandbox 工作副本之间的路径关系"
+
+positioning:
+  note:
+    - "项目必须先归属某个 group，再在该 group 下创建 project root"
+    - "sandbox 是执行环境，不是 project 的主目录"
+
+group_resolution:
+  required_fields:
+    - "group_id"
+    - "group_root"
+    - "group_workflow_ref"
+    - "group_spec_index_ref"
+  rules:
+    - "intake 阶段必须先确认项目归属 group"
+    - "group_root 必须可解析到现有 group 空间"
+    - "未确认 group 归属的需求不得创建 project"
+
+project_root_contract:
+  logical_layout:
+    canonical_path: "/brain/groups/org/{group_id}/projects/{project_key}"
+    note: "沿用既有 group/project 语义规范"
+  current_workspace_layout:
+    resolved_path: "/xkagent_infra/groups/{group_id}/projects/{project_key}"
+    note: "当前仓库工作区中的实际路径"
+  required_children:
+    - "spec/"
+    - "memory/"
+    - "references/"
+    - "journal/"
+  optional_children:
+    - "config/"
+    - "logs/"
+    - "tests/"
+    - "data/"
+  rules:
+    - "project_root 必须位于 group_root/projects/ 下"
+    - "project_root 是项目的设计/规范/记录主目录"
+    - "sandbox 只消费 project_root 内容，不替代 project_root"
+
+sandbox_relationship:
+  role: "execution_copy"
+  requirements:
+    - "sandbox 内工作副本必须来源于 project_root 与完整 brain baseline"
+    - "sandbox destroy 不得删除 group/project 主目录"
+    - "project status/spec/memory 的权威记录保留在 group project root 或其同步记录中"
+
+forbidden_patterns:
+  - "/xkagent_infra/brain/sandbox/{project}"
+  - "/brain/sandbox/{project}"
+  - "直接把 sandbox path 当作 project_root"
+  - "未创建 group project root 就直接 bootstrap sandbox"
+
+rules:
+  - "group 归属确认先于 project 创建"
+  - "project 根目录必须落在 groups/{group}/projects/ 下"
+  - "sandbox 可以有自己的 workspace，但不能成为项目主目录 SSOT"
