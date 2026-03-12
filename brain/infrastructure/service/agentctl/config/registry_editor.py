@@ -34,6 +34,7 @@ class AgentEntry:
     # legacy aliases (read-compat only; writer prefers agent_cli/agent_model)
     cli_type: str = ""
     model: str = ""
+    transport_mode: str = ""
     effort: str = ""
     cli_args: list[str] | None = None
     env: dict[str, str] | None = None
@@ -81,6 +82,12 @@ def render_agent_yaml_v2(entry: AgentEntry) -> str:
         lines.append(f"  agent_cli: {cli}")
     if model:
         lines.append(f"  agent_model: {model}")
+    if entry.cli_type:
+        lines.append(f"  cli_type: {entry.cli_type}")
+    if entry.model:
+        lines.append(f"  model: {entry.model}")
+    if entry.transport_mode:
+        lines.append(f"  transport_mode: {entry.transport_mode}")
     if entry.effort:
         lines.append(f"  effort: {entry.effort}")
     lines.append(f"  tmux_session: {entry.tmux_session}")

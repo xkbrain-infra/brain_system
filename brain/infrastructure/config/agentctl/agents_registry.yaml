@@ -50,6 +50,70 @@ groups:
     required: false
     desired_state: stopped
     status: active
+  - name: tmp-agent-review-kimi
+    description: brain 的 reviewer Agent
+    role: reviewer
+    scope: group
+    group: brain
+    path: /xkagent_infra/groups/brain/agents/tmp-agent-review-kimi
+    agent_type: alibaba
+    agent_cli: claude
+    agent_model: kimi-k2.5
+    cli_type: claude
+    model: kimi-k2.5
+    transport_mode: proxy
+    tmux_session: tmp-agent-review-kimi
+    required: false
+    desired_state: running
+    status: active
+  - name: tmp-agent-review-claude-sonnet
+    description: brain 的 reviewer Agent
+    role: reviewer
+    scope: group
+    group: brain
+    path: /xkagent_infra/groups/brain/agents/tmp-agent-review-claude-sonnet
+    agent_type: copilot
+    agent_cli: claude
+    agent_model: claude-sonnet-4.6
+    cli_type: claude
+    model: claude-sonnet-4.6
+    transport_mode: proxy
+    tmux_session: tmp-agent-review-claude-sonnet
+    required: false
+    desired_state: running
+    status: active
+  - name: tmp-agent-review-gemini
+    description: brain 的 reviewer Agent
+    role: reviewer
+    scope: group
+    group: brain
+    path: /xkagent_infra/groups/brain/agents/tmp-agent-review-gemini
+    agent_type: copilot
+    agent_cli: claude
+    agent_model: gemini-3.1-pro-preview
+    cli_type: claude
+    model: gemini-3.1-pro-preview
+    transport_mode: proxy
+    tmux_session: tmp-agent-review-gemini
+    required: false
+    desired_state: running
+    status: active
+  - name: tmp-agent-review-minimax
+    description: brain 的 reviewer Agent
+    role: reviewer
+    scope: group
+    group: brain
+    path: /xkagent_infra/groups/brain/agents/tmp-agent-review-minimax
+    agent_type: minimax
+    agent_cli: claude
+    agent_model: MiniMax-M2.5
+    cli_type: claude
+    model: MiniMax-M2.5
+    transport_mode: proxy
+    tmux_session: tmp-agent-review-minimax
+    required: false
+    desired_state: running
+    status: active
   system:
   - name: agent-system_pmo
     description: System PMO (resident)

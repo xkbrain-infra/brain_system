@@ -73,7 +73,7 @@ routing:
 
   normal_priority_sources:
     - researcher
-    - service_gateway_telegram
+    - service-brain_gateway
   behavior:
     batch_process: true
     ack_after_process: true
@@ -83,21 +83,34 @@ routing:
 
 ```yaml
 telegram_config:
-  gateway: service_gateway_telegram
+  gateway: service-brain_gateway
   payload_schema:
     required:
-      - user_id
       - chat_id
       - content
     optional:
+      - user_id
       - message_id
       - username
       - platform
+      - target_bot
+      - reply_to_message_id
+
+  outbound_reliability:
+    primary_path: service-brain_gateway
+    fallback_path: service-telegram_api
+    rules:
+      - 有 chat_id 时，优先发给 service-brain_gateway
+      - message 必须是 JSON 字符串，字段至少包含 chat_id/content/platform/target_bot
+      - 只有在缺少 chat_id 且确实要复用最近 Telegram 来源时，才允许直发 service-telegram_api
+      - 直发 service-telegram_api 时，payload.type 必须为 FRONTDESK_OUTBOUND，并显式携带 recent_source=true
+      - 禁止仅因 ipc_list_agents 输出不完整就判断 gateway 离线
 
   response_template:
-    user_id: "{from_user_id}"
     chat_id: "{from_chat_id}"
     content: "{response_content}"
+    platform: "telegram"
+    target_bot: "{source_bot}"
 ```
 
 ### 3. 日志规范
@@ -120,13 +133,43 @@ forwarding:
   telegram_user_request:
     1. 接收 Telegram 消息 (ipc_recv)
     2. 标准化字段 (trace_id, session_id, priority)
-    3. 解析意图，路由到对应 Agent (ipc_send forward)
-    4. 设置超时检查定时器 (ipc_send_delayed to=frontdesk, delay=300s)
-    5. 记录到 pending_responses 追踪表
-    6. 等待 Agent 响应 → 将结果通过网关回复 Telegram 用户 (ipc_send reply)
-    7. 标记 pending_responses[trace_id].responded = true
-    8. 确认 ACK (ipc_ack)
-    注意: 步骤 6 是必须的，不可跳过
+    3. 立即通过 gateway 给用户回执：
+       ```
+       ipc_send(
+         to="service-brain_gateway",
+         message="{\"chat_id\":\"{from_chat_id}\",\"content\":\"已收到您的消息，正在为您转交处理...\",\"platform\":\"telegram\",\"target_bot\":\"{source_bot}\",\"reply_to_message_id\":\"{original_message_id}\"}",
+         message_type="response"
+       )
+       ```
+    4. 解析意图，路由到对应 Agent (ipc_send forward)
+    5. 设置超时检查定时器 (ipc_send_delayed to=frontdesk, delay=300s)
+    6. 记录到 pending_responses 追踪表
+    7. 等待 Agent 响应 → 将结果通过网关回复 Telegram 用户 (ipc_send reply)
+    8. 标记 pending_responses[trace_id].responded = true
+    9. 确认 ACK (ipc_ack)
+    注意: 步骤 3 和步骤 7 都是必须的，不可跳过
+
+  agent_reply_to_user:
+    1. 接收来自 Agent 的回复消息
+    2. 若已知 chat_id/target_bot，则优先发给 service-brain_gateway
+    3. 通过 MCP `ipc_send` 时，message 使用 JSON 字符串：
+       ```
+       ipc_send(
+         to="service-brain_gateway",
+         message="{\"chat_id\":\"...\",\"content\":\"...\",\"platform\":\"telegram\",\"target_bot\":\"...\",\"reply_to_platform\":\"telegram\"}",
+         message_type="response"
+       )
+       ```
+    4. 若缺少 chat_id，才允许使用 recent_source fallback
+    5. fallback 格式：
+       ```
+       ipc_send(
+         to="service-telegram_api",
+         message="{\"type\":\"FRONTDESK_OUTBOUND\",\"content\":\"已收到，正在处理...\",\"platform\":\"telegram\",\"target_bot\":\"{source_bot}\",\"recent_source\":true}",
+         message_type="response"
+       )
+       ```
+    6. 若 gateway 与 recent_source 都不可用，必须走兜底回复并通知 PMO
 
   agent_to_agent:
     1. 接收 Agent 间消息

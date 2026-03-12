@@ -29,8 +29,7 @@
       "telegram": "service-telegram_api"
     },
     "bot_service_map": {
-      "XKAgentBot": "service-telegram_api",
-      "XKQuantBot": "service-telegram_api_bot2"
+      "XKAgentBot": "service-telegram_api"
     }
   },
   "permissions": {

@@ -1,0 +1,129 @@
+agents_registry:
+  version: '2.1'
+  updated: '2026-02-28'
+group_meta:
+  brain:
+    type: coding
+    description: Brain core management group
+  system:
+    type: coding
+    description: Brain system operations group
+groups:
+  brain:
+  - name: agent-brain_manager
+    description: Brain manager (resident)
+    role: manager
+    scope: group
+    group: brain
+    path: /xkagent_infra/groups/brain/agents/agent-brain_manager
+    agent_type: minimax
+    agent_cli: claude
+    agent_model: MiniMax-M2.5
+    tmux_session: agent-brain_manager
+    cwd: /xkagent_infra/groups/brain/agents/agent-brain_manager
+    cli_args: []
+    env:
+      IS_SANDBOX: 1
+    export_cmd:
+      BRAIN_AGENT_NAME: agent-brain_manager
+    desired_state: running
+    status: active
+    required: false
+  - name: agent-brain_devops
+    description: "brain \u7684 devops Agent"
+    role: devops
+    scope: group
+    group: brain
+    path: /xkagent_infra/groups/brain/agents/agent-brain_devops
+    agent_type: alibaba
+    agent_model: Sonnet
+    tmux_session: agent-brain_devops
+    cwd: /xkagent_infra/groups/brain/agents/agent-brain_devops
+    cli_args:
+    - --dangerously-skip-permissions
+    env:
+      IS_SANDBOX: 1
+      BRAIN_TRANSPORT_MODE: proxy
+    export_cmd:
+      BRAIN_AGENT_NAME: agent-brain_devops
+    initial_prompt: agent-brain_devops
+    required: false
+    desired_state: running
+    status: active
+    capabilities:
+    - deployment
+    - infrastructure
+    - monitoring
+    - troubleshooting
+    tags:
+    - '#devops'
+    - '#ops'
+    - '#infra'
+  system:
+  - name: agent-system_pmo
+    description: System PMO (resident)
+    role: pmo
+    scope: group
+    group: system
+    path: /xkagent_infra/groups/system/agents/agent-system_pmo
+    agent_type: claude
+    model: Sonnet
+    tmux_session: agent-system_pmo
+    cwd: /xkagent_infra/groups/system/agents/agent-system_pmo
+    cli_args: []
+    env:
+      IS_SANDBOX: 1
+    export_cmd:
+      BRAIN_AGENT_NAME: agent-system_pmo
+    desired_state: running
+    status: active
+    required: false
+  - name: agent-system_devops
+    description: System devops (resident)
+    role: devops
+    scope: group
+    group: system
+    path: /xkagent_infra/groups/system/agents/agent-system_devops
+    agent_type: claude
+    model: Sonnet
+    tmux_session: agent-system_devops
+    cwd: /xkagent_infra/groups/system/agents/agent-system_devops
+    cli_args: []
+    env:
+      IS_SANDBOX: 1
+    export_cmd:
+      BRAIN_AGENT_NAME: agent-system_devops
+    desired_state: running
+    status: active
+    required: false
+  - name: agent-system_architect
+    description: system 的 architect Agent
+    role: architect
+    scope: group
+    group: system
+    path: /xkagent_infra/groups/system/agents/agent-system_architect
+    agent_type: claude
+    agent_model: claude-opus-4.6
+    agent_cli: claude
+    tmux_session: agent-system_architect
+    cwd: /xkagent_infra/groups/system/agents/agent-system_architect
+    cli_args:
+      - --dangerously-skip-permissions
+    env:
+      IS_SANDBOX: 1
+      BRAIN_TRANSPORT_MODE: proxy
+    export_cmd:
+      BRAIN_AGENT_NAME: agent-system_architect
+    initial_prompt: agent-system_architect
+    required: false
+    desired_state: running
+    status: active
+    capabilities:
+      - architecture_design
+      - code_review
+      - tech_decision
+      - documentation
+    tags:
+      - '#architect'
+      - '#design'
+      - '#review'

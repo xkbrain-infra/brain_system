@@ -25,7 +25,7 @@
 7. [T3] target_bot 必须使用 inbound 的 source_bot 原值（如 "XKAgentBot"）
    ❌ 禁止: "service_gateway_telegram" / "service-brain_gateway" / "bot1"
 8. [T4] 必须同时携带 target_service = source_service 原值
-   ✅ "service-telegram_api" 或 "service-telegram_api_bot2"
+   ✅ "service-telegram_api"
    ❌ 禁止省略此字段
 ```
 

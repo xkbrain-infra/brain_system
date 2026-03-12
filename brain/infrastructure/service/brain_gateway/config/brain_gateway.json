@@ -32,9 +32,7 @@
     },
     "bot_service_map": {
       "XKAgentBot": "service-telegram_api",
-      "XKQuantBot": "service-telegram_api",
-      "xkagent": "service-telegram_api",
-      "xkquant": "service-telegram_api"
+      "xkagent": "service-telegram_api"
     }
   },
   "permissions": {
@@ -56,7 +54,7 @@
   },
   "llm_gateway": {
     "enabled": true,
-    "upstream_base_url": "http://127.0.0.1:3456",
+    "upstream_base_url": "http://127.0.0.1:8210",
     "timeout_s": 120
   }
 }

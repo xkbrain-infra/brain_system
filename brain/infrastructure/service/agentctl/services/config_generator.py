@@ -693,6 +693,7 @@ _GROUPS_BASE_DIR = Path("/xkagent_infra/groups")
 
 # agent_type -> provider_id in brain_agent_proxy (proxy-first defaults)
 _AGENT_TYPE_PROXY_PROVIDER_MAP: dict[str, str] = {
+    "claude": "claude",
     "openai": "openai",
     "copilot": "copilot",
     "gemini": "gemini",
@@ -864,12 +865,11 @@ def _build_settings_env(agent_type: str, spec: dict[str, Any]) -> dict[str, str]
     - Model override env vars (ANTHROPIC_MODEL, DEFAULT_*_MODEL)
     - Timeout and traffic settings
     """
-    if agent_type == "claude":
+    transport_mode = _resolve_transport_mode(spec)
+    if agent_type == "claude" and transport_mode == "direct":
         return {}
 
     env: dict[str, str] = {}
-
-    transport_mode = _resolve_transport_mode(spec)
     # 1. Proxy-first defaults for provider-backed agent types.
     proxy_token = _build_proxy_auth_token(agent_type, spec)
     if proxy_token and transport_mode != "direct":

@@ -29,7 +29,17 @@ class HttpServer {
   void Stop();
 
  private:
+  struct UpstreamTarget {
+    std::string host;
+    int port;
+    std::string base_path;
+  };
+
   void RegisterRoutes();
+  std::optional<UpstreamTarget> ResolveLlmUpstream() const;
+  std::string BuildForwardPath(const UpstreamTarget& upstream, const std::string& endpoint) const;
+  bool ForwardLlmRequest(const httplib::Request& req, httplib::Response& res, const std::string& endpoint, bool allow_stream) const;
+  bool ForwardLlmStream(const httplib::Request& req, httplib::Response& res, const std::string& endpoint) const;
 
   const AppConfig& cfg_;
   IpcBridge& ipc_;

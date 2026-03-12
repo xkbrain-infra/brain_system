@@ -323,7 +323,7 @@ def _load_spec(config_dir: Path) -> dict[str, AgentSpec]:
             start_cmd = " ".join(cmd_parts).strip()
             agent_type = str(runtime.get("agent_type") or agent_type).strip()
         else:
-            cli_type = str(a.get("cli_type", "")).strip().lower()
+            cli_type = str(a.get("cli_type") or a.get("agent_cli") or "").strip().lower()
             cli_args = a.get("cli_args", [])
             export_cmd = a.get("export_cmd", {})
             initial_prompt = a.get("initial_prompt", "")
@@ -347,7 +347,7 @@ def _load_spec(config_dir: Path) -> dict[str, AgentSpec]:
                     use_claude_cli = False
 
             cmd_parts = [cmd]
-            model = str(a.get("model") or "").strip()
+            model = str(a.get("model") or a.get("agent_model") or "").strip()
             if use_claude_cli and model:
                 cmd_parts += ["--model", model]
             elif not use_claude_cli and model and agent_type in ("kimi", "gemini"):
@@ -1083,11 +1083,12 @@ def cmd_add(args: argparse.Namespace) -> int:
         scope="group",
         group=group,
         path=agent_dir,
-        agent_type="",
-        agent_cli="",
-        agent_model="",
-        cli_type="",
-        model="",
+        agent_type=agent_type,
+        agent_cli=cli_type,
+        agent_model=model,
+        cli_type=cli_type,
+        model=model,
+        transport_mode=transport_mode,
         required=False,
         desired_state=desired_state,
         status="active",

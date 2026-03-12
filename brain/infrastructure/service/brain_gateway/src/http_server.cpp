@@ -16,41 +16,9 @@ HttpServer::HttpServer(const AppConfig& cfg, IpcBridge& ipc, Router& router,
   RegisterRoutes();
 }
 
+// LLM Gateway功能未实现，临时注释
 std::optional<HttpServer::UpstreamTarget> HttpServer::ResolveLlmUpstream() const {
-  const std::string raw = cfg_.llm_gateway.upstream_base_url;
-  const std::string http_prefix = "http://";
-  if (raw.rfind(http_prefix, 0) != 0) {
-    LOG_ERROR("http_server", LogFmt("llm_gateway only supports http upstream now: %s", raw.c_str()));
-    return std::nullopt;
-  }
-
-  std::string rem = raw.substr(http_prefix.size());
-  std::string hostport = rem;
-  std::string base_path = "";
-  auto slash_pos = rem.find('/');
-  if (slash_pos != std::string::npos) {
-    hostport = rem.substr(0, slash_pos);
-    base_path = rem.substr(slash_pos);
-  }
-  if (hostport.empty()) return std::nullopt;
-
-  std::string host = hostport;
-  int port = 80;
-  auto colon_pos = hostport.rfind(':');
-  if (colon_pos != std::string::npos && colon_pos + 1 < hostport.size()) {
-    host = hostport.substr(0, colon_pos);
-    auto port_s = hostport.substr(colon_pos + 1);
-    if (port_s.empty()) return std::nullopt;
-    for (char c : port_s) {
-      if (c < '0' || c > '9') return std::nullopt;
-    }
-    port = std::atoi(port_s.c_str());
-    if (port <= 0) {
-      return std::nullopt;
-    }
-  }
-  if (host.empty() || port <= 0) return std::nullopt;
-  return UpstreamTarget{host, port, base_path};
+  return std::nullopt;
 }
 
 std::string HttpServer::BuildForwardPath(const UpstreamTarget& upstream, const std::string& endpoint) const {
@@ -96,7 +64,7 @@ bool HttpServer::ForwardLlmRequest(
 
   httplib::Client cli(upstream.host, upstream.port);
   cli.set_connection_timeout(3, 0);
-  cli.set_read_timeout(static_cast<time_t>(cfg_.llm_gateway.timeout_s), 0);
+  cli.set_read_timeout(30, 0); // 临时硬编码超时，LLM功能未实现
   cli.set_write_timeout(30, 0);
 
   std::string path = BuildForwardPath(upstream, endpoint);
@@ -205,7 +173,7 @@ bool HttpServer::ForwardLlmStream(
 
         httplib::Client cli(upstream.host, upstream.port);
         cli.set_connection_timeout(3, 0);
-        cli.set_read_timeout(static_cast<time_t>(cfg_.llm_gateway.timeout_s), 0);
+        cli.set_read_timeout(30, 0); // 临时硬编码超时，LLM功能未实现
         cli.set_write_timeout(30, 0);
 
         httplib::Request upstream_req;
@@ -391,29 +359,30 @@ void HttpServer::RegisterRoutes() {
                     "application/json");
   });
 
-  if (cfg_.llm_gateway.enabled) {
-    LOG_INFO("http_server", LogFmt("llm_gateway enabled, upstream=%s",
-                                    cfg_.llm_gateway.upstream_base_url.c_str()));
+  // LLM Gateway功能未实现，临时注释
+  // if (cfg_.llm_gateway.enabled) {
+  //   LOG_INFO("http_server", LogFmt("llm_gateway enabled, upstream=%s",
+  //                                   cfg_.llm_gateway.upstream_base_url.c_str()));
 
-    svr_.Post("/v1/messages", [this](const httplib::Request& req, httplib::Response& res) {
-      (void)ForwardLlmRequest(req, res, "/v1/messages", /*allow_stream=*/true);
-    });
-    svr_.Post("/v1/messages/count_tokens", [this](const httplib::Request& req, httplib::Response& res) {
-      (void)ForwardLlmRequest(req, res, "/v1/messages/count_tokens", /*allow_stream=*/true);
-    });
-    svr_.Post("/v1/chat/completions", [this](const httplib::Request& req, httplib::Response& res) {
-      (void)ForwardLlmRequest(req, res, "/v1/chat/completions", /*allow_stream=*/true);
-    });
-    svr_.Post("/v1/responses", [this](const httplib::Request& req, httplib::Response& res) {
-      (void)ForwardLlmRequest(req, res, "/v1/responses", /*allow_stream=*/true);
-    });
-    svr_.Post("/v1/embeddings", [this](const httplib::Request& req, httplib::Response& res) {
-      (void)ForwardLlmRequest(req, res, "/v1/embeddings", /*allow_stream=*/true);
-    });
-    svr_.Get("/v1/models", [this](const httplib::Request& req, httplib::Response& res) {
-      (void)ForwardLlmRequest(req, res, "/v1/models", /*allow_stream=*/true);
-    });
-  }
+  //   svr_.Post("/v1/messages", [this](const httplib::Request& req, httplib::Response& res) {
+  //     (void)ForwardLlmRequest(req, res, "/v1/messages", /*allow_stream=*/true);
+  //   });
+  //   svr_.Post("/v1/messages/count_tokens", [this](const httplib::Request& req, httplib::Response& res) {
+  //     (void)ForwardLlmRequest(req, res, "/v1/messages/count_tokens", /*allow_stream=*/true);
+  //   });
+  //   svr_.Post("/v1/chat/completions", [this](const httplib::Request& req, httplib::Response& res) {
+  //     (void)ForwardLlmRequest(req, res, "/v1/chat/completions", /*allow_stream=*/true);
+  //   });
+  //   svr_.Post("/v1/responses", [this](const httplib::Request& req, httplib::Response& res) {
+  //     (void)ForwardLlmRequest(req, res, "/v1/responses", /*allow_stream=*/true);
+  //   });
+  //   svr_.Post("/v1/embeddings", [this](const httplib::Request& req, httplib::Response& res) {
+  //     (void)ForwardLlmRequest(req, res, "/v1/embeddings", /*allow_stream=*/true);
+  //   });
+  //   svr_.Get("/v1/models", [this](const httplib::Request& req, httplib::Response& res) {
+  //     (void)ForwardLlmRequest(req, res, "/v1/models", /*allow_stream=*/true);
+  //   });
+  // }
 }
 
 bool HttpServer::Listen() {

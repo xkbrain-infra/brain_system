@@ -8,20 +8,12 @@ bots:
   - name: "XKAgentBot"
     platform: "telegram"
     service_name: "service-telegram_api"
-    token_env: "TELEGRAM_BOT_TOKEN_XKAGENTBOT"
-    chat_id_env: "TELEGRAM_CHAT_ID_XKAGENTBOT"
+    token_env: "TELEGRAM_BOT_TOKEN_2"
+    chat_id_env: "TELEGRAM_CHAT_ID_2"
     aliases:
       - "xkagent"
     description: "主要 XKAgent Bot，用于日常任务处理"
 
-  - name: "XKQuantBot"
-    platform: "telegram"
-    service_name: "service-telegram_api"
-    token_env: "TELEGRAM_BOT_TOKEN_XKQUANTBOT"
-    chat_id_env: "TELEGRAM_CHAT_ID_XKQUANTBOT"
-    aliases:
-      - "xkquant"
-    description: "XKQuant Bot，用于量化交易相关任务"
 
 # =========================================================
 # 服务配置
@@ -30,7 +22,7 @@ service:
   name: "service-telegram_api"
   health_port: 8091
   # BS-028-T3: 热重载开关（默认关闭）
-  enable_hot_reload: true
+  enable_hot_reload: false
 
 # =========================================================
 # Telegram API 参数

@@ -11,7 +11,6 @@ static RoutingConfig MakeConfig() {
   cfg.default_target         = "agent_system_frontdesk";
   cfg.reply_targets["telegram"] = "service-telegram_api";
   cfg.bot_service_map["XKAgentBot"]  = "service-telegram_api";
-  cfg.bot_service_map["XKQuantBot"]  = "service-telegram_api_bot2";
   return cfg;
 }
 
@@ -83,7 +82,6 @@ TEST(RouterTest, ReplyRouteToTelegramApi) {
 // IsIncoming / IsReply classification
 TEST(RouterTest, MessageClassification) {
   EXPECT_TRUE(Router::IsIncoming("service-telegram_api"));
-  EXPECT_TRUE(Router::IsIncoming("service-telegram_api_bot2"));
   EXPECT_FALSE(Router::IsIncoming("agent_system_frontdesk"));
   EXPECT_TRUE(Router::IsReply("agent_system_frontdesk"));
   EXPECT_TRUE(Router::IsReply("agent_system_pmo"));
@@ -97,7 +95,7 @@ TEST(RouterTest, ReplyRouteViaBotServiceMap) {
   ReplyMsg reply;
   reply.from              = "agent_system_frontdesk";
   reply.reply_to_platform = "telegram";
-  reply.target_bot        = "XKQuantBot";
+  reply.target_bot        = "XKAgentBot";
   auto result = router.RouteReply(reply);
-  EXPECT_EQ(result.target, "service-telegram_api_bot2");
+  EXPECT_EQ(result.target, "service-telegram_api");
 }
