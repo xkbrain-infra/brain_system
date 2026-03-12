@@ -1,0 +1,139 @@
+research_report:
+  project_id: brain-dashboard-2026-03-11
+  status: research_passed
+  completed_at: "2026-03-11T00:00:00Z"
+
+  problem_context: |
+    Brain 基础设施需要统一的可观测性后台。当前各服务分散：
+    - brain_gateway: C++ 服务，端口 8200，有 stats 配置但未暴露可视化
+    - brain_agent_proxy: FastAPI Python 服务，处理 LLM 请求路由
+    - agentctl: Agent 注册中心，维护 agents_registry.yaml
+    - brain_health_check: 健康检查服务
+    - brain_dashboard v1.0.0: 已存在，仅监控 Agent 状态，缺少 proxy 流量、服务注册、日志功能
+
+  references:
+    internal:
+      - path: /brain/infrastructure/service/brain_dashboard/releases/v1.0.0
+        description: "现有 Dashboard，基于 FastAPI + SQLite + Tailwind/HTMX"
+        reusable: true
+      - path: /brain/infrastructure/service/brain_gateway/config/brain_gateway.json
+        description: "Gateway 配置，含 stats 和 routing 配置"
+      - path: /brain/infrastructure/config/agentctl/agents_registry.yaml
+        description: "服务注册中心数据源"
+      - path: /brain/infrastructure/service/brain_agent_proxy/src/main.py
+        description: "Agent Proxy FastAPI 实现"
+
+    external:
+      - name: "Grafana"
+        description: "时序数据可视化参考"
+        rejected_reason: "过重，不符合 scope"
+      - name: "Portainer"
+        description: "容器/服务管理界面参考"
+        pattern: "服务列表 + 状态 + 日志视图"
+
+  benchmark_matrix:
+    frontend_framework:
+      - option: "Vue3 + ElementPlus"
+        pros: ["组件丰富", "生态成熟"]
+        cons: ["需要构建步骤", "与现有 HTMX 冲突"]
+        score: 7
+      - option: "继续使用 HTMX + Tailwind"
+        pros: ["与 v1.0 一致", "无需构建", "Server-Side Rendering"]
+        cons: ["复杂交互稍弱"]
+        score: 9
+        recommendation: true
+
+    realtime_data:
+      - option: "WebSocket"
+        pros: ["双向通信", "低延迟"]
+        cons: ["需要连接管理", "代理可能不兼容"]
+        score: 8
+      - option: "SSE (Server-Sent Events)"
+        pros: ["与 v1.0 一致", "HTTP 兼容", "自动重连"]
+        cons: ["仅服务器推送"]
+        score: 9
+        recommendation: true
+
+    log_collection:
+      - option: "filebeat + ELK"
+        pros: ["功能强大", "可扩展"]
+        cons: ["过重", "超出 scope"]
+        score: 4
+      - option: "直接文件读取 + WebSocket"
+        pros: ["简单直接", "实时性好"]
+        cons: ["需要文件权限", "大文件处理需优化"]
+        score: 9
+        recommendation: true
+
+    proxy_metrics:
+      - option: "Prometheus + Grafana"
+        pros: ["行业标准"]
+        cons: ["额外部署成本", "过重"]
+        score: 5
+      - option: "Gateway stats 直连 + 内存聚合"
+        pros: ["轻量", "实时"]
+        cons: ["历史数据有限"]
+        score: 9
+        recommendation: true
+
+  recommended_approach: |
+    **基于 Dashboard v1.0 增量开发，而非重写**
+
+    架构:
+    1. **前端**: 继续使用 HTMX + Tailwind CSS，新增三个模块:
+       - Proxy Traffic 面板 (QPS/延迟/错误率图表)
+       - Service Registry 视图 ( agents_registry 可视化)
+       - Log Viewer (WebSocket 流式日志)
+
+    2. **后端**: FastAPI 增量 API
+       - /api/proxy/stats - Gateway 流量统计
+       - /api/proxy/routes - 路由配置
+       - /api/registry/services - 服务注册列表
+       - /api/registry/agents - Agent 列表
+       - /api/logs/{service} - 日志流 (WebSocket)
+       - /ws/logs - 统一日志 WebSocket
+
+    3. **数据采集**:
+       - Proxy Stats: 从 brain_gateway 读取 stats 接口
+       - Registry: 读取 agents_registry.yaml + IPC 查询
+       - Logs: 读取 /brain/infrastructure/logs/*.log
+
+    4. **部署**:
+       - 作为 dashboard v2.0 发布
+       - 复用现有 sandbox 和 supervisor 配置
+
+  rejected_approaches:
+    - name: "完全重写使用 Vue3"
+      reason: "与 v1.0 技术栈不一致，增加维护成本"
+    - name: "引入 Prometheus/Grafana"
+      reason: "过重，不符合轻量级后台定位"
+    - name: "独立部署为全新服务"
+      reason: "应复用现有 dashboard 框架，增量开发"
+
+  known_risks:
+    - id: R1
+      description: "brain_gateway C++ 模块 stats 接口未完全验证"
+      mitigation: "预留 mock 数据 fallback"
+      severity: medium
+    - id: R2
+      description: "日志文件可能很大，WebSocket 传输需优化"
+      mitigation: "实现分页/过滤/仅 tail -n 1000"
+      severity: medium
+    - id: R3
+      description: "agents_registry.yaml 格式可能变化"
+      mitigation: "使用宽松解析，字段缺失时显示 N/A"
+      severity: low
+
+  open_questions:
+    - id: Q1
+      question: "brain_gateway stats 接口具体输出格式?"
+      status: "待验证"
+    - id: Q2
+      question: "日志文件路径规范?"
+      status: "假设为 /brain/infrastructure/logs/*.log"
+    - id: Q3
+      question: "是否需要用户认证?"
+      status: "建议 v2 暂不实现，依赖 network ACL"
+
+  research_decision: PASS
+  next_phase: planning
