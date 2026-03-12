@@ -35,8 +35,9 @@ from api.sse import router as sse_router
 app.include_router(v1_router)
 app.include_router(sse_router)
 
-# Static web templates path
-TEMPLATES_DIR = Path("/brain/sandbox/brain_dashboard_20260311/src/web/templates")
+# Static web templates path - auto-detect based on script location
+SCRIPT_DIR = Path(__file__).parent.resolve()
+TEMPLATES_DIR = SCRIPT_DIR / "web" / "templates"
 
 
 @app.get("/", response_class=HTMLResponse)

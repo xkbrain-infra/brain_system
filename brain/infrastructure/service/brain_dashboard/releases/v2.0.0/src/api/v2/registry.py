@@ -74,6 +74,7 @@ async def get_services() -> dict[str, Any]:
                 if isinstance(svc, dict):
                     svc_name = svc.get("name", "")
                     if svc_name:
+                        health = svc.get("health", {})
                         services.append({
                             "name": svc_name,
                             "group": f"services/{category}",
@@ -82,6 +83,7 @@ async def get_services() -> dict[str, Any]:
                             "status": svc.get("status", "unknown"),
                             "desired_state": svc.get("managed_by", "unknown"),
                             "path": svc.get("binary", ""),
+                            "health_endpoint": health.get("endpoint", "-"),
                         })
 
     # Also check for service-* agents in groups (legacy/compatibility)

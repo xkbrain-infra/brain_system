@@ -1,0 +1,86 @@
+#!/bin/bash
+# Brain Dashboard Service Startup Script
+# Usage: ./brain_dashboard [start|stop|restart|status]
+
+set -e
+
+SERVICE_NAME="brain_dashboard"
+SERVICE_DIR="/brain/infrastructure/service/brain_dashboard"
+RELEASE_DIR="${SERVICE_DIR}/releases/current"
+SRC_DIR="${RELEASE_DIR}/src"
+LOG_FILE="/var/log/brain_dashboard.log"
+PID_FILE="/var/run/brain_dashboard.pid"
+VENV_PATH="/opt/venv"
+PORT=8080
+HOST="0.0.0.0"
+
+cd "${SRC_DIR}"
+
+start() {
+    if [ -f "${PID_FILE}" ] && kill -0 $(cat "${PID_FILE}") 2>/dev/null; then
+        echo "${SERVICE_NAME} is already running (PID: $(cat ${PID_FILE}))"
+        exit 0
+    fi
+
+    echo "Starting ${SERVICE_NAME}..."
+    nohup "${VENV_PATH}/bin/python" -m uvicorn app:app \
+        --host "${HOST}" \
+        --port "${PORT}" \
+        --log-level info \
+        >> "${LOG_FILE}" 2>&1 &
+
+    echo $! > "${PID_FILE}"
+    echo "${SERVICE_NAME} started on ${HOST}:${PORT} (PID: $(cat ${PID_FILE}))"
+}
+
+stop() {
+    if [ ! -f "${PID_FILE}" ]; then
+        echo "${SERVICE_NAME} is not running (no PID file)"
+        return 1
+    fi
+
+    PID=$(cat "${PID_FILE}")
+    if kill -0 "${PID}" 2>/dev/null; then
+        echo "Stopping ${SERVICE_NAME} (PID: ${PID})..."
+        kill "${PID}"
+        rm -f "${PID_FILE}"
+        echo "${SERVICE_NAME} stopped"
+    else
+        echo "${SERVICE_NAME} is not running (stale PID file)"
+        rm -f "${PID_FILE}"
+    fi
+}
+
+restart() {
+    stop || true
+    sleep 1
+    start
+}
+
+status() {
+    if [ -f "${PID_FILE}" ] && kill -0 $(cat "${PID_FILE}") 2>/dev/null; then
+        echo "${SERVICE_NAME} is running (PID: $(cat ${PID_FILE}))"
+        curl -s http://localhost:${PORT}/health || echo "Health check failed"
+    else
+        echo "${SERVICE_NAME} is not running"
+    fi
+}
+
+case "${1:-start}" in
+    start)
+        start
+        ;;
+    stop)
+        stop
+        ;;
+    restart)
+        restart
+        ;;
+    status)
+        status
+        ;;
+    *)
+        echo "Usage: $0 {start|stop|restart|status}"
+        exit 1
+        ;;
+esac

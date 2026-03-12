@@ -31,6 +31,7 @@
                     <button onclick="switchTab('home')" id="nav-home" class="nav-tab active px-4 py-2 rounded text-sm font-medium">🏠 Home</button>
                     <button onclick="switchTab('agents')" id="nav-agents" class="nav-tab px-4 py-2 rounded text-sm font-medium">Agents</button>
                     <button onclick="switchTab('proxy')" id="nav-proxy" class="nav-tab px-4 py-2 rounded text-sm font-medium">Proxy</button>
+                    <button onclick="switchTab('projects')" id="nav-projects" class="nav-tab px-4 py-2 rounded text-sm font-medium">📁 Projects</button>
                     <button onclick="switchTab('registry')" id="nav-registry" class="nav-tab px-4 py-2 rounded text-sm font-medium">Registry</button>
                     <button onclick="switchTab('logs')" id="nav-logs" class="nav-tab px-4 py-2 rounded text-sm font-medium">Logs</button>
                 </div>
@@ -201,6 +202,7 @@
                                     <th class="px-4 py-3 text-left text-sm font-medium">Status</th>
                                     <th class="px-4 py-3 text-left text-sm font-medium">Agent</th>
                                     <th class="px-4 py-3 text-left text-sm font-medium">Group</th>
+                                    <th class="px-4 py-3 text-left text-sm font-medium">Provider</th>
                                     <th class="px-4 py-3 text-left text-sm font-medium">Role</th>
                                     <th class="px-4 py-3 text-left text-sm font-medium">Session</th>
                                     <th class="px-4 py-3 text-left text-sm font-medium">State</th>
@@ -315,13 +317,14 @@
                                     <th class="px-4 py-3 text-left">Name</th>
                                     <th class="px-4 py-3 text-left">Group</th>
                                     <th class="px-4 py-3 text-left">Role</th>
+                                    <th class="px-4 py-3 text-left">Provider</th>
                                     <th class="px-4 py-3 text-left">Status</th>
-                                    <th class="px-4 py-3 text-left">Desired State</th>
+                                    <th class="px-4 py-3 text-left">State</th>
                                     <th class="px-4 py-3 text-left">Path</th>
                                 </tr>
                             </thead>
                             <tbody id="registry-agents-table" class="divide-y divide-gray-700">
-                                <tr><td colspan="6" class="px-4 py-8 text-center text-gray-500">Loading...</td></tr>
+                                <tr><td colspan="7" class="px-4 py-8 text-center text-gray-500">Loading...</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -332,6 +335,58 @@
             <div id="registry-groups" class="registry-tab-content hidden">
                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" id="groups-grid">
                     <p class="text-gray-500">Loading...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- PROJECTS TAB -->
+        <div id="tab-projects" class="tab-content">
+            <!-- Projects Summary Cards -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                <div class="bg-gray-800 rounded-lg p-4 border border-gray-700">
+                    <div class="text-gray-400 text-sm">Total Projects</div>
+                    <div class="text-2xl font-bold text-blue-400" id="projects-total">-</div>
+                </div>
+                <div class="bg-gray-800 rounded-lg p-4 border border-gray-700">
+                    <div class="text-gray-400 text-sm">Active</div>
+                    <div class="text-2xl font-bold text-green-400" id="projects-active">-</div>
+                </div>
+                <div class="bg-gray-800 rounded-lg p-4 border border-gray-700">
+                    <div class="text-gray-400 text-sm">Tasks Done</div>
+                    <div class="text-2xl font-bold text-purple-400" id="projects-completed">-</div>
+                </div>
+                <div class="bg-gray-800 rounded-lg p-4 border border-gray-700">
+                    <div class="text-gray-400 text-sm">In Progress</div>
+                    <div class="text-2xl font-bold text-yellow-400" id="projects-in-progress">-</div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <!-- Projects List -->
+                <div class="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
+                    <div class="px-4 py-3 border-b border-gray-700">
+                        <h2 class="text-xl font-semibold">Projects</h2>
+                    </div>
+                    <div class="p-4">
+                        <div id="projects-list" class="space-y-4">
+                            <p class="text-gray-500">Loading...</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Recent Tasks -->
+                <div class="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
+                    <div class="px-4 py-3 border-b border-gray-700 flex justify-between items-center">
+                        <h2 class="text-xl font-semibold">Recent Tasks</h2>
+                        <select id="project-filter" class="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-sm" onchange="loadProjectsTasks()">
+                            <option value="">All Projects</option>
+                        </select>
+                    </div>
+                    <div class="p-4">
+                        <div id="recent-tasks-list" class="space-y-2">
+                            <p class="text-gray-500">Loading...</p>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -403,6 +458,10 @@
                 loadRegistryGroups();
             }
             if (tabName === 'logs') loadLogServices();
+            if (tabName === 'projects') {
+                loadProjects();
+                loadProjectsTasks();
+            }
         }
 
         // ==================== SSE CONNECTION (for Home/Agents) ====================
@@ -444,7 +503,10 @@
                             <span class="text-sm font-medium">${agent.name}</span>
                             <span class="text-xs text-gray-500">(${agent.group || '-'})</span>
                         </div>
-                        <span class="text-xs px-2 py-1 bg-gray-700 rounded">${agent.role || '-'}</span>
+                        <div class="flex items-center gap-2">
+                            ${getProviderBadge(agent.provider)}
+                            <span class="text-xs px-2 py-1 bg-gray-700 rounded">${agent.role || '-'}</span>
+                        </div>
                     </div>
                 `).join('');
             } else {
@@ -470,6 +532,7 @@
                         </td>
                         <td class="px-4 py-3 font-medium">${agent.name || '-'}</td>
                         <td class="px-4 py-3 text-gray-400">${agent.group || '-'}</td>
+                        <td class="px-4 py-3">${getProviderBadge(agent.provider)}</td>
                         <td class="px-4 py-3 text-gray-400">${agent.role || '-'}</td>
                         <td class="px-4 py-3 text-gray-400 text-sm">${agent.tmux_session || '-'}</td>
                         <td class="px-4 py-3">
@@ -478,7 +541,7 @@
                     </tr>
                 `).join('');
             } else {
-                tbody.innerHTML = '<tr><td colspan="6" class="px-4 py-8 text-center text-gray-500">No agents found</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="7" class="px-4 py-8 text-center text-gray-500">No agents found</td></tr>';
             }
         }
 
@@ -506,13 +569,14 @@
                         <td class="px-4 py-3"><span class="${agent.online ? 'text-green-400' : 'text-red-400'}">${agent.online ? '🟢' : '🔴'}</span></td>
                         <td class="px-4 py-3 font-medium">${agent.name || '-'}</td>
                         <td class="px-4 py-3 text-gray-400">${agent.group || '-'}</td>
+                        <td class="px-4 py-3">${getProviderBadge(agent.provider)}</td>
                         <td class="px-4 py-3 text-gray-400">${agent.role || '-'}</td>
                         <td class="px-4 py-3 text-gray-400 text-sm">${agent.tmux_session || '-'}</td>
                         <td class="px-4 py-3"><span class="px-2 py-1 rounded text-xs ${agent.desired_state === 'running' ? 'bg-green-900 text-green-400' : 'bg-gray-700 text-gray-400'}">${agent.desired_state || '-'}</span></td>
                     </tr>
                 `).join('');
             } else {
-                tbody.innerHTML = '<tr><td colspan="6" class="px-4 py-8 text-center text-gray-500">No matching agents</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="7" class="px-4 py-8 text-center text-gray-500">No matching agents</td></tr>';
             }
         }
 
@@ -642,6 +706,28 @@
             }
         }
 
+        // Provider display helper
+        function getProviderBadge(provider) {
+            if (!provider || !provider.type) {
+                // Default for native Claude agents
+                return '<span class="inline-flex items-center px-2 py-1 rounded text-xs bg-purple-900 text-purple-400">🧠 Claude</span>';
+            }
+
+            const PROVIDER_STYLES = {
+                'copilot': { icon: '🚀', name: 'Copilot', color: 'bg-blue-900 text-blue-400' },
+                'alibaba': { icon: '☁️', name: '阿里', color: 'bg-orange-900 text-orange-400' },
+                'bytedance': { icon: '🌋', name: '字节', color: 'bg-red-900 text-red-400' },
+                'openai': { icon: '🤖', name: 'OpenAI', color: 'bg-green-900 text-green-400' },
+                'anthropic': { icon: '🧠', name: 'Anthropic', color: 'bg-purple-900 text-purple-400' },
+                'claude': { icon: '🧠', name: 'Claude', color: 'bg-purple-900 text-purple-400' },
+            };
+
+            const style = PROVIDER_STYLES[provider.type] || { icon: '❓', name: provider.type, color: 'bg-gray-700 text-gray-400' };
+            const model = provider.model ? `<span class="text-xs text-gray-500 ml-1">${provider.model}</span>` : '';
+
+            return `<span class="inline-flex items-center px-2 py-1 rounded text-xs ${style.color}">${style.icon} ${style.name}${model}</span>`;
+        }
+
         async function loadRegistryAgents() {
             try {
                 const response = await fetch('/api/v2/registry/agents');
@@ -655,13 +741,14 @@
                             <td class="px-4 py-3 font-medium">${a.name}</td>
                             <td class="px-4 py-3 text-gray-400">${a.group || '-'}</td>
                             <td class="px-4 py-3 text-gray-400">${a.role || '-'}</td>
+                            <td class="px-4 py-3">${getProviderBadge(a.provider)}</td>
                             <td class="px-4 py-3"><span class="px-2 py-1 rounded text-xs ${a.status === 'active' ? 'bg-green-900 text-green-400' : 'bg-gray-700 text-gray-400'}">${a.status}</span></td>
                             <td class="px-4 py-3 text-gray-400">${a.desired_state || '-'}</td>
                             <td class="px-4 py-3 text-gray-400 text-xs truncate max-w-xs">${a.path || '-'}</td>
                         </tr>
                     `).join('');
                 } else {
-                    tbody.innerHTML = '<tr><td colspan="6" class="px-4 py-8 text-center text-gray-500">No agents found</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="7" class="px-4 py-8 text-center text-gray-500">No agents found</td></tr>';
                 }
             } catch (err) {
                 console.error('Failed to load registry agents:', err);
@@ -693,6 +780,121 @@
                 }
             } catch (err) {
                 console.error('Failed to load groups:', err);
+            }
+        }
+
+        // ==================== PROJECTS TAB ====================
+        async function loadProjects() {
+            try {
+                const [summaryRes, projectsRes] = await Promise.all([
+                    fetch('/api/v2/projects/summary'),
+                    fetch('/api/v2/projects/list')
+                ]);
+                const summary = await summaryRes.json();
+                const projects = await projectsRes.json();
+
+                // Update summary cards
+                document.getElementById('projects-total').textContent = summary.total_projects || 0;
+                document.getElementById('projects-active').textContent = summary.active_today || 0;
+                document.getElementById('projects-completed').textContent = summary.completed || 0;
+                document.getElementById('projects-in-progress').textContent = summary.in_progress || 0;
+
+                // Update Home tab projects summary
+                const homeProjects = document.getElementById('home-projects-summary');
+                if (homeProjects) {
+                    homeProjects.innerHTML = `
+                        <div class="grid grid-cols-2 gap-2 text-center">
+                            <div class="bg-gray-700 rounded p-2">
+                                <div class="text-lg font-bold">${summary.total_projects || 0}</div>
+                                <div class="text-xs text-gray-400">Projects</div>
+                            </div>
+                            <div class="bg-gray-700 rounded p-2">
+                                <div class="text-lg font-bold">${summary.total_tasks || 0}</div>
+                                <div class="text-xs text-gray-400">Tasks</div>
+                            </div>
+                        </div>
+                    `;
+                }
+
+                // Update projects list
+                const list = document.getElementById('projects-list');
+                if (projects.projects && projects.projects.length > 0) {
+                    list.innerHTML = projects.projects.map(p => `
+                        <div class="bg-gray-700 rounded p-4 border border-gray-600">
+                            <div class="flex justify-between items-start mb-2">
+                                <div>
+                                    <h4 class="font-semibold text-lg">${p.name}</h4>
+                                    <span class="text-xs px-2 py-0.5 rounded ${p.status === 'active' ? 'bg-green-900 text-green-400' : (p.status === 'completed' ? 'bg-blue-900 text-blue-400' : 'bg-gray-600 text-gray-400')}">${p.status}</span>
+                                </div>
+                                <div class="text-right">
+                                    <div class="text-2xl font-bold text-blue-400">${p.progress}%</div>
+                                    <div class="text-xs text-gray-500">completed</div>
+                                </div>
+                            </div>
+                            <div class="w-full bg-gray-600 rounded-full h-2 mb-3">
+                                <div class="bg-blue-500 h-2 rounded-full" style="width: ${p.progress}%"></div>
+                            </div>
+                            <div class="flex justify-between text-sm text-gray-400">
+                                <span>Total: ${p.total_tasks}</span>
+                                <span class="text-green-400">Done: ${p.completed}</span>
+                                <span class="text-yellow-400">In Progress: ${p.in_progress}</span>
+                                <span class="text-gray-500">Pending: ${p.pending}</span>
+                            </div>
+                        </div>
+                    `).join('');
+
+                    // Update project filter dropdown
+                    const filter = document.getElementById('project-filter');
+                    if (filter) {
+                        const currentVal = filter.value;
+                        filter.innerHTML = '<option value="">All Projects</option>' +
+                            projects.projects.map(p => `<option value="${p.name}">${p.name}</option>`).join('');
+                        filter.value = currentVal;
+                    }
+                } else {
+                    list.innerHTML = '<p class="text-gray-500">No projects found</p>';
+                }
+            } catch (err) {
+                console.error('Failed to load projects:', err);
+                document.getElementById('projects-list').innerHTML = '<p class="text-red-400">Failed to load projects</p>';
+            }
+        }
+
+        async function loadProjectsTasks() {
+            try {
+                const project = document.getElementById('project-filter')?.value || '';
+                const url = project ? `/api/v2/projects/tasks?project=${project}` : '/api/v2/projects/tasks';
+                const response = await fetch(url);
+                const data = await response.json();
+
+                const list = document.getElementById('recent-tasks-list');
+                if (data.tasks && data.tasks.length > 0) {
+                    list.innerHTML = data.tasks.slice(0, 10).map(t => {
+                        const statusColor = {
+                            'completed': 'text-green-400',
+                            'in_progress': 'text-yellow-400',
+                            'pending': 'text-gray-400'
+                        }[t.status] || 'text-gray-400';
+                        const statusIcon = {'completed': '✅', 'in_progress': '▶️', 'pending': '⏸️'}[t.status] || '⏸️';
+                        return `
+                            <div class="flex justify-between items-center bg-gray-700 rounded p-3">
+                                <div class="flex items-center gap-2">
+                                    <span class="${statusColor}">${statusIcon}</span>
+                                    <div>
+                                        <div class="text-sm font-medium">${t.title}</div>
+                                        <div class="text-xs text-gray-500">${t.project || '-'} • ${t.assignee || 'Unassigned'}</div>
+                                    </div>
+                                </div>
+                                <span class="text-xs px-2 py-1 bg-gray-600 rounded ${statusColor}">${t.status}</span>
+                            </div>
+                        `;
+                    }).join('');
+                } else {
+                    list.innerHTML = '<p class="text-gray-500">No tasks found</p>';
+                }
+            } catch (err) {
+                console.error('Failed to load tasks:', err);
+                document.getElementById('recent-tasks-list').innerHTML = '<p class="text-red-400">Failed to load tasks</p>';
             }
         }
 

@@ -183,3 +183,26 @@ services:
     tags:
     - infrastructure
     - orchestration
+  - name: service-brain_dashboard
+    description: XKBrain Infra Dashboard - 统一后台管理系统
+    managed_by: supervisord
+    status: active
+    health:
+      endpoint: http://localhost:8080/health
+      interval_s: 30
+      timeout_s: 5
+    recovery_level: 1
+    depends_on: []
+    binary: /xkagent_infra/brain/infrastructure/service/brain_dashboard/bin/brain_dashboard
+    config: null
+    log_stdout: /brain/runtime/logs/brain_dashboard.log
+    log_stderr: /brain/runtime/logs/brain_dashboard_error.log
+    port: 8080
+    ipc_name: service-brain_dashboard
+    version: v2.0.0
+    language: python
+    tags:
+    - infrastructure
+    - dashboard
+    - web-ui
+    - monitoring
