@@ -1,0 +1,9 @@
+group_knowledge_index:
+  group_id: "brain"
+  version: "1.0"
+  domains:
+    - "platform"
+    - "sandbox"
+    - "workflow"
+  note: "brain 组知识入口"
+

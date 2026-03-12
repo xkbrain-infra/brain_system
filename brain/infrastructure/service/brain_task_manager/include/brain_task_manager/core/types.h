@@ -107,6 +107,7 @@ struct Task {
   std::string created_at;
   std::string updated_at;
   bool active = true;
+  uint64_t version = 0;  // CAS optimistic locking for race condition prevention
 
   json to_json() const {
     return json{
@@ -114,7 +115,8 @@ struct Task {
       {"priority", priority}, {"status", TaskStatusToStr(status)},
       {"spec_id", spec_id}, {"group", group}, {"description", description},
       {"deadline", deadline}, {"depends_on", depends_on}, {"tags", tags},
-      {"created_at", created_at}, {"updated_at", updated_at}
+      {"created_at", created_at}, {"updated_at", updated_at},
+      {"version", version}
     };
   }
 
@@ -132,6 +134,7 @@ struct Task {
     t.created_at  = j.value("created_at", "");
     t.updated_at  = j.value("updated_at", "");
     t.active      = j.value("active", true);
+    t.version     = j.value("version", 0);
     if (j.contains("depends_on") && j["depends_on"].is_array())
       for (auto& d : j["depends_on"]) t.depends_on.push_back(d.get<std::string>());
     if (j.contains("tags") && j["tags"].is_array())

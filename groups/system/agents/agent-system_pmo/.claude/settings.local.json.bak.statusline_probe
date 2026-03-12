@@ -1,0 +1,90 @@
+{
+  "permissions": {
+    "defaultMode": "bypassPermissions"
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "input=$(cat); model=$(echo \"$input\" | jq -r '.model.display_name // \"Claude\"'); dir=$(echo \"$input\" | jq -r '.workspace.current_dir // \"~\"'); used=$(echo \"$input\" | jq -r '.context_window.used_percentage // empty'); case \"$model\" in copilot/*) if [ -n \"$used\" ] && [ \"$used\" != \"0\" ] && [ \"$used\" != \"0.0\" ]; then printf \"%s | %s | Context: %.1f%% used\" \"$model\" \"$dir\" \"$used\"; else printf \"%s | %s | Context: N/A\" \"$model\" \"$dir\"; fi ;; *) if [ -n \"$used\" ]; then printf \"%s | %s | Context: %.1f%% used\" \"$model\" \"$dir\" \"$used\"; else printf \"%s | %s\" \"$model\" \"$dir\"; fi ;; esac"
+  },
+  "enabledPlugins": {
+    "frontend-design@claude-plugins-official": true,
+    "context7@claude-plugins-official": true,
+    "ralph-loop@claude-plugins-official": true,
+    "feature-dev@claude-plugins-official": true,
+    "code-review@claude-plugins-official": true,
+    "playwright@claude-plugins-official": true,
+    "plugin-dev@claude-plugins-official": true,
+    "firebase@claude-plugins-official": true,
+    "code-simplifier@claude-plugins-official": true,
+    "claude-md-management@claude-plugins-official": true,
+    "greptile@claude-plugins-official": true
+  },
+  "language": "中文",
+  "mcpServers": {},
+  "skipDangerousModePermissionPrompt": true,
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Edit|Glob|Grep|Read|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/brain/infrastructure/service/agent_abilities/bin/hooks/current/pre_tool_use",
+            "timeout": 5000,
+            "description": "LEP Engine - pmo-system PreToolUse",
+            "env": {
+              "BRAIN_AGENT_NAME": "agent-system_pmo",
+              "BRAIN_AGENT_ROLE": "pmo",
+              "BRAIN_AGENT_GROUP": "system",
+              "BRAIN_SCOPE_PATH": "/xkagent_infra/groups/system"
+            }
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash|Edit|Glob|Grep|Read|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/brain/infrastructure/service/agent_abilities/bin/hooks/current/post_tool_use",
+            "timeout": 5000,
+            "description": "LEP Engine - pmo-system PostToolUse audit",
+            "env": {
+              "BRAIN_AGENT_NAME": "agent-system_pmo",
+              "BRAIN_AGENT_ROLE": "pmo",
+              "BRAIN_AGENT_GROUP": "system",
+              "BRAIN_SCOPE_PATH": "/xkagent_infra/groups/system"
+            }
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/brain/infrastructure/service/agent_abilities/bin/hooks/current/stop_hook",
+            "timeout": 3000,
+            "description": "IPC auto-wake: check pending messages before stopping",
+            "env": {
+              "BRAIN_AGENT_NAME": "agent-system_pmo",
+              "BRAIN_IPC_SOCKET": "/tmp/brain_ipc.sock"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "env": {
+    "ANTHROPIC_BASE_URL": "http://127.0.0.1:8200",
+    "ANTHROPIC_AUTH_TOKEN": "bgw-apx-v1--p-copilot--m-claude_opus_4_6--n-agent-system_pmo",
+    "ANTHROPIC_MODEL": "copilot/claude-opus-4.6",
+    "ANTHROPIC_SMALL_FAST_MODEL": "copilot/claude-opus-4.6",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "copilot/claude-opus-4.6",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "copilot/claude-opus-4.6",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "copilot/claude-opus-4.6"
+  }
+}

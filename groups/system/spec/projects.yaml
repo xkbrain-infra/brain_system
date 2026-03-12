@@ -1,0 +1,6 @@
+project_registry:
+  group_id: "system"
+  version: "1.0"
+  projects: []
+  note: "system 组项目注册表；新增项目时应同步登记"
+

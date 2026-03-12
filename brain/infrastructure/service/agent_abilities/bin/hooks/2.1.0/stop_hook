@@ -1,0 +1,14 @@
+#!/usr/bin/env python3
+"""Stop Hook 入口脚本 - IPC 自动唤醒机制"""
+import os
+import sys
+
+HOOK_ROOT = os.environ.get("HOOK_ROOT", "/brain/infrastructure/service/agent_abilities/bin/hooks/current")
+os.environ["HOOK_ROOT"] = HOOK_ROOT
+
+sys.path.insert(0, os.path.join(HOOK_ROOT, "ipc"))
+
+from stop_guard import main
+
+if __name__ == "__main__":
+    main()

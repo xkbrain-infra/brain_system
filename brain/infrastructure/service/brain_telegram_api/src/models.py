@@ -29,7 +29,7 @@ class StandardMessage:
     content: str
     attachments: List[Attachment]
     timestamp: str  # ISO8601
-    source: Optional[str] = None  # Bot name (e.g., "XKAgentBot", "XKQuantBot")
+    source: Optional[str] = None  # Bot name (e.g., "XKAgentBot")
     metadata: Optional[Dict[str, Any]] = None
 
     def to_dict(self) -> dict:

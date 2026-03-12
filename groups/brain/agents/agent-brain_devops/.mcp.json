@@ -1,0 +1,20 @@
+{
+  "mcpServers": {
+    "mcp-brain_ipc_c": {
+      "command": "/brain/bin/mcp/mcp-brain_ipc_c",
+      "args": [],
+      "env": {
+        "BRAIN_AGENT_NAME": "agent-brain_devops",
+        "BRAIN_TMUX_SESSION": "agent-brain_devops",
+        "BRAIN_DAEMON_AUTOSTART": "0"
+      }
+    },
+    "mcp-brain_google_api": {
+      "command": "/brain/bin/mcp/mcp-brain_google_api",
+      "args": [],
+      "env": {
+        "GOOGLE_CREDENTIALS_PATH": "/brain/secrets/brain_google_api/credentials.json"
+      }
+    }
+  }
+}

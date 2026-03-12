@@ -23,11 +23,14 @@
 #include <sys/un.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
+#include <sys/types.h>  // For getpeercon
 #include <pthread.h>
 #include <jansson.h>
 #include <time.h>
 #include <fcntl.h>
 #include <stdarg.h>
+#include <openssl/hmac.h>
+#include <openssl/evp.h>
 
 #include "msgqueue.h"
 #include "agent_registry.h"
@@ -238,7 +241,299 @@ static void ipc_log(const char *level, const char *fmt, ...) {
 #define LOG_ERROR(...) ipc_log("ERROR", __VA_ARGS__)
 #define LOG_WARN(...)  ipc_log("WARN", __VA_ARGS__)
 
-// ============ Signal Handler ============
+// ============ Phase 1b: SO_PEERCRED Security ============
+
+static pid_t get_peer_pid(int client_fd) {
+    struct ucred cred;
+    socklen_t len = sizeof(cred);
+    if (getsockopt(client_fd, SOL_SOCKET, SO_PEERCRED, &cred, &len) < 0) {
+        return -1;
+    }
+    return cred.pid;
+}
+
+// ============ Phase 1c: ACL Validation ============
+
+#define ACL_FILE "/xkagent_infra/brain/infrastructure/service/brain_ipc/config/sender_acl.json"
+#define MAX_ACL_ENTRIES 64
+
+static struct {
+    char name[64];
+    char type[16];
+} acl_entries[MAX_ACL_ENTRIES];
+static int acl_count = 0;
+static int acl_loaded = 0;
+static int acl_mode_enforce = 0;  // 0 = log-only, 1 = enforce
+
+static void acl_load(void) {
+    if (acl_loaded) return;
+
+    json_error_t error;
+    json_t *root = json_load_file(ACL_FILE, 0, &error);
+    if (!root) {
+        LOG_WARN("ACL: failed to load %s: %s", ACL_FILE, error.text);
+        acl_loaded = 1; // Mark as loaded to avoid repeated attempts
+        return;
+    }
+
+    json_t *senders = json_object_get(root, "allowed_senders");
+    if (senders && json_is_array(senders)) {
+        size_t i;
+        json_t *entry;
+        json_array_foreach(senders, i, entry) {
+            if (acl_count >= MAX_ACL_ENTRIES) break;
+
+            const char *name = json_string_value(json_object_get(entry, "name"));
+            const char *type = json_string_value(json_object_get(entry, "type"));
+
+            if (name) {
+                strncpy(acl_entries[acl_count].name, name, sizeof(acl_entries[acl_count].name) - 1);
+                acl_entries[acl_count].name[sizeof(acl_entries[acl_count].name) - 1] = '\0';
+
+                if (type) {
+                    strncpy(acl_entries[acl_count].type, type, sizeof(acl_entries[acl_count].type) - 1);
+                    acl_entries[acl_count].type[sizeof(acl_entries[acl_count].type) - 1] = '\0';
+                } else {
+                    acl_entries[acl_count].type[0] = '\0';
+                }
+
+                acl_count++;
+            }
+        }
+    }
+
+    // Load mode setting
+    json_t *mode = json_object_get(root, "mode");
+    if (mode && json_is_string(mode)) {
+        const char *mode_str = json_string_value(mode);
+        if (strcmp(mode_str, "enforce") == 0) {
+            acl_mode_enforce = 1;
+            LOG_INFO("ACL: mode set to enforce");
+        } else {
+            acl_mode_enforce = 0;
+            LOG_INFO("ACL: mode set to log-only");
+        }
+    }
+
+    json_decref(root);
+    acl_loaded = 1;
+    LOG_INFO("ACL: loaded %d entries from %s (enforce=%d)", acl_count, ACL_FILE, acl_mode_enforce);
+}
+
+static int acl_check_sender(const char *sender_name, const char *action) {
+    acl_load();
+
+    if (!sender_name || !sender_name[0]) {
+        LOG_WARN("ACL: reject empty sender (action=%s)", action);
+        return 0; // Reject empty sender
+    }
+
+    // Parse instance_id to extract base agent_name (e.g. "agent-x@session:%pane" -> "agent-x")
+    char parsed_name[256];
+    char _s[256], _p[256];
+    parse_instance_id(sender_name, parsed_name, sizeof(parsed_name), _s, sizeof(_s), _p, sizeof(_p));
+    const char *check_name = (parsed_name[0]) ? parsed_name : sender_name;
+
+    // Check against ACL
+    int matched = 0;
+    for (int i = 0; i < acl_count; i++) {
+        if (strcmp(acl_entries[i].name, check_name) == 0) {
+            matched = 1;
+            break;
+        }
+    }
+
+    // Enforce mode: reject if not in allowlist
+    if (matched) {
+        LOG_INFO("ACL_MATCH: sender=%s action=%s", sender_name, action);
+        return 1; // Allow
+    } else {
+        LOG_WARN("ACL_REJECT: sender=%s action=%s (not in allowlist)", sender_name, action);
+        return 0; // Reject
+    }
+}
+
+// ============ Phase 2: HMAC-SHA256 + Replay Protection ============
+
+#define SECRET_KEY_FILE "/xkagent_infra/brain/infrastructure/service/brain_ipc/config/secret.key"
+#define NONCE_CACHE_SIZE 1024
+#define NONCE_TTL_SECONDS 300  // 5 minutes
+#define TIMESTAMP_SKEW_SECONDS 60  // Allow 1 minute clock skew
+
+static struct {
+    char nonce[64];
+    time_t timestamp;
+} nonce_cache[NONCE_CACHE_SIZE];
+static int nonce_cache_count = 0;
+static pthread_mutex_t nonce_cache_mu = PTHREAD_MUTEX_INITIALIZER;
+
+// Load secret key from file (or generate if not exists)
+static int load_secret_key(unsigned char *key, size_t key_len) {
+    FILE *f = fopen(SECRET_KEY_FILE, "rb");
+    if (!f) {
+        // Generate new key
+        LOG_INFO("Generating new secret key...");
+        FILE *rand = fopen("/dev/urandom", "rb");
+        if (!rand) return -1;
+        size_t n = fread(key, 1, key_len, rand);
+        fclose(rand);
+        if (n != key_len) return -1;
+
+        // Save key
+        f = fopen(SECRET_KEY_FILE, "wb");
+        if (f) {
+            fwrite(key, 1, key_len, f);
+            fclose(f);
+            chmod(SECRET_KEY_FILE, 0600);
+        }
+        return 0;
+    }
+
+    size_t n = fread(key, 1, key_len, f);
+    fclose(f);
+    return (n == key_len) ? 0 : -1;
+}
+
+// P2a: Verify HMAC-SHA256 signature
+static int verify_hmac(const char *payload, const char *signature_hex,
+                       const unsigned char *key, size_t key_len) {
+    if (!payload || !signature_hex || !key) return 0;
+
+    unsigned char mac[EVP_MAX_MD_SIZE];
+    unsigned int mac_len;
+
+    HMAC(EVP_sha256(), key, key_len,
+         (unsigned char*)payload, strlen(payload),
+         mac, &mac_len);
+
+    // Convert mac to hex for comparison
+    char mac_hex[EVP_MAX_MD_SIZE * 2 + 1];
+    for (unsigned int i = 0; i < mac_len; i++) {
+        snprintf(mac_hex + i * 2, 3, "%02x", mac[i]);
+    }
+
+    // Constant-time comparison to prevent timing attacks
+    size_t sig_len = strlen(signature_hex);
+    size_t mac_hex_len = strlen(mac_hex);
+    if (sig_len != mac_hex_len) return 0;
+
+    return CRYPTO_memcmp(mac_hex, signature_hex, mac_hex_len) == 0;
+}
+
+// P2b: Check nonce is not reused
+static int check_nonce(const char *nonce, time_t timestamp) {
+    if (!nonce || !nonce[0]) return 0;
+
+    pthread_mutex_lock(&nonce_cache_mu);
+
+    time_t now = time(NULL);
+
+    // Clean expired entries
+    int w = 0;
+    for (int i = 0; i < nonce_cache_count; i++) {
+        if (now - nonce_cache[i].timestamp < NONCE_TTL_SECONDS) {
+            if (i != w) {
+                memcpy(&nonce_cache[w], &nonce_cache[i], sizeof(nonce_cache[0]));
+            }
+            w++;
+        }
+    }
+    nonce_cache_count = w;
+
+    // Check if nonce exists
+    for (int i = 0; i < nonce_cache_count; i++) {
+        if (strcmp(nonce_cache[i].nonce, nonce) == 0) {
+            pthread_mutex_unlock(&nonce_cache_mu);
+            return 0; // Nonce reused
+        }
+    }
+
+    // Add nonce to cache
+    if (nonce_cache_count >= NONCE_CACHE_SIZE) {
+        pthread_mutex_unlock(&nonce_cache_mu);
+        return 0; // Cache full - reject to prevent replay attacks
+    }
+
+    strncpy(nonce_cache[nonce_cache_count].nonce, nonce, sizeof(nonce_cache[0].nonce) - 1);
+    nonce_cache[nonce_cache_count].nonce[sizeof(nonce_cache[0].nonce) - 1] = '\0';
+    nonce_cache[nonce_cache_count].timestamp = timestamp;
+    nonce_cache_count++;
+
+    pthread_mutex_unlock(&nonce_cache_mu);
+    return 1;
+}
+
+// Thread-safe key loading helper
+static unsigned char g_secret_key[32];
+static int g_key_loaded = 0;
+static pthread_once_t g_key_once = PTHREAD_ONCE_INIT;
+
+static void load_key_once_impl(void) {
+    if (load_secret_key(g_secret_key, sizeof(g_secret_key)) == 0) {
+        g_key_loaded = 1;
+    }
+}
+static int verify_timestamp(time_t timestamp) {
+    time_t now = time(NULL);
+    time_t diff = now - timestamp;
+    if (diff < 0) diff = -diff; // Absolute value
+    return diff <= TIMESTAMP_SKEW_SECONDS;
+}
+
+// Combined Phase 2 security check
+static int phase2_security_check(json_t *data, const char **error_msg) {
+    pthread_once(&g_key_once, load_key_once_impl);
+
+    if (!g_key_loaded) {
+        *error_msg = "failed to load secret key";
+        return 0;
+    }
+
+    // Extract security fields
+    const char *signature = json_string_value(json_object_get(data, "hmac_signature"));
+    const char *nonce = json_string_value(json_object_get(data, "nonce"));
+    json_int_t timestamp = json_integer_value(json_object_get(data, "timestamp"));
+
+    // In Phase 2, these fields are optional for backward compatibility
+    // They will become required in Phase 3
+    if (!signature || !nonce || !timestamp) {
+        LOG_INFO("PHASE2: optional security fields missing, allowing (backward compat)");
+        return 1; // Allow for now
+    }
+
+    // Verify timestamp
+    if (!verify_timestamp((time_t)timestamp)) {
+        *error_msg = "timestamp skew too large";
+        LOG_WARN("PHASE2: timestamp skew too large");
+        return 0;
+    }
+
+    // Check nonce
+    if (!check_nonce(nonce, (time_t)timestamp)) {
+        *error_msg = "nonce reused or invalid";
+        LOG_WARN("PHASE2: nonce reused");
+        return 0;
+    }
+
+    // Verify HMAC
+    // Reconstruct payload for signing (exclude signature itself)
+    json_t *payload_copy = json_deep_copy(data);
+    json_object_del(payload_copy, "hmac_signature");
+    char *payload_str = json_dumps(payload_copy, JSON_SORT_KEYS | JSON_COMPACT);
+    json_decref(payload_copy);
+
+    int hmac_valid = verify_hmac(payload_str, signature, g_secret_key, sizeof(g_secret_key));
+    free(payload_str);
+
+    if (!hmac_valid) {
+        *error_msg = "HMAC signature invalid";
+        LOG_WARN("PHASE2: HMAC verification failed");
+        return 0;
+    }
+
+    LOG_INFO("PHASE2: security check passed");
+    return 1;
+}
 
 static void signal_handler(int sig) {
     (void)sig;
@@ -797,7 +1092,7 @@ static void delayed_deliver_callback(const char *to, const char *msg_id, const c
 
 // ============ IPC Handlers ============
 
-static char* handle_ipc_send(json_t *data) {
+static char* handle_ipc_send(json_t *data, int client_fd) {
     const char *from = json_string_value(json_object_get(data, "from"));
     const char *to = json_string_value(json_object_get(data, "to"));
     json_t *payload = json_object_get(data, "payload");
@@ -810,6 +1105,39 @@ static char* handle_ipc_send(json_t *data) {
 
     if (!to || !to[0]) {
         return json_error("missing 'to' field");
+    }
+
+    // Phase 1b: Verify sender identity via SO_PEERCRED
+    pid_t peer_pid = get_peer_pid(client_fd);
+    if (peer_pid < 0) {
+        ipc_log("WARN", "SO_PEERCRED failed for ipc_send from %s", from ? from : "unknown");
+        // Continue in log-only mode (per architect recommendation)
+    } else {
+        ipc_log("INFO", "SO_PEERCRED verified: sender=%s peer_pid=%d", from ? from : "unknown", peer_pid);
+    }
+
+    // Phase 1c: ACL check
+    if (!acl_check_sender(from, "ipc_send")) {
+        // Rejected by ACL
+        if (acl_mode_enforce) {
+            return json_error("ACL_REJECT: sender not in allowlist");
+        }
+        // Log-only mode: continue with warning already logged
+    }
+
+    // Phase 2: HMAC + Nonce security check
+    char *sec_err = NULL;
+    if (!phase2_security_check(data, &sec_err)) {
+        LOG_WARN("PHASE2 rejected: %s", sec_err ? sec_err : "unknown");
+        if (acl_mode_enforce) {
+            char err_buf[256];
+            snprintf(err_buf, sizeof(err_buf), "PHASE2_REJECT: %s", sec_err ? sec_err : "security check failed");
+            free(sec_err);
+            return json_error(err_buf);
+        }
+        free(sec_err);
+    } else if (json_object_get(data, "hmac_signature")) {
+        LOG_INFO("PHASE2: security check passed");
     }
 
     // Resolve target
@@ -1061,6 +1389,30 @@ static char* handle_ipc_send_delayed(json_t *data) {
     }
     if (delay_seconds < 1 || delay_seconds > 86400) {
         return json_error("delay_seconds must be 1-86400");
+    }
+
+    // Phase 1c: ACL check
+    if (!acl_check_sender(from, "ipc_send_delayed")) {
+        // Rejected by ACL
+        if (acl_mode_enforce) {
+            return json_error("ACL_REJECT: sender not in allowlist");
+        }
+        // Log-only mode: continue with warning already logged
+    }
+
+    // Phase 2: HMAC + Nonce security check (same as ipc_send)
+    char *sec_err = NULL;
+    if (!phase2_security_check(data, &sec_err)) {
+        LOG_WARN("PHASE2 rejected (delayed): %s", sec_err ? sec_err : "unknown");
+        if (acl_mode_enforce) {
+            char err_buf[256];
+            snprintf(err_buf, sizeof(err_buf), "PHASE2_REJECT: %s", sec_err ? sec_err : "security check failed");
+            free(sec_err);
+            return json_error(err_buf);
+        }
+        free(sec_err);
+    } else if (json_object_get(data, "hmac_signature")) {
+        LOG_INFO("PHASE2: security check passed (delayed)");
     }
 
     // Resolve target now so delayed delivery uses the same queue key as ipc_recv
@@ -1502,7 +1854,7 @@ static char* handle_request(const char *req_str, int client_fd) {
     } else if (strcmp(action, "service_heartbeat") == 0) {
         response = handle_service_heartbeat(data);
     } else if (strcmp(action, "ipc_send") == 0) {
-        response = handle_ipc_send(data);
+        response = handle_ipc_send(data, client_fd);
     } else if (strcmp(action, "ipc_recv") == 0) {
         response = handle_ipc_recv(data);
     } else if (strcmp(action, "ipc_ack") == 0) {
@@ -1803,7 +2155,7 @@ static int run_server(void) {
         return 1;
     }
 
-    chmod(SOCKET_PATH, 0666);
+    chmod(SOCKET_PATH, 0600);  // Phase 1a: owner-only (brain_ipc group not available)
 
     if (listen(server_fd, MAX_CLIENTS) < 0) {
         LOG_ERROR("listen() failed: %s", strerror(errno));

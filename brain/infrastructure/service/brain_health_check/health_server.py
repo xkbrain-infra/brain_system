@@ -17,11 +17,77 @@ import signal
 import socket
 import sys
 import time
+import threading
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from threading import Event
+
+# ──────────────────────────────────────────────
+# IPC Client for service registration
+# ──────────────────────────────────────────────
+def ipc_send_request(action: str, data: dict, timeout: float = 5.0) -> dict:
+    """Send request to IPC daemon."""
+    socket_path = BRAIN_IPC_SOCKET
+    request = {"action": action, "data": data}
+    request_json = json.dumps(request, ensure_ascii=False) + "\n"
+
+    try:
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        sock.settimeout(timeout)
+        sock.connect(socket_path)
+        sock.sendall(request_json.encode("utf-8"))
+
+        data_bytes = b""
+        while True:
+            chunk = sock.recv(4096)
+            if not chunk:
+                break
+            data_bytes += chunk
+            if b"\n" in data_bytes:
+                break
+
+        sock.close()
+
+        if not data_bytes:
+            return {"status": "error", "message": "empty response"}
+
+        return json.loads(data_bytes.decode("utf-8"))
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+def register_service(service_name: str, metadata: dict = None) -> bool:
+    """Register service to IPC daemon."""
+    result = ipc_send_request("service_register", {
+        "service_name": service_name,
+        "metadata": metadata or {}
+    })
+    return result.get("status") == "ok"
+
+
+def send_heartbeat(service_name: str) -> bool:
+    """Send service heartbeat to IPC daemon."""
+    result = ipc_send_request("service_heartbeat", {
+        "service_name": service_name
+    })
+    return result.get("status") == "ok"
+
+
+def start_heartbeat_thread(service_name: str, interval: int = 30):
+    """Start background heartbeat thread."""
+    def heartbeat_loop():
+        while True:
+            time.sleep(interval)
+            try:
+                send_heartbeat(service_name)
+            except Exception:
+                pass  # Silent fail, health check itself shouldn't crash
+
+    thread = threading.Thread(target=heartbeat_loop, daemon=True)
+    thread.start()
+    return thread
 
 # ──────────────────────────────────────────────
 # 环境变量配置
@@ -388,9 +454,19 @@ class HealthRequestHandler(BaseHTTPRequestHandler):
 def main():
     port = HEALTH_CHECK_PORT
     socket_path = BRAIN_IPC_SOCKET
+    service_name = "service-brain_health_check"
 
     print(f"[health_server] Starting on port {port}, ipc_socket={socket_path}, "
           f"version={HEALTH_CHECK_VERSION}", flush=True)
+
+    # Register to IPC daemon
+    if register_service(service_name, {"type": "health_check", "version": HEALTH_CHECK_VERSION}):
+        print(f"[health_server] Registered to IPC: {service_name}", flush=True)
+        # Start heartbeat thread (30s interval)
+        start_heartbeat_thread(service_name, interval=30)
+        print(f"[health_server] Heartbeat thread started", flush=True)
+    else:
+        print(f"[health_server] Warning: Failed to register to IPC", flush=True)
 
     checker = HealthChecker(
         socket_path=socket_path,

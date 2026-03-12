@@ -4,29 +4,29 @@
 scope:
   allowed_write:
     # 基础设施 - 主要工作区域
-    - /brain/infrastructure/**
+    - /xkagent_infra/brain/infrastructure/**
     # DevOps 自身工作目录
-    - /brain/groups/org/{group}/agents/agent_{group}_devops/**
+    - /xkagent_infra/groups/{group}/agents/agent_{group}_devops/**
     # Runtime 和部署
-    - /brain/runtime/**
+    - /xkagent_infra/brain/runtime/**
     # 组内部署配置
-    - /brain/groups/org/{group}/**/deploy/**
-    - /brain/groups/org/{group}/**/docker/**
-    - /brain/groups/org/{group}/**/infra/**
+    - /xkagent_infra/groups/{group}/**/deploy/**
+    - /xkagent_infra/groups/{group}/**/docker/**
+    - /xkagent_infra/groups/{group}/**/infra/**
     # Memory
-    - /brain/groups/org/{group}/**/memory/**
+    - /xkagent_infra/groups/{group}/**/memory/**
     # Agent 配置（agentctl 相关）
-    - /brain/infrastructure/config/**
+    - /xkagent_infra/brain/infrastructure/config/**
 
   denied_write:
     # 核心规范只读
-    - /brain/base/spec/core/**
-    - /brain/base/workflow/**
-    - /brain/INIT.yaml
+    - /xkagent_infra/brain/base/spec/core/**
+    - /xkagent_infra/brain/base/workflow/**
+    - /xkagent_infra/brain/INIT.yaml
     # 项目代码由 dev 负责
-    - /brain/groups/org/{group}/**/projects/**/src/**
+    - /xkagent_infra/groups/{group}/**/projects/**/src/**
     # Spec 由 architect 负责
-    - /brain/groups/org/{group}/spec/**
+    - /xkagent_infra/groups/{group}/spec/**
 
 gate_overrides:
   G-GATE-DB-BACKUP:

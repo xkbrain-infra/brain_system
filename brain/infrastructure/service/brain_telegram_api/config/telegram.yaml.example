@@ -2,14 +2,11 @@
 
 service:
   name: "service-telegram_api"
-  health_port: 8091
+  # NOTE: 本服务通过 IPC (Unix Socket) 通信，无 HTTP health server
 
 # Multi-bot configuration
 bots:
   - name: "XKAgentBot"
-    token_env: "TELEGRAM_BOT_TOKEN_1"
-    chat_id_env: "TELEGRAM_CHAT_ID_1"
-  - name: "XKQuantBot"
     token_env: "TELEGRAM_BOT_TOKEN_2"
     chat_id_env: "TELEGRAM_CHAT_ID_2"
 

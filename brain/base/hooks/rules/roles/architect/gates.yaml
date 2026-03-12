@@ -4,26 +4,26 @@
 scope:
   allowed_write:
     # Spec 模板和设计
-    - /brain/base/spec/templates/**
+    - /xkagent_infra/brain/base/spec/templates/**
     # 组内 spec（architect 可以创建/修改 spec）
-    - /brain/groups/org/{group}/spec/**
-    - /brain/groups/org/{group}/**/spec/**
+    - /xkagent_infra/groups/{group}/spec/**
+    - /xkagent_infra/groups/{group}/**/spec/**
     # Architect 自身工作目录
-    - /brain/groups/org/{group}/agents/agent_{group}_architect/**
+    - /xkagent_infra/groups/{group}/agents/agent_{group}_architect/**
     # Memory
-    - /brain/groups/org/{group}/**/memory/**
+    - /xkagent_infra/groups/{group}/**/memory/**
     # 知识库贡献
-    - /brain/base/knowledge/**
+    - /xkagent_infra/brain/base/knowledge/**
     # Runtime
-    - /brain/runtime/**
+    - /xkagent_infra/brain/runtime/**
 
   denied_write:
     # 核心规范需要 PMO 批准
-    - /brain/base/spec/core/**
-    - /brain/base/workflow/**
-    - /brain/INIT.yaml
+    - /xkagent_infra/brain/base/spec/core/**
+    - /xkagent_infra/brain/base/workflow/**
+    - /xkagent_infra/brain/INIT.yaml
     # 基础设施由 devops 负责
-    - /brain/infrastructure/service/**
+    - /xkagent_infra/brain/infrastructure/service/**
 
 gate_overrides:
   G-GATE-NAWP:

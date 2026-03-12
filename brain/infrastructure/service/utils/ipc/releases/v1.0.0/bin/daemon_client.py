@@ -23,10 +23,24 @@ brain_ipc Unix Socket 通信的统一客户端。
 from __future__ import annotations
 
 import json
+import hmac
+import hashlib
+import secrets
+import time
 import socket
 from typing import Any
 
 DEFAULT_SOCKET_PATH = "/tmp/brain_ipc.sock"
+SECRET_KEY_PATH = "/xkagent_infra/brain/infrastructure/service/brain_ipc/config/secret.key"
+
+
+def _load_secret_key() -> bytes:
+    """Load secret key for HMAC signing."""
+    try:
+        with open(SECRET_KEY_PATH, "rb") as f:
+            return f.read(32)
+    except FileNotFoundError:
+        return b""
 
 
 class IPCError(RuntimeError):
@@ -110,14 +124,35 @@ class DaemonClient:
         conversation_id: str | None = None,
         message_type: str = "request",
     ) -> dict[str, Any]:
-        """Send a message to another agent."""
-        return self._send_request("ipc_send", {
+        """Send a message to another agent with Phase 2 security."""
+        data: dict[str, Any] = {
             "from": from_agent,
             "to": to_agent,
             "payload": payload,
             "conversation_id": conversation_id,
             "message_type": message_type,
-        })
+        }
+
+        # Phase 2: Add security fields if secret key available
+        secret_key = _load_secret_key()
+        if secret_key:
+            # Generate nonce and timestamp
+            nonce = secrets.token_hex(16)
+            timestamp = int(time.time())
+
+            data["nonce"] = nonce
+            data["timestamp"] = timestamp
+
+            # Generate HMAC signature (sort keys for determinism)
+            payload_str = json.dumps(data, sort_keys=True, ensure_ascii=False)
+            signature = hmac.new(
+                secret_key,
+                payload_str.encode("utf-8"),
+                hashlib.sha256
+            ).hexdigest()
+            data["hmac_signature"] = signature
+
+        return self._send_request("ipc_send", data)
 
     def recv(
         self,
@@ -147,6 +182,29 @@ class DaemonClient:
             "include_offline": include_offline,
         })
 
+    def list_services(self, include_offline: bool = False) -> dict[str, Any]:
+        """List registered services only."""
+        return self._send_request("service_list", {
+            "include_offline": include_offline,
+        })
+
+    def search_registry(
+        self,
+        query: str,
+        source: str = "all",
+        fuzzy: bool = True,
+        include_offline: bool = False,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        """Search registry entries with fuzzy matching."""
+        return self._send_request("registry_search", {
+            "query": query,
+            "source": source,
+            "fuzzy": fuzzy,
+            "include_offline": include_offline,
+            "limit": limit,
+        })
+
     def ping(self) -> bool:
         """Check if daemon is alive."""
         try:
@@ -162,67 +220,3 @@ class DaemonClient:
 
 # Alias for backward compatibility with agentctl
 BrainDaemonClient = DaemonClient
-
-
-# NotifyClient for push-based IPC (imported by agentctl_service.py)
-DEFAULT_NOTIFY_SOCKET_PATH = "/tmp/brain_ipc_notify.sock"
-
-
-class NotifyClient:
-    """Push-based IPC listener via daemon notify socket.
-
-    Connects to brain_ipc_notify.sock and yields notifications when messages
-    arrive for the specified service. Replaces busy-polling with blocking I/O.
-
-    Usage:
-        notify = NotifyClient("service-agentctl")
-        async for event in notify.listen():
-            # event = {"event":"ipc_message","msg_id":"...","to":"...","from":"..."}
-            messages = daemon.recv("service-agentctl", ack_mode="manual")
-            ...
-    """
-
-    def __init__(
-        self,
-        service_name: str,
-        notify_socket_path: str = DEFAULT_NOTIFY_SOCKET_PATH,
-        reconnect_delay: float = 2.0,
-    ) -> None:
-        self.service_name = service_name
-        self.notify_socket_path = notify_socket_path
-        self.reconnect_delay = reconnect_delay
-
-    async def listen(self):
-        """Yield notification events addressed to this service. Auto-reconnects."""
-        import asyncio
-        import logging
-
-        logger = logging.getLogger("NotifyClient")
-
-        while True:
-            try:
-                reader, writer = await asyncio.open_unix_connection(self.notify_socket_path)
-                logger.info("NotifyClient(%s): connected to %s", self.service_name, self.notify_socket_path)
-                try:
-                    while True:
-                        line = await reader.readline()
-                        if not line:
-                            break  # server closed
-                        try:
-                            event = json.loads(line)
-                        except json.JSONDecodeError:
-                            continue
-                        to = event.get("to", "")
-                        to_raw = event.get("to_raw", "")
-                        if self.service_name in (to, to_raw):
-                            yield event
-                finally:
-                    writer.close()
-                    try:
-                        await writer.wait_closed()
-                    except Exception:
-                        pass
-            except (ConnectionRefusedError, FileNotFoundError, OSError) as e:
-                logger.warning("NotifyClient(%s): connect failed (%s), retry in %.1fs",
-                               self.service_name, e, self.reconnect_delay)
-            await asyncio.sleep(self.reconnect_delay)

@@ -118,8 +118,8 @@ capture:
       agentctl 的 AuditLogger 改为写入 /brain/runtime/memory/{date}/{agent}/audit.jsonl，
       不再写入项目级目录。
     migration: |
-      旧路径: /brain/groups/org/brain_system/projects/agent_orchestrator/memory/audit/
-      新路径: /brain/runtime/memory/{date}/service-agentctl/audit.jsonl
+      旧路径: /xkagent_infra/groups/brain/projects/agent_orchestrator/memory/audit/
+      新路径: /xkagent_infra/brain/runtime/memory/{date}/service-agentctl/audit.jsonl
       迁移: 修改 audit_logger.py 的 default_sinks()
 
 # ============================================================
@@ -132,7 +132,7 @@ lifecycle:
     清理逻辑集成在 agentctl 的 orchestrator_tick 或独立子命令中。
 
   config:
-    path: /brain/infrastructure/config/agentctl/memory_retention.yaml
+    path: /xkagent_infra/brain/infrastructure/config/agentctl/memory_retention.yaml
     schema:
       retention_days:
         default: 30

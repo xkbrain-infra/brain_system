@@ -207,9 +207,9 @@ id_conventions:
 path_conventions:
   brain_layer:
     description: "Brain 层（管理层），存储配置、规格、记忆"
-    group_root: "/brain/groups/org/{group_id}"
-    project_root: "/brain/groups/org/{group_id}/projects/{project_name}"
-    spec_root: "/brain/groups/org/{group_id}/spec/{spec_id}"
+    group_root: "/xkagent_infra/groups/{group_id}"
+    project_root: "/xkagent_infra/groups/{group_id}/projects/{project_name}"
+    spec_root: "/xkagent_infra/groups/{group_id}/spec/{spec_id}"
 
   body_layer:
     description: "Body 层（代码层），存储实际源代码"
@@ -254,9 +254,9 @@ related_docs:
     - "../workflow.yaml"            # S1-S8 Spec 工作流
 
   global_registries:
-    - "/brain/groups/spec/index.yaml"           # Group 索引
-    - "/brain/groups/spec/organization.yaml"    # 组织架构
-    - "/brain/groups/spec/projects_index.yaml"  # Project 索引
+    - "/xkagent_infra/groups/spec/index.yaml"           # Group 索引
+    - "/xkagent_infra/groups/spec/organization.yaml"    # 组织架构
+    - "/xkagent_infra/groups/spec/projects_index.yaml"  # Project 索引
 
   templates:
     - "/brain/base/spec/templates/spec_dsl.yaml"  # Spec 模板

@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "agent_name": "tmp-agent-alibaba",
+  "runtime": {
+    "command": "claude",
+    "args": [
+      "--model",
+      "alibaba/kimi-k2.5"
+    ],
+    "env": {
+      "IS_SANDBOX": "1",
+      "BRAIN_TRANSPORT_MODE": "proxy",
+      "BRAIN_AGENT_NAME": "tmp-agent-alibaba"
+    },
+    "agent_type": "alibaba",
+    "use_claude_cli": true
+  }
+}

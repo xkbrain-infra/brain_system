@@ -59,6 +59,44 @@ _SCAN_ONLY_PREFIXES = [
     '/dev/shm/',
 ]
 
+# File operation commands that can write to arbitrary destinations
+_FILE_OP_PATTERNS = [
+    # cp src dst, cp -r src dst
+    _re.compile(r'\bcp\s+(?:-\S+\s+)*\S+\s+(\/\S+)'),
+    # mv src dst
+    _re.compile(r'\bmv\s+(?:-\S+\s+)*\S+\s+(\/\S+)'),
+    # cat > /path or cat >> /path
+    _re.compile(r'\bcat\b.*?[>]{1,2}\s*(\/\S+)'),
+    # tee /path or tee -a /path
+    _re.compile(r'\btee\s+(?:-\S+\s+)*(\/\S+)'),
+    # dd ... of=/path
+    _re.compile(r'\bdd\b.*?\bof=(\/\S+)'),
+    # sed -i ... /path
+    _re.compile(r'\bsed\s+(?:-\S+\s+)*(?:\'[^\']*\'|"[^"]*")\s+(\/\S+)'),
+    # install src dst
+    _re.compile(r'\binstall\s+(?:-\S+\s+)*\S+\s+(\/\S+)'),
+    # rsync src dst
+    _re.compile(r'\brsync\s+(?:-\S+\s+)*\S+\s+(\/\S+)'),
+]
+
+
+def _check_file_op_destination(command: str):
+    """Check file operation commands for protected destination paths.
+
+    Returns: (is_blocked, command_name, matched_prefix)
+    """
+    for pattern in _FILE_OP_PATTERNS:
+        for m in pattern.finditer(command):
+            dest = m.group(1).rstrip(';').rstrip("'").rstrip('"')
+            # Expand /xkagent_infra prefix if needed
+            for prefix in _PROTECTED_PREFIXES:
+                full_prefix = prefix
+                xka_prefix = '/xkagent_infra' + prefix
+                if dest.startswith(full_prefix) or dest.startswith(xka_prefix):
+                    cmd_name = command.split()[0] if command.split() else 'unknown'
+                    return True, cmd_name, prefix
+    return False, '', ''
+
 _PROTECTED_PREFIXES = [
     '/brain/base/spec/core/',
     '/brain/base/workflow/',
@@ -220,6 +258,19 @@ def handle_pre_tool_use():
                     f"脚本: {script_path}\n"
                     f"包含受保护路径: {matched}\n"
                     f"禁止通过脚本间接修改受保护路径。"
+                )
+                sys.exit(0)
+
+            # 0b. File operation destination check (prevent cp/mv bypass)
+            blocked, cmd_name, matched = _check_file_op_destination(command)
+            if blocked:
+                log_tool_use("PreToolUse", tool_name, tool_input,
+                            blocked=True, gate="G-SCOP-FILEOP")
+                output_block("PreToolUse",
+                    f"BLOCK: 文件操作目标为受保护路径 (G-SCOP)\n"
+                    f"命令: {cmd_name}\n"
+                    f"目标包含受保护路径: {matched}\n"
+                    f"禁止通过 cp/mv/tee/dd 等命令直接写入受保护路径。"
                 )
                 sys.exit(0)
 

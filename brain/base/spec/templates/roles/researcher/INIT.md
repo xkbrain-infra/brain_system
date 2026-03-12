@@ -58,7 +58,7 @@ CRITICAL: 步骤 4 是核心工作。
 ## 报告存储规范
 
 ```yaml
-路径: /brain/groups/org/{group}/agents/{agent_name}/memory/{topic}/
+路径: /xkagent_infra/groups/{group}/agents/{agent_name}/memory/{topic}/
 命名:
   日报:  YYYY-MM-DD-daily.md
   周报:  YYYY-WW-weekly.md

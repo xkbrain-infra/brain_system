@@ -82,7 +82,7 @@ def load_bot_token(token_file: str, token_env: str = None) -> str:
 
     Args:
         token_file: Path to bot_token.env file
-        token_env: Environment variable name for token (e.g., TELEGRAM_BOT_TOKEN_1)
+        token_env: Environment variable name for token (e.g., TELEGRAM_BOT_TOKEN_N)
 
     Returns:
         Bot token string
@@ -192,6 +192,7 @@ class TelegramAPIService:
         # Load bot configurations
         self.bots: List[BotInstance] = []
         self._load_bots()
+        self._recent_sources: Dict[str, Dict[str, Any]] = {}
 
         self.daemon_client = None
         self._shutting_down = False
@@ -318,16 +319,14 @@ class TelegramAPIService:
                     # Filter by BOT_INSTANCE if specified
                     bot_instance = os.environ.get("BOT_INSTANCE", "").strip()
 
-                    for bot_cfg in bots_from_yaml:
+                    for idx, bot_cfg in enumerate(bots_from_yaml, start=1):
                         name = bot_cfg.get('name')
                         token_env = bot_cfg.get('token_env')
                         chat_id_env = bot_cfg.get('chat_id_env')
                         service_name = bot_cfg.get('service_name')
 
-                        # BS-022-T2.1: If BOT_INSTANCE specified, only load matching bot
-                        if bot_instance == "1" and name != "XKAgentBot":
-                            continue
-                        if bot_instance == "2" and name != "XKQuantBot":
+                        # BS-022-T2.1: If BOT_INSTANCE specified, only load the indexed bot.
+                        if bot_instance and bot_instance != str(idx):
                             continue
 
                         # Try env var first, then fall back to token files
@@ -468,6 +467,7 @@ class TelegramAPIService:
                 return
 
             target = self.ipc_config.get('target_gateway', 'service-brain_gateway')
+            self._remember_recent_source(msg)
 
             payload = msg.to_dict()
             payload['source_bot'] = msg.source
@@ -492,15 +492,98 @@ class TelegramAPIService:
                     return bot
         return self.bots[0] if self.bots else None
 
+    def _remember_recent_source(self, msg: StandardMessage):
+        """Cache the latest inbound Telegram source for fallback replies."""
+        context = {
+            "platform": msg.platform,
+            "chat_id": str(msg.chat_id or ""),
+            "user_id": str(msg.user_id or ""),
+            "username": msg.username or "",
+            "message_id": str(msg.message_id or ""),
+            "source_bot": msg.source or "",
+            "target_bot": msg.source or "",
+        }
+        self._recent_sources["__latest__"] = context
+        if context["source_bot"]:
+            self._recent_sources[f"bot:{context['source_bot']}"] = context
+
+    def _normalize_inbound_payload(self, msg: dict) -> dict:
+        """Normalize IPC payloads, including JSON-string content from MCP clients."""
+        payload = dict(msg.get('payload', {}) or {})
+        content = payload.get('content')
+        if isinstance(content, str):
+            stripped = content.strip()
+            parsed = None
+            if stripped.startswith('{'):
+                try:
+                    parsed = json.loads(stripped)
+                except json.JSONDecodeError:
+                    parsed = None
+            if isinstance(parsed, dict):
+                for key, value in parsed.items():
+                    if key == 'content' or key not in payload or payload.get(key) in ("", None):
+                        payload[key] = value
+        if not payload.get('target_bot') and payload.get('source_bot'):
+            payload['target_bot'] = payload['source_bot']
+        if not payload.get('platform') and (payload.get('chat_id') or payload.get('user_id')):
+            payload['platform'] = 'telegram'
+        return payload
+
+    def _resolve_recent_source(self, payload: dict) -> Dict[str, Any]:
+        """Resolve cached source context for recent-source fallback."""
+        target_bot = payload.get('target_bot') or payload.get('source_bot')
+        if target_bot:
+            context = self._recent_sources.get(f"bot:{target_bot}")
+            if context:
+                return context
+        return self._recent_sources.get("__latest__", {})
+
     async def _send_via_bot(self, payload: dict, log_prefix: str):
         """Send payload content to Telegram using selected bot."""
-        chat_id = payload.get('chat_id')
         content = payload.get('content')
-        target_bot = payload.get('target_bot')
+        chat_id = payload.get('chat_id') or payload.get('user_id')
+        target_bot = payload.get('target_bot') or payload.get('source_bot')
+        if (not chat_id or not target_bot) and payload.get('recent_source'):
+            recent_source = self._resolve_recent_source(payload)
+            chat_id = chat_id or recent_source.get('chat_id') or recent_source.get('user_id')
+            target_bot = target_bot or recent_source.get('target_bot') or recent_source.get('source_bot')
+            payload['platform'] = payload.get('platform') or recent_source.get('platform', 'telegram')
+        if not content:
+            logger.warning("Missing outbound content for payload type=%s", payload.get('type', ''))
+            return False
         bot = self._select_bot(target_bot)
-        if bot and chat_id and content:
-            await asyncio.to_thread(bot.client.send_message, chat_id, content)
-            logger.info(f"{log_prefix} {chat_id} via {bot.name}")
+        if not chat_id:
+            logger.warning(
+                "Missing chat_id for outbound payload type=%s recent_source=%s",
+                payload.get('type', ''),
+                bool(payload.get('recent_source')),
+            )
+            return False
+        if not bot:
+            logger.warning("No Telegram bot available for target_bot=%s", target_bot or "")
+            return False
+        await asyncio.to_thread(bot.client.send_message, str(chat_id), content)
+        logger.info(f"{log_prefix} {chat_id} via {bot.name}")
+        return True
+
+    async def _process_inbound_message(self, msg: dict) -> bool:
+        """Process one IPC message and report whether it is safe to ACK."""
+        from_agent = msg.get('from', '')
+        payload = self._normalize_inbound_payload(msg)
+        msg_type = payload.get('type', '')
+
+        if from_agent in ("service-brain_gateway", "service-agent_gateway"):
+            return await self._send_via_bot(payload, "Sent reply to")
+        if msg_type in ('send_message_request', 'FRONTDESK_OUTBOUND'):
+            return await self._send_via_bot(payload, "Sent message to")
+
+        logger.info(
+            "Ignoring unsupported IPC message: from=%s type=%s msg_id=%s",
+            from_agent,
+            msg_type,
+            msg.get('msg_id'),
+        )
+        return True
 
     async def _receive_inbound_messages(self):
         """Single IPC receive loop."""
@@ -528,25 +611,10 @@ class TelegramAPIService:
                     was_busy = True
                     msg_ids = []
                     for msg in messages:
-                        success = False
                         try:
-                            from_agent = msg.get('from', '')
-                            payload = msg.get('payload', {}) or {}
-                            msg_type = payload.get('type', '')
-
-                            if from_agent in ("service-brain_gateway", "service-agent_gateway"):
-                                await self._send_via_bot(payload, "Sent reply to")
-                            elif msg_type == 'send_message_request':
-                                await self._send_via_bot(payload, "Sent message to")
-                            else:
-                                logger.debug(
-                                    "Ignoring IPC message: from=%s type=%s msg_id=%s",
-                                    from_agent,
-                                    msg_type,
-                                    msg.get('msg_id'),
-                                )
-                            success = True
+                            success = await self._process_inbound_message(msg)
                         except Exception as e:
+                            success = False
                             logger.error(f"Error processing inbound message: {e}")
                         if success and msg.get('msg_id'):
                             msg_ids.append(msg['msg_id'])

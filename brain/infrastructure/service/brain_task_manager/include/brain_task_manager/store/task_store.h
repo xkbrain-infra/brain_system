@@ -8,6 +8,8 @@
 #include <mutex>
 #include <functional>
 
+#include <optional>
+
 struct TaskQueryFilter {
   std::string task_id;
   std::string spec_id;
@@ -49,14 +51,15 @@ public:
   std::string Create(const Task& task);
 
   // Update task fields. Status changes validated by FSM.
+  // If expected_version >= 0, performs CAS check (version must match).
   // Returns empty string on success, error message on failure.
-  std::string Update(const std::string& task_id, const json& fields);
+  std::string Update(const std::string& task_id, const json& fields, int64_t expected_version = -1);
 
   // Query tasks by filters. All filters combined with AND.
   std::vector<Task> Query(const TaskQueryFilter& filter) const;
 
-  // Get single task by ID. Returns nullptr if not found.
-  const Task* Get(const std::string& task_id) const;
+  // Get single task by ID. Returns std::nullopt if not found.
+  std::optional<Task> Get(const std::string& task_id) const;
 
   // Logical delete (active=false). Returns empty string or error.
   std::string Delete(const std::string& task_id);

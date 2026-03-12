@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "agent_name": "agent-system_pmo",
+  "runtime": {
+    "command": "claude",
+    "args": [
+      "--model",
+      "copilot/claude-sonnet-4.6"
+    ],
+    "env": {
+      "IS_SANDBOX": "1",
+      "BRAIN_AGENT_NAME": "agent-system_pmo",
+      "BRAIN_TRANSPORT_MODE": "proxy"
+    },
+    "agent_type": "copilot",
+    "use_claude_cli": true
+  }
+}

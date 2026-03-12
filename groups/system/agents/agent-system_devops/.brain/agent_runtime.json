@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "agent_name": "agent-system_devops",
+  "runtime": {
+    "command": "claude",
+    "args": [
+      "--model",
+      "copilot/claude-sonnet-4.6"
+    ],
+    "env": {
+      "IS_SANDBOX": "1",
+      "BRAIN_AGENT_NAME": "agent-system_devops",
+      "BRAIN_TRANSPORT_MODE": "proxy"
+    },
+    "agent_type": "copilot",
+    "use_claude_cli": true
+  }
+}

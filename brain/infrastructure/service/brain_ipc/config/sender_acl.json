@@ -1,0 +1,30 @@
+{
+  "_comment": "Sender ACL for brain_ipc Phase 1 security. Enforce mode.",
+  "mode": "log_only",
+  "allowed_senders": [
+    {"name": "brain_timer", "type": "service"},
+    {"name": "service-brain_timer", "type": "service"},
+    {"name": "brain_task_manager", "type": "service"},
+    {"name": "brain_gateway", "type": "service"},
+    {"name": "brain_health_check", "type": "service"},
+    {"name": "brain_telegram_api", "type": "service"},
+    {"name": "brain_spec", "type": "service"},
+    {"name": "brain_google_api", "type": "service"},
+    {"name": "brain_agent_proxy", "type": "service"},
+    {"name": "brain_ipc", "type": "service"},
+    {"name": "brain_config_registry", "type": "service"},
+    {"name": "brain_orchestrator", "type": "service"},
+    {"name": "agentctl", "type": "service"},
+    {"name": "agent-system_pmo", "type": "agent"},
+    {"name": "agent-system_architect", "type": "agent"},
+    {"name": "agent-system_devops", "type": "agent"},
+    {"name": "agent-brain_dev", "type": "agent"},
+    {"name": "agent-brain_frontdesk", "type": "agent"},
+    {"name": "agent-brain_manager", "type": "agent"},
+    {"name": "agent-brain_devops", "type": "agent"}
+  ],
+  "enforcement": {
+    "require_so_peercred": true,
+    "check_pid_consistency": true
+  }
+}

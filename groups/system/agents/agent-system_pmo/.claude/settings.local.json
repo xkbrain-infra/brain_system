@@ -63,12 +63,12 @@
     ]
   },
   "env": {
-    "ANTHROPIC_BASE_URL": "http://127.0.0.1:8200",
-    "ANTHROPIC_MODEL": "copilot/claude-opus-4.6",
-    "ANTHROPIC_SMALL_FAST_MODEL": "copilot/claude-opus-4.6",
-    "ANTHROPIC_DEFAULT_SONNET_MODEL": "copilot/claude-opus-4.6",
-    "ANTHROPIC_DEFAULT_OPUS_MODEL": "copilot/claude-opus-4.6",
-    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "copilot/claude-opus-4.6",
-    "ANTHROPIC_API_KEY": "bgw-apx-v1--p-copilot--m-gpt_5_1_mini--n-agent_system_pmo"
+    "ANTHROPIC_BASE_URL": "http://127.0.0.1:8210",
+    "ANTHROPIC_MODEL": "copilot/claude-sonnet-4.6",
+    "ANTHROPIC_SMALL_FAST_MODEL": "copilot/claude-sonnet-4.6",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "copilot/claude-sonnet-4.6",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "copilot/claude-sonnet-4.6",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "copilot/claude-sonnet-4.6",
+    "ANTHROPIC_AUTH_TOKEN": "bgw-apx-v1--p-copilot--m-claude_sonnet_4_6--n-agent_system_pmo"
   }
 }

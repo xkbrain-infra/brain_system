@@ -1,0 +1,7 @@
+project_registry:
+  group_id: "brain"
+  version: "1.0"
+  projects:
+    - "brain_dashboard_proxy_v3"
+  note: "brain 组项目注册表；后续应继续统一维护"
+

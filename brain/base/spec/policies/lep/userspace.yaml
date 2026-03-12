@@ -17,9 +17,9 @@ enforcement:
     separation_suggestion:
       description: "建议用户内容先放 userspace，整理后放 spec"
       userspace_patterns:
-        - "/brain/groups/**/userspace/**"
+        - "/xkagent_infra/groups/*/userspace/**"
       spec_patterns:
-        - "/brain/groups/**/spec/**"
+        - "/xkagent_infra/groups/*/spec/**"
 
   warn_message: |
     💡 建议使用 userspace (G-USERSPACE)
@@ -37,7 +37,7 @@ enforcement:
 
     这是推荐性检查，不阻塞操作。
 
-    参考：/brain/base/spec/core/lep.yaml (G-USERSPACE)
+    参考：/xkagent_infra/brain/base/spec/core/lep.yaml (G-USERSPACE)
 bindings:
   hooks:
     stage: pre_tool_use

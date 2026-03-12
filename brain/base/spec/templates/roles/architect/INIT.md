@@ -77,7 +77,7 @@ S5_solution:
   - 数据流和时序图
   - NFR 达标方案
 
-路径: /brain/groups/org/{group}/spec/{spec_id}/
+路径: /xkagent_infra/groups/{group}/spec/{spec_id}/
 ```
 
 ## 与 PMO 协作

@@ -23,10 +23,24 @@ brain_ipc Unix Socket 通信的统一客户端。
 from __future__ import annotations
 
 import json
+import hmac
+import hashlib
+import secrets
+import time
 import socket
 from typing import Any
 
 DEFAULT_SOCKET_PATH = "/tmp/brain_ipc.sock"
+SECRET_KEY_PATH = "/xkagent_infra/brain/infrastructure/service/brain_ipc/config/secret.key"
+
+
+def _load_secret_key() -> bytes:
+    """Load secret key for HMAC signing."""
+    try:
+        with open(SECRET_KEY_PATH, "rb") as f:
+            return f.read(32)
+    except FileNotFoundError:
+        return b""
 
 
 class IPCError(RuntimeError):
@@ -110,14 +124,35 @@ class DaemonClient:
         conversation_id: str | None = None,
         message_type: str = "request",
     ) -> dict[str, Any]:
-        """Send a message to another agent."""
-        return self._send_request("ipc_send", {
+        """Send a message to another agent with Phase 2 security."""
+        data: dict[str, Any] = {
             "from": from_agent,
             "to": to_agent,
             "payload": payload,
             "conversation_id": conversation_id,
             "message_type": message_type,
-        })
+        }
+
+        # Phase 2: Add security fields if secret key available
+        secret_key = _load_secret_key()
+        if secret_key:
+            # Generate nonce and timestamp
+            nonce = secrets.token_hex(16)
+            timestamp = int(time.time())
+
+            data["nonce"] = nonce
+            data["timestamp"] = timestamp
+
+            # Generate HMAC signature (sort keys for determinism)
+            payload_str = json.dumps(data, sort_keys=True, ensure_ascii=False)
+            signature = hmac.new(
+                secret_key,
+                payload_str.encode("utf-8"),
+                hashlib.sha256
+            ).hexdigest()
+            data["hmac_signature"] = signature
+
+        return self._send_request("ipc_send", data)
 
     def recv(
         self,

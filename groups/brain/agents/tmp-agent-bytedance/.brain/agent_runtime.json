@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "agent_name": "tmp-agent-bytedance",
+  "runtime": {
+    "command": "claude",
+    "args": [
+      "--model",
+      "bytedance/kimi-k2.5"
+    ],
+    "env": {
+      "IS_SANDBOX": "1",
+      "BRAIN_TRANSPORT_MODE": "proxy",
+      "BRAIN_AGENT_NAME": "tmp-agent-bytedance"
+    },
+    "agent_type": "bytedance",
+    "use_claude_cli": true
+  }
+}

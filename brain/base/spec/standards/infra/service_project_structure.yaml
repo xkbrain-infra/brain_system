@@ -204,7 +204,7 @@ readme_template: |
 
   ## 相关项目
 
-  - Spec：`/brain/groups/org/{group}/projects/{project_id}/spec/`
+  - Spec：`/xkagent_infra/groups/{group}/projects/{project_id}/spec/`
   - 架构文档：`/brain/base/knowledge/architecture/infrastructure_reference.md`
 
 # ============================================================================

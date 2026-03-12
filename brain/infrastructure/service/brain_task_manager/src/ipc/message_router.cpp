@@ -12,8 +12,15 @@ int MessageRouter::ProcessMessages() {
   int processed = 0;
 
   for (auto& msg : msgs) {
-    std::string msg_id = msg.value("msg_id", "");
-    std::string from = msg.value("from", "");
+    // Fix: Handle null values properly (not just missing keys)
+    std::string msg_id;
+    if (msg.contains("msg_id") && msg["msg_id"].is_string()) {
+      msg_id = msg["msg_id"].get<std::string>();
+    }
+    std::string from;
+    if (msg.contains("from") && msg["from"].is_string()) {
+      from = msg["from"].get<std::string>();
+    }
 
     json payload;
     if (msg.contains("payload") && msg["payload"].is_object()) {
@@ -70,7 +77,11 @@ int MessageRouter::ProcessMessages() {
       if (!msg_id.empty()) {
         response["request_msg_id"] = msg_id;
       }
-      std::string conv_id = msg.value("conversation_id", "");
+      // Fix: Handle null conversation_id properly
+      std::string conv_id;
+      if (msg.contains("conversation_id") && msg["conversation_id"].is_string()) {
+        conv_id = msg["conversation_id"].get<std::string>();
+      }
       ipc_.Send(from, response, "response", conv_id);
     }
 
@@ -140,7 +151,7 @@ json MessageRouter::HandleTaskCreate(const json& payload, const std::string& /*f
 
   PersistAll();
 
-  const Task* created = tasks_.Get(t.task_id);
+  auto created = tasks_.Get(t.task_id);
   return json{
     {"event_type", "TASK_CREATED"},
     {"status", "ok"},
@@ -159,12 +170,12 @@ json MessageRouter::HandleTaskUpdate(const json& payload, const std::string& /*f
   // Dispatch guard: only for pending -> in_progress AND only if spec is formally registered
   if (payload.contains("status") && payload["status"].is_string()
       && payload["status"].get<std::string>() == "in_progress") {
-    const Task* t = tasks_.Get(task_id);
-    if (t && t->status == TaskStatus::Pending && !t->spec_id.empty()) {
+    auto t_opt = tasks_.Get(task_id);
+    if (t_opt && t_opt->status == TaskStatus::Pending && !t_opt->spec_id.empty()) {
       // Only enforce guard if spec is registered in spec_store
-      const SpecRecord* spec = specs_.Get(t->spec_id);
+      const SpecRecord* spec = specs_.Get(t_opt->spec_id);
       if (spec) {
-        auto guard_result = guard_.Check(t->spec_id);
+        auto guard_result = guard_.Check(t_opt->spec_id);
         if (!guard_result.pass) {
           return json{
             {"event_type", "TASK_REJECTED"},
@@ -182,17 +193,29 @@ json MessageRouter::HandleTaskUpdate(const json& payload, const std::string& /*f
   fields.erase("event_type");
   fields.erase("task_id");
 
-  std::string err = tasks_.Update(task_id, fields);
+  // P0 Fix: Extract expected_version for CAS check
+  int64_t expected_version = -1;
+  if (payload.contains("expected_version")) {
+    expected_version = payload["expected_version"].get<int64_t>();
+    fields.erase("expected_version");
+  }
+
+  std::string err = tasks_.Update(task_id, fields, expected_version);
   if (!err.empty()) {
     return json{{"event_type", "TASK_REJECTED"}, {"status", "error"}, {"error", err}};
   }
 
   PersistAll();
 
+  // P0 Fix: Get updated task to return new version
+  auto updated = tasks_.Get(task_id);
+  uint64_t new_version = updated ? updated->version : 0;
+
   return json{
     {"event_type", "TASK_UPDATED"},
     {"status", "ok"},
     {"task_id", task_id},
+    {"version", new_version},
     {"updated_at", NowUTC()}
   };
 }

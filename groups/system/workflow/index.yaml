@@ -1,0 +1,7 @@
+group_workflow_index:
+  group_id: "system"
+  version: "1.0"
+  entries:
+    pmo_board: "/xkagent_infra/groups/system/workflow/pmo/board.yaml"
+    pmo_agent_roster: "/xkagent_infra/groups/system/workflow/pmo/agent_roster.yaml"
+  note: "system 组 workflow 入口"

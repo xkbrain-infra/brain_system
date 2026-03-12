@@ -327,7 +327,7 @@ class ServiceTimer:
 
         # Register service
         try:
-            self._daemon.register(self._agent_name, {"type": "service-brain_timer"})
+            self._daemon.register_service(self._agent_name, {"type": "service-brain_timer"})
         except Exception as e:
             logger.error("Failed to register service: %s", e)
 

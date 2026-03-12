@@ -4,22 +4,22 @@
 scope:
   allowed_write:
     # Frontdesk 自身工作目录
-    - /brain/groups/org/{group}/agents/agent_{group}_frontdesk/**
+    - /xkagent_infra/groups/{group}/agents/agent_{group}_frontdesk/**
     # Memory
-    - /brain/groups/org/{group}/**/memory/**
+    - /xkagent_infra/groups/{group}/**/memory/**
     # Runtime（日志）
-    - /brain/runtime/**
+    - /xkagent_infra/brain/runtime/**
 
   denied_write:
     # 核心规范只读
-    - /brain/base/**
-    - /brain/INIT.yaml
+    - /xkagent_infra/brain/base/**
+    - /xkagent_infra/brain/INIT.yaml
     # 基础设施
-    - /brain/infrastructure/**
+    - /xkagent_infra/brain/infrastructure/**
     # 项目代码
-    - /brain/groups/org/{group}/**/projects/**
+    - /xkagent_infra/groups/{group}/**/projects/**
     # Spec
-    - /brain/groups/org/{group}/spec/**
+    - /xkagent_infra/groups/{group}/spec/**
 
 gate_overrides:
   G-GATE-APPROVAL-DELEGATION:

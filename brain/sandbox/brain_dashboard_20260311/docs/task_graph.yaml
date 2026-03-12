@@ -1,0 +1,281 @@
+task_graph:
+  project_id: brain-dashboard-2026-03-11
+  version: "1.0"
+  status: task_modeling_passed
+
+  tasks:
+    # Phase 1: Core API
+    - task_id: T1
+      name: "实现 Proxy Stats API"
+      description: "从 brain_gateway 获取流量统计并暴露 REST API"
+      deliverable: "src/api/v2/proxy.py"
+      owner: agent-brain_dev
+      kind: implementation
+      stage: phase_1
+      priority: high
+      estimated_hours: 6
+      depends_on: []
+      trigger_policy: auto
+      validation:
+        - "GET /api/v2/proxy/stats 返回有效 JSON"
+        - "包含 QPS、延迟、错误率字段"
+      conflict_keys: []
+
+    - task_id: T2
+      name: "实现 Registry Viewer API"
+      description: "解析 agents_registry.yaml 并暴露服务注册列表 API"
+      deliverable: "src/api/v2/registry.py"
+      owner: agent-brain_dev
+      kind: implementation
+      stage: phase_1
+      priority: high
+      estimated_hours: 4
+      depends_on: []
+      trigger_policy: auto
+      validation:
+        - "GET /api/v2/registry/services 返回服务列表"
+        - "GET /api/v2/registry/agents 返回 Agent 列表"
+      conflict_keys: []
+
+    - task_id: T3
+      name: "Code Review Phase 1"
+      description: "Review T1, T2 实现"
+      owner: agent-brain_manager
+      kind: review
+      stage: phase_1
+      priority: high
+      depends_on: [T1, T2]
+      trigger_policy: manual
+      validation:
+        - "代码风格符合 PEP 8"
+        - "错误处理完善"
+      conflict_keys: []
+
+    # Phase 2: Log Module
+    - task_id: T4
+      name: "实现 Log File Reader"
+      description: "实现安全的日志文件读取器，支持 tail -f 模式"
+      deliverable: "src/core/log_reader.py"
+      owner: agent-brain_dev
+      kind: implementation
+      stage: phase_2
+      priority: high
+      estimated_hours: 4
+      depends_on: [T3]
+      trigger_policy: auto
+      validation:
+        - "可读取 /brain/infrastructure/logs/*.log"
+        - "支持大文件 (>100MB) 优化"
+      conflict_keys: []
+
+    - task_id: T5
+      name: "实现 WebSocket Log Stream"
+      description: "WebSocket 端点实时推送日志"
+      deliverable: "src/api/v2/logs.py"
+      owner: agent-brain_dev
+      kind: implementation
+      stage: phase_2
+      priority: high
+      estimated_hours: 6
+      depends_on: [T4]
+      trigger_policy: auto
+      validation:
+        - "WS /ws/logs/{service} 可连接"
+        - "新日志行实时推送"
+      conflict_keys: []
+
+    - task_id: T6
+      name: "Code Review Phase 2"
+      description: "Review T4, T5 实现"
+      owner: agent-brain_manager
+      kind: review
+      stage: phase_2
+      priority: high
+      depends_on: [T5]
+      trigger_policy: manual
+      validation:
+        - "WebSocket 连接稳定"
+        - "资源释放正确"
+      conflict_keys: []
+
+    # Phase 3: UI
+    - task_id: T7
+      name: "实现 Proxy Traffic Dashboard"
+      description: "前端 Proxy 流量监控面板"
+      deliverable: "src/web/templates/v2/proxy.html + proxy.js"
+      owner: agent-brain_dev
+      kind: implementation
+      stage: phase_3
+      priority: medium
+      estimated_hours: 6
+      depends_on: [T3]
+      trigger_policy: auto
+      validation:
+        - "显示 QPS/延迟/错误率图表"
+        - "实时更新"
+      conflict_keys: []
+
+    - task_id: T8
+      name: "实现 Service Registry View"
+      description: "前端服务注册中心视图"
+      deliverable: "src/web/templates/v2/registry.html + registry.js"
+      owner: agent-brain_dev
+      kind: implementation
+      stage: phase_3
+      priority: medium
+      estimated_hours: 4
+      depends_on: [T3]
+      trigger_policy: auto
+      validation:
+        - "显示服务列表和状态"
+        - "可点击查看详情"
+      conflict_keys: []
+
+    - task_id: T9
+      name: "实现 Log Viewer"
+      description: "前端日志查看器，支持实时流"
+      deliverable: "src/web/templates/v2/logs.html + logs.js"
+      owner: agent-brain_dev
+      kind: implementation
+      stage: phase_3
+      priority: medium
+      estimated_hours: 6
+      depends_on: [T6]
+      trigger_policy: auto
+      validation:
+        - "可选择服务查看日志"
+        - "WebSocket 实时更新"
+        - "支持暂停/继续"
+      conflict_keys: []
+
+    - task_id: T10
+      name: "集成 Dashboard V2 主页面"
+      description: "整合所有模块到统一界面"
+      deliverable: "src/web/templates/v2/index.html"
+      owner: agent-brain_dev
+      kind: implementation
+      stage: phase_3
+      priority: medium
+      estimated_hours: 4
+      depends_on: [T7, T8, T9]
+      trigger_policy: auto
+      validation:
+        - "导航栏可切换模块"
+        - "样式统一"
+      conflict_keys: []
+
+    - task_id: T11
+      name: "Code Review Phase 3"
+      description: "Review UI 实现"
+      owner: agent-brain_manager
+      kind: review
+      stage: phase_3
+      priority: medium
+      depends_on: [T10]
+      trigger_policy: manual
+      validation:
+        - "UI 响应 < 2s"
+        - "移动端可访问"
+      conflict_keys: []
+
+    # Phase 4: Test
+    - task_id: T12
+      name: "编写 API Tests"
+      description: "为所有新 API 编写 pytest 测试"
+      deliverable: "tests/test_api_v2.py"
+      owner: agent-brain_dev
+      kind: testing
+      stage: phase_4
+      priority: high
+      estimated_hours: 4
+      depends_on: [T11]
+      trigger_policy: auto
+      validation:
+        - "覆盖率 > 80%"
+        - "所有测试通过"
+      conflict_keys: []
+
+    - task_id: T13
+      name: "E2E Testing"
+      description: "Playwright 端到端测试"
+      deliverable: "tests/e2e/"
+      owner: agent-brain_dev
+      kind: testing
+      stage: phase_4
+      priority: medium
+      estimated_hours: 4
+      depends_on: [T12]
+      trigger_policy: auto
+      validation:
+        - "关键用户场景覆盖"
+      conflict_keys: []
+
+    - task_id: T14
+      name: "QA Verification"
+      description: "QA 验证所有功能"
+      owner: agent-brain_manager
+      kind: validation
+      stage: phase_4
+      priority: high
+      depends_on: [T13]
+      trigger_policy: manual
+      validation:
+        - "所有验收标准满足"
+      conflict_keys: []
+
+    # Release
+    - task_id: T15
+      name: "Prepare Release Package"
+      description: "打包 v2.0.0"
+      deliverable: "releases/v2.0.0/"
+      owner: agent-brain_dev
+      kind: release
+      stage: release
+      priority: high
+      depends_on: [T14]
+      trigger_policy: manual
+      validation:
+        - "包含所有必需文件"
+      conflict_keys: []
+
+    - task_id: T16
+      name: "Deploy to Production"
+      description: "更新软链接，supervisor 重启"
+      owner: agent-brain_devops
+      kind: deployment
+      stage: release
+      priority: high
+      depends_on: [T15]
+      trigger_policy: manual
+      validation:
+        - "服务正常启动"
+        - "健康检查通过"
+      conflict_keys: [production_deployment]
+
+    - task_id: T17
+      name: "Smoke Test"
+      description: "发布后冒烟测试"
+      owner: agent-brain_manager
+      kind: validation
+      stage: release
+      priority: high
+      depends_on: [T16]
+      trigger_policy: auto
+      validation:
+        - "首页可访问"
+        - "SSE 连接正常"
+      conflict_keys: []
+
+  ready_set_seed: [T1, T2]
+
+  task_design_report:
+    project_id: brain-dashboard-2026-03-11
+    granularity_policy: "模块级别，每个主要功能 1-2 个 task"
+    owner_assignment_rules: "developer 实现，manager review"
+    reviewer_assignment_rules: "每个 phase 结束必须 review"
+    dependency_rules: "phase 内可并行，phase 间串行"
+    trigger_rules: "实现类 task 自动触发，review/deployment 需 manual"
+    conflict_rules: "production_deployment 互斥锁"
+    initial_ready_set: [T1, T2]
+    task_modeling_decision: PASS
+    next_phase: execution

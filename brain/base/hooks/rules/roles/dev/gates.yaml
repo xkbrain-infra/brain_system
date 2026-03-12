@@ -4,25 +4,25 @@
 scope:
   allowed_write:
     # 项目代码 - 主要工作区域
-    - /brain/groups/org/{group}/**/projects/**
+    - /xkagent_infra/groups/{group}/**/projects/**
     # Dev 自身工作目录
-    - /brain/groups/org/{group}/agents/agent_{group}_dev*/**
+    - /xkagent_infra/groups/{group}/agents/agent_{group}_dev*/**
     # Memory
-    - /brain/groups/org/{group}/**/memory/**
+    - /xkagent_infra/groups/{group}/**/memory/**
     # Runtime
-    - /brain/runtime/**
+    - /xkagent_infra/brain/runtime/**
     # 临时文件
-    - /brain/runtime/tmp/**
+    - /xkagent_infra/brain/runtime/tmp/**
 
   denied_write:
     # Spec 由 architect 负责
-    - /brain/groups/org/{group}/spec/**
+    - /xkagent_infra/groups/{group}/spec/**
     # 核心规范只读
-    - /brain/base/spec/**
-    - /brain/base/workflow/**
-    - /brain/INIT.yaml
+    - /xkagent_infra/brain/base/spec/**
+    - /xkagent_infra/brain/base/workflow/**
+    - /xkagent_infra/brain/INIT.yaml
     # 基础设施由 devops 负责
-    - /brain/infrastructure/**
+    - /xkagent_infra/brain/infrastructure/**
 
 gate_overrides:
   G-GATE-NAWP:

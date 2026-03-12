@@ -1,0 +1,9 @@
+group_knowledge_index:
+  group_id: "system"
+  version: "1.0"
+  domains:
+    - "platform"
+    - "sandbox"
+    - "operations"
+  note: "system 组知识入口；平台和 sandbox 的说明文档应沉淀于此"
+

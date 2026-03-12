@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "agent_name": "agent-brain_frontdesk",
+  "runtime": {
+    "command": "claude",
+    "args": [
+      "--model",
+      "copilot/gpt-5-mini"
+    ],
+    "env": {
+      "IS_SANDBOX": "1",
+      "BRAIN_TRANSPORT_MODE": "proxy",
+      "BRAIN_AGENT_NAME": "agent-brain_frontdesk"
+    },
+    "agent_type": "copilot",
+    "use_claude_cli": true
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "agent_name": "agent-system_architect",
+  "runtime": {
+    "command": "claude",
+    "args": [
+      "--model",
+      "copilot/claude-opus-4.6",
+      "--dangerously-skip-permissions",
+      "agent-system_architect"
+    ],
+    "env": {
+      "IS_SANDBOX": "1",
+      "BRAIN_TRANSPORT_MODE": "proxy",
+      "BRAIN_AGENT_NAME": "agent-system_architect"
+    },
+    "agent_type": "copilot",
+    "use_claude_cli": true
+  }
+}

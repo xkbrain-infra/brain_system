@@ -24,12 +24,12 @@ group_space_template:
     description: "Group 在文件系统中的所有关键路径"
 
     root:
-      path: "/brain/groups/org/{group_id}"
+      path: "/xkagent_infra/groups/{group_id}"
       purpose: "Group 根目录"
       must_exist: true
 
     spec_root:
-      path: "/brain/groups/org/{group_id}/spec"
+      path: "/xkagent_infra/groups/{group_id}/spec"
       purpose: "Group 级 Specs 存储"
       must_exist: true
       files:
@@ -37,7 +37,7 @@ group_space_template:
         - "projects.yaml"     # Projects 注册表
 
     workflow:
-      path: "/brain/groups/org/{group_id}/workflow"
+      path: "/xkagent_infra/groups/{group_id}/workflow"
       purpose: "工作流配置"
       must_exist: true
       files:
@@ -46,27 +46,27 @@ group_space_template:
         - "pmo/agent_roster.yaml"  # Agent 注册
 
     agents:
-      path: "/brain/groups/org/{group_id}/agents"
+      path: "/xkagent_infra/groups/{group_id}/agents"
       purpose: "Group 的 Agents 定义"
       must_exist: true
 
     projects:
-      path: "/brain/groups/org/{group_id}/projects"
+      path: "/xkagent_infra/groups/{group_id}/projects"
       purpose: "Group 的 Projects 存储"
       must_exist: true
 
     knowledge:
-      path: "/brain/groups/org/{group_id}/knowledge"
+      path: "/xkagent_infra/groups/{group_id}/knowledge"
       purpose: "知识库"
       must_exist: false  # 可选
 
     memory:
-      path: "/brain/groups/org/{group_id}/memory"
+      path: "/xkagent_infra/groups/{group_id}/memory"
       purpose: "记忆存储"
       must_exist: false  # 可选
 
     data:
-      path: "/brain/groups/org/{group_id}/data"
+      path: "/xkagent_infra/groups/{group_id}/data"
       purpose: "数据存储"
       must_exist: false  # 可选
 
@@ -226,11 +226,11 @@ global_registration:
 
     entry_template: |
       - id: "{group_id}"
-        root: "/brain/groups/org/{group_id}"
-        spec_root: "/brain/groups/org/{group_id}/spec"
+        root: "/xkagent_infra/groups/{group_id}"
+        spec_root: "/xkagent_infra/groups/{group_id}/spec"
         entrypoints:
-          - "/brain/groups/org/{group_id}/spec/index.yaml"
-          - "/brain/groups/org/{group_id}/spec/projects.yaml"
+          - "/xkagent_infra/groups/{group_id}/spec/index.yaml"
+          - "/xkagent_infra/groups/{group_id}/spec/projects.yaml"
 
     timing: "Group Space 创建完成后立即注册"
     mandatory: true
@@ -247,7 +247,7 @@ global_registration:
       {group_id}:
         group_id: "{group_id}"
         group_name: "{GROUP_NAME}"
-        location: "/brain/groups/org/{group_id}"
+        location: "/xkagent_infra/groups/{group_id}"
 
         mission: |
           {mission_description}
@@ -306,11 +306,11 @@ example:
 
   # a. 路径定义
   paths:
-    root: "/brain/groups/org/commerce"
-    spec_root: "/brain/groups/org/commerce/spec"
-    workflow: "/brain/groups/org/commerce/workflow"
-    agents: "/brain/groups/org/commerce/agents"
-    projects: "/brain/groups/org/commerce/projects"
+    root: "/xkagent_infra/groups/commerce"
+    spec_root: "/xkagent_infra/groups/commerce/spec"
+    workflow: "/xkagent_infra/groups/commerce/workflow"
+    agents: "/xkagent_infra/groups/commerce/agents"
+    projects: "/xkagent_infra/groups/commerce/projects"
 
   # b. 依赖引用
   dependencies:
@@ -366,10 +366,10 @@ example:
       file: "/brain/groups/spec/index.yaml"
       added: |
         - id: "commerce"
-          root: "/brain/groups/org/commerce"
-          spec_root: "/brain/groups/org/commerce/spec"
+          root: "/xkagent_infra/groups/commerce"
+          spec_root: "/xkagent_infra/groups/commerce/spec"
           entrypoints:
-            - "/brain/groups/org/commerce/spec/index.yaml"
+            - "/xkagent_infra/groups/commerce/spec/index.yaml"
 
     organization:
       file: "/brain/groups/spec/organization.yaml"
@@ -377,7 +377,7 @@ example:
         commerce:
           group_id: "commerce"
           group_name: "Commerce 商业应用组"
-          location: "/brain/groups/org/commerce"
+          location: "/xkagent_infra/groups/commerce"
           mission: "负责商业应用、电商、订单、支付等业务系统开发。"
           scope: [...]
           members: [...]

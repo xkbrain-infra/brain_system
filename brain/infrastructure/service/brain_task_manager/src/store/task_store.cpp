@@ -79,6 +79,7 @@ std::string TaskStore::Create(const Task& task) {
   Task t = task;
   t.status = TaskStatus::Pending;
   t.active = true;
+  t.version = 1;  // Initial version for CAS
   if (t.created_at.empty()) t.created_at = NowUTC();
   t.updated_at = t.created_at;
 
@@ -86,7 +87,7 @@ std::string TaskStore::Create(const Task& task) {
   return "";
 }
 
-std::string TaskStore::Update(const std::string& task_id, const json& fields) {
+std::string TaskStore::Update(const std::string& task_id, const json& fields, int64_t expected_version) {
   std::lock_guard<std::mutex> lock(mu_);
 
   auto it = tasks_.find(task_id);
@@ -94,6 +95,12 @@ std::string TaskStore::Update(const std::string& task_id, const json& fields) {
   if (!it->second.active) return "task is deleted: " + task_id;
 
   Task& t = it->second;
+
+  // CAS check: if expected_version >= 0, version must match
+  if (expected_version >= 0 && t.version != static_cast<uint64_t>(expected_version)) {
+    return "version conflict: expected " + std::to_string(expected_version) +
+           ", actual " + std::to_string(t.version);
+  }
 
   // Status change requires FSM validation
   if (fields.contains("status") && fields["status"].is_string()) {
@@ -137,6 +144,7 @@ std::string TaskStore::Update(const std::string& task_id, const json& fields) {
     }
   }
 
+  t.version++;  // Increment version on successful update
   t.updated_at = NowUTC();
   return "";
 }
@@ -151,11 +159,11 @@ std::vector<Task> TaskStore::Query(const TaskQueryFilter& filter) const {
   return result;
 }
 
-const Task* TaskStore::Get(const std::string& task_id) const {
+std::optional<Task> TaskStore::Get(const std::string& task_id) const {
   std::lock_guard<std::mutex> lock(mu_);
   auto it = tasks_.find(task_id);
-  if (it == tasks_.end() || !it->second.active) return nullptr;
-  return &it->second;
+  if (it == tasks_.end() || !it->second.active) return std::nullopt;
+  return it->second;  // Return copy to eliminate TOCTOU risk
 }
 
 // Fix-7: check active=false before re-deleting
@@ -214,7 +222,7 @@ PipelineCheckResult TaskStore::PipelineCheck(const std::string& spec_id) const {
       if (!spec_tasks.count(dep)) {
         result.missing_dependencies.push_back(dep);
       }
-      in_degree[id]++;
+      in_degree[dep]++;
     }
   }
 

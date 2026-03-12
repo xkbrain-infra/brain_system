@@ -1,0 +1,8 @@
+group_spec_index:
+  group_id: "brain"
+  version: "1.0"
+  status: "active"
+  note: "brain 组级 spec 索引；项目级 spec 应进入 ../projects/{project}/spec/"
+  registries:
+    - "projects.yaml"
+

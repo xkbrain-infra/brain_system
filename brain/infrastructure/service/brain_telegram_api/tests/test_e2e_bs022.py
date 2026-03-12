@@ -119,7 +119,7 @@ class TestBotRouting(unittest.TestCase):
         bot_service_map = routing.get('bot_service_map', {})
 
         # Verify expected bots are mapped
-        expected_bots = ['XKAgentBot', 'XKQuantBot', 'xkagent', 'xkquant']
+        expected_bots = ['XKAgentBot', 'xkagent']
         for bot in expected_bots:
             self.assertIn(bot, bot_service_map, f"Bot {bot} not in bot_service_map")
             self.assertEqual(bot_service_map[bot], 'service-telegram_api')
@@ -247,8 +247,8 @@ class TestEndToEndFlow(unittest.TestCase):
 class TestBotsYamlIntegration(unittest.TestCase):
     """Integration tests for bots.yaml loading."""
 
-    def test_both_bots_loaded(self):
-        """Test that both bots are loaded from config."""
+    def test_single_bot_loaded(self):
+        """Test that the active bot is loaded from config."""
         config_path = "/brain/infrastructure/config/third_api/telegram/telegram.yaml"
 
         if not os.path.exists(config_path):
@@ -261,7 +261,7 @@ class TestBotsYamlIntegration(unittest.TestCase):
         bot_names = [b.get('name') for b in bots]
 
         self.assertIn('XKAgentBot', bot_names)
-        self.assertIn('XKQuantBot', bot_names)
+        self.assertEqual(bot_names, ['XKAgentBot'])
 
     def test_token_env_variables_configured(self):
         """Test that token environment variables are configured."""

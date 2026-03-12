@@ -1,0 +1,23 @@
+sandbox_platform_index:
+  group_id: "brain"
+  version: "1.0"
+  default_provider: "docker_container"
+  roots:
+    templates: "/xkagent_infra/groups/brain/platform/sandbox/templates"
+    providers: "/xkagent_infra/groups/brain/platform/sandbox/providers"
+    instances: "/xkagent_infra/groups/brain/platform/sandbox/instances"
+    payloads: "/xkagent_infra/groups/brain/platform/sandbox/payloads"
+    archives: "/xkagent_infra/groups/brain/platform/sandbox/archives"
+    registry: "/xkagent_infra/groups/brain/platform/sandbox/registry"
+  save_model:
+    host_persisted:
+      - "metadata"
+      - "payload manifests"
+      - "archives"
+      - "provider/template assets"
+    runtime_only:
+      - "active writable worktrees"
+      - "running agent homes"
+      - "ephemeral process state"
+  note: "brain 组 sandbox 平台入口；活跃开发在容器/volume 内，host 保存追溯记录"
+

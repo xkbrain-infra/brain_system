@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "agent_name": "tmp-agent-review-minimax",
+  "runtime": {
+    "command": "claude",
+    "args": [
+      "--model",
+      "MiniMax-M2.5"
+    ],
+    "env": {
+      "IS_SANDBOX": "1",
+      "BRAIN_TRANSPORT_MODE": "proxy"
+    },
+    "agent_type": "minimax",
+    "use_claude_cli": true
+  }
+}

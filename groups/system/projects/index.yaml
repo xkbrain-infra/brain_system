@@ -1,0 +1,6 @@
+group_projects_index:
+  group_id: "system"
+  version: "1.0"
+  projects: []
+  note: "system 组 project_root 索引"
+

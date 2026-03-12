@@ -20,17 +20,17 @@ def test_bots_yaml_loading():
                     'name': 'XKAgentBot',
                     'platform': 'telegram',
                     'service_name': 'service-telegram_api',
-                    'token_env': 'TELEGRAM_BOT_TOKEN_1',
-                    'chat_id_env': 'TELEGRAM_CHAT_ID_1',
+                    'token_env': 'TELEGRAM_BOT_TOKEN_2',
+                    'chat_id_env': 'TELEGRAM_CHAT_ID_2',
                     'aliases': ['xkagent']
                 },
                 {
-                    'name': 'XKQuantBot',
+                    'name': 'XKAgentBotBackup',
                     'platform': 'telegram',
                     'service_name': 'service-telegram_api',
-                    'token_env': 'TELEGRAM_BOT_TOKEN_2',
-                    'chat_id_env': 'TELEGRAM_CHAT_ID_2',
-                    'aliases': ['xkquant']
+                    'token_env': 'TELEGRAM_BOT_TOKEN_3',
+                    'chat_id_env': 'TELEGRAM_CHAT_ID_3',
+                    'aliases': ['xkagent-backup']
                 }
             ]
         }, f)
@@ -43,7 +43,7 @@ def test_bots_yaml_loading():
         assert 'bots' in bots_config
         assert len(bots_config['bots']) == 2
         assert bots_config['bots'][0]['name'] == 'XKAgentBot'
-        assert bots_config['bots'][1]['name'] == 'XKQuantBot'
+        assert bots_config['bots'][1]['name'] == 'XKAgentBotBackup'
         print("✓ test_bots_yaml_loading passed")
     finally:
         os.unlink(temp_path)
@@ -51,28 +51,15 @@ def test_bots_yaml_loading():
 
 def test_bot_instance_filtering():
     """Test BOT_INSTANCE environment variable filtering."""
-    # Simulate BOT_INSTANCE=1 should only load XKAgentBot
-    bot_instance = os.environ.get("BOT_INSTANCE", "").strip()
-
     bots = [
         {'name': 'XKAgentBot', 'aliases': ['xkagent']},
-        {'name': 'XKQuantBot', 'aliases': ['xkquant']}
+        {'name': 'XKAgentBotBackup', 'aliases': ['xkagent-backup']}
     ]
 
-    # Test filtering logic
-    filtered = []
-    for bot in bots:
-        if bot_instance == "1":
-            if bot['name'] == 'XKAgentBot':
-                filtered.append(bot)
-        elif bot_instance == "2":
-            if bot['name'] == 'XKQuantBot':
-                filtered.append(bot)
-        else:
-            filtered.append(bot)
+    filtered = [bot for idx, bot in enumerate(bots, start=1) if "2" == str(idx)]
 
-    # Without BOT_INSTANCE, should load all
-    assert len(filtered) == 2
+    assert len(filtered) == 1
+    assert filtered[0]['name'] == 'XKAgentBotBackup'
     print("✓ test_bot_instance_filtering passed")
 
 
@@ -82,13 +69,6 @@ def test_multiple_bot_config():
         'bots': [
             {
                 'name': 'XKAgentBot',
-                'platform': 'telegram',
-                'service_name': 'service-telegram_api',
-                'token_env': 'TELEGRAM_BOT_TOKEN_1',
-                'chat_id_env': 'TELEGRAM_CHAT_ID_1'
-            },
-            {
-                'name': 'XKQuantBot',
                 'platform': 'telegram',
                 'service_name': 'service-telegram_api',
                 'token_env': 'TELEGRAM_BOT_TOKEN_2',
@@ -103,7 +83,7 @@ def test_multiple_bot_config():
         }
     }
 
-    assert len(config['bots']) == 2
+    assert len(config['bots']) == 1
     assert config['routing']['valid_source_services'] == [
         'service-telegram_api'
     ]

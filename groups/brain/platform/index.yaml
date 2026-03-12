@@ -1,0 +1,9 @@
+group_platform_index:
+  group_id: "brain"
+  version: "1.0"
+  capabilities:
+    - "sandbox"
+  entries:
+    sandbox: "/xkagent_infra/groups/brain/platform/sandbox/index.yaml"
+  note: "brain 组平台能力入口"
+

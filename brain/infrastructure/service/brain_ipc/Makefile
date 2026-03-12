@@ -1,7 +1,7 @@
 # Brain IPC service - structured build/release layout
 CC = gcc
 CFLAGS = -Wall -Wextra -O2 -pthread -D_GNU_SOURCE -I$(SRC_DIR)
-LDFLAGS = -ljansson -lpthread
+LDFLAGS = -ljansson -lpthread -lcrypto
 
 TARGET = brain_ipc
 VERSION ?= v1.0.0

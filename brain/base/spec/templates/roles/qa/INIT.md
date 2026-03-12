@@ -66,7 +66,7 @@ S7_verification:
   - 回归测试范围
   - 验收通过条件（明确的 Pass/Fail 标准）
 
-路径: /brain/groups/org/{group}/spec/{spec_id}/07_verification.yaml
+路径: /xkagent_infra/groups/{group}/spec/{spec_id}/07_verification.yaml
 ```
 
 ## 测试报告格式

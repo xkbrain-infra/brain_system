@@ -1,0 +1,47 @@
+# system PMO Task Board
+# 由 agent-system_pmo 维护，记录当前所有活跃任务
+
+board:
+  group_id: system
+  owner: agent-system_pmo
+  last_updated: "2026-03-11T09:00:00Z"
+
+tasks:
+  - task_id: "SYS-INCIDENT-001"
+    goal: "service-brain_task_manager SYSTEM_READY 误报调查"
+    owner: agent-system_devops
+    status: DONE
+    priority: high
+    assigned_at: "2026-03-11T08:28:04Z"
+    completed_at: "2026-03-11T08:30:17Z"
+    overdue_count: 0
+    context:
+      incident_type: "系统启动误报"
+      trigger: "SYSTEM_READY status=partial，failed: service-brain_task_manager"
+      run_id: "c66c1b1b18eb"
+      root_cause: "agentctl RECOVERY_START 期间 level-0 C++ 服务 IPC 注册尚未完成（时序问题），服务本身几秒后自行完成注册，实际运行正常"
+      resolution: "确认误报，无需修复，记录为低优先级优化项"
+      deliverables:
+        - "调查报告（devops 口头回报）"
+        - "已记录到 agent_roster.yaml known_issues"
+
+backlog:
+  - task_id: "SYS-BACKLOG-001"
+    goal: "优化 initialization_coordinator 就绪判断逻辑"
+    priority: low
+    status: READY
+    description: "对 managed_by=supervisord 且 level=0 的服务改用 health endpoint 判断就绪状态，或增加等待时间，避免 SYSTEM_READY 误报"
+    owner_suggestion: agent-system_devops
+    created_at: "2026-03-11T08:35:00Z"
+    created_by: agent-system_pmo
+    source_incident: "SYS-INCIDENT-001"
+
+portfolio_summary:
+  last_review: "2026-03-11T09:00:00Z"
+  active_tasks: 0
+  overdue_tasks: 0
+  blocked_tasks: 0
+  completed_today: 1
+  pending_backlog: 1
+  risk_items: []
+  notes: "系统首次 portfolio_review。board.yaml 初始化完成。当前无 ACTIVE 任务，系统运行正常。"

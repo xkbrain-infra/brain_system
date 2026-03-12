@@ -1,0 +1,44 @@
+# system PMO Agent Roster
+# 由 agent-system_pmo 维护，记录组内 Agent 状态与任务分配
+
+roster:
+  group_id: system
+  owner: agent-system_pmo
+  last_updated: "2026-03-11T09:00:00Z"
+
+agents:
+  - agent_name: agent-system_architect
+    type: resident
+    role: architect
+    status: active
+    current_tasks: []
+    recent_completions: []
+    notes: "负责系统架构设计、技术方案评审"
+
+  - agent_name: agent-system_devops
+    type: resident
+    role: devops
+    status: active
+    current_tasks: []
+    recent_completions:
+      - "INCIDENT-001: service-brain_task_manager 误报调查 (2026-03-11，确认运行正常)"
+    notes: "负责系统部署、运维、基础设施管理"
+
+  - agent_name: agent-system_pmo
+    type: resident
+    role: pmo
+    status: active
+    current_tasks: []
+    recent_completions:
+      - "INCIDENT-001: 系统恢复启动 run c66c1b1b18eb 处理 (2026-03-11，已关闭)"
+    notes: "负责项目管理、审批、任务协调"
+
+known_issues:
+  - issue_id: "KNOWN-001"
+    description: "agentctl RECOVERY_START 期间 level-0 C++ 服务 IPC 注册时序问题，导致 SYSTEM_READY 误报 failed"
+    affected_service: "service-brain_task_manager"
+    status: "open"
+    priority: low
+    suggestion: "initialization_coordinator 改用 health endpoint 判断就绪，或增加等待时间"
+    recorded_at: "2026-03-11T09:00:00Z"
+    owner: agent-system_devops

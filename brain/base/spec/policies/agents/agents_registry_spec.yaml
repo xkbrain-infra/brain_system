@@ -225,8 +225,8 @@ automation:
       template: pmo_template
       variables:
         group: "{new_group_name}"
-        path: "/brain/groups/org/{group}/agents/agent_{group}_pmo"
-        cwd: "/brain/groups/org/{group}/agents/agent_{group}_pmo"
+        path: "/xkagent_infra/groups/{group}/agents/agent_{group}_pmo"
+        cwd: "/xkagent_infra/groups/{group}/agents/agent_{group}_pmo"
         tmux_session: "agent_{group}_pmo"
 
 # 验证检查点
@@ -248,7 +248,7 @@ examples:
     agent_type: claude
     model: Sonnet
     tmux_session: "agent_mygroup_pmo"
-    cwd: "/brain/groups/org/mygroup/agents/agent_mygroup_pmo"
+    cwd: "/xkagent_infra/groups/mygroup/agents/agent_mygroup_pmo"
     capabilities: [project_management]
     tags: ["#pmo"]
 
@@ -257,11 +257,11 @@ examples:
     description: "Agent Brain 专用 devops Agent"
     scope: group
     group: brain_system
-    path: "/brain/groups/org/brain_system/agents/agent-system_devops"
+    path: "/xkagent_infra/groups/brain/agents/agent-system_devops"
     agent_type: claude
     model: Sonnet
     tmux_session: "agent-system_devops"
-    cwd: "/brain/groups/org/brain_system/agents/agent-system_devops"
+    cwd: "/xkagent_infra/groups/brain/agents/agent-system_devops"
     cli_args:
       - "--dangerously-skip-permissions"
     env:

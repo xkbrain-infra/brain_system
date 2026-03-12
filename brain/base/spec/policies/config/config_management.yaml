@@ -541,8 +541,8 @@ migration:
       2:
         action: "复制现有 .env 文件到对应分类"
         example: |
-          cp /brain/groups/org/xkquant/projects/telegram-api/.env \
-             /brain/secrets/telegram/bot_token.env
+          cp /xkagent_infra/groups/xkquant/projects/telegram-api/.env \
+             /xkagent_infra/brain/secrets/telegram/bot_token.env
 
       3:
         action: "创建 index.yaml"

@@ -55,7 +55,7 @@ event_chain: |
 每个需求必须创建 Spec 目录，落盘结构化文件：
 
 ```yaml
-path: /brain/groups/org/{group}/spec/{spec_id}/
+path: /xkagent_infra/groups/{group}/spec/{spec_id}/
 naming: "{group_prefix}-{seq}-{short_name}"
 
 files:
@@ -130,10 +130,10 @@ pmo_risk_scan (每 30 分钟):
 ## PMO 记录系统
 
 ```yaml
-task_board:  /brain/groups/org/{group}/workflow/pmo/board.yaml
-agent_roster: /brain/groups/org/{group}/workflow/pmo/agent_roster.yaml
-task_log:    /brain/groups/org/{group}/workflow/pmo/logs/{date}.yaml
-decision_log: /brain/groups/org/{group}/workflow/pmo/decisions/{date}.yaml
+task_board:  /xkagent_infra/groups/{group}/workflow/pmo/board.yaml
+agent_roster: /xkagent_infra/groups/{group}/workflow/pmo/agent_roster.yaml
+task_log:    /xkagent_infra/groups/{group}/workflow/pmo/logs/{date}.yaml
+decision_log: /xkagent_infra/groups/{group}/workflow/pmo/decisions/{date}.yaml
 ```
 
 ## 健康检查（PMO 专属项）

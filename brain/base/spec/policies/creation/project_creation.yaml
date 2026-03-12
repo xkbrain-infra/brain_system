@@ -71,7 +71,7 @@ project_directory_structure:
   spec_space:
     location: "{group_root}/spec/{spec_id}/"
     purpose: "存储 S1-S8 设计文档和方案"
-    example: "/brain/groups/org/brain_system/spec/BS-010-agentctl-naming-unification/"
+    example: "/xkagent_infra/groups/brain/spec/BS-010-agentctl-naming-unification/"
 
     structure: |
       {group_root}/spec/{spec_id}/
@@ -100,7 +100,7 @@ project_directory_structure:
   project_space:
     location: "{group_root}/projects/{project_id}/"
     purpose: "项目实施过程中的工作空间、记忆、日志"
-    example: "/brain/groups/org/brain_system/projects/agent_orchestrator/"
+    example: "/xkagent_infra/groups/brain/projects/agent_orchestrator/"
 
     structure: |
       {group_root}/projects/{project_id}/
@@ -380,10 +380,10 @@ related_docs:
     - /brain/base/spec/templates/docker/            # Docker 模板
 
   实际案例:
-    - /brain/groups/org/brain_system/spec/BS-010-agentctl-naming-unification/
-    - /brain/groups/org/xkquant/spec/XQ-001-docker-stack/
+    - /xkagent_infra/groups/brain/spec/BS-010-agentctl-naming-unification/
+    - /xkagent_infra/groups/xkquant/spec/XQ-001-docker-stack/
 
   组织结构:
     - /brain/groups/spec/index.yaml                 # 组索引
-    - /brain/groups/org/brain_system/spec/index.yaml
-    - /brain/groups/org/xkquant/spec/index.yaml
+    - /xkagent_infra/groups/brain/spec/index.yaml
+    - /xkagent_infra/groups/xkquant/spec/index.yaml

@@ -26,26 +26,26 @@ project_space_template:
     # Brain 层路径（管理空间）
     brain_layer:
       root:
-        path: "/brain/groups/org/{group_id}/projects/{project_name}"
+        path: "/xkagent_infra/groups/{group_id}/projects/{project_name}"
         purpose: "Project 根目录（Brain 层）"
         must_exist: true
 
       config:
-        path: "/brain/groups/org/{group_id}/projects/{project_name}/config"
+        path: "/xkagent_infra/groups/{group_id}/projects/{project_name}/config"
         purpose: "项目配置文件"
         must_exist: true
         files:
           - "agents_registry.yaml"  # 如果有专属 Agents
 
       specs:
-        path: "/brain/groups/org/{group_id}/projects/{project_name}/specs"
+        path: "/xkagent_infra/groups/{group_id}/projects/{project_name}/specs"
         purpose: "Project 级 Specs（功能迭代）"
         must_exist: true
         files:
           - "00_index.yaml"  # Project Spec 索引
 
       memory:
-        path: "/brain/groups/org/{group_id}/projects/{project_name}/memory"
+        path: "/xkagent_infra/groups/{group_id}/projects/{project_name}/memory"
         purpose: "项目记忆（设计决策、架构文档）"
         must_exist: true
         subdirs:
@@ -54,17 +54,17 @@ project_space_template:
           - "lessons_learned"
 
       logs:
-        path: "/brain/groups/org/{group_id}/projects/{project_name}/logs"
+        path: "/xkagent_infra/groups/{group_id}/projects/{project_name}/logs"
         purpose: "项目日志"
         must_exist: true
 
       data:
-        path: "/brain/groups/org/{group_id}/projects/{project_name}/data"
+        path: "/xkagent_infra/groups/{group_id}/projects/{project_name}/data"
         purpose: "项目数据"
         must_exist: false  # 可选
 
       tests:
-        path: "/brain/groups/org/{group_id}/projects/{project_name}/tests"
+        path: "/xkagent_infra/groups/{group_id}/projects/{project_name}/tests"
         purpose: "测试脚本"
         must_exist: false  # 可选
 
@@ -104,12 +104,12 @@ project_space_template:
 
     spec_refs:
       group_workflow:
-        path: "/brain/groups/org/{group_id}/workflow/index.yaml"
+        path: "/xkagent_infra/groups/{group_id}/workflow/index.yaml"
         purpose: "继承 Group 工作流"
         mandatory: true
 
       group_spec_templates:
-        path: "/brain/groups/org/{group_id}/spec/index.yaml"
+        path: "/xkagent_infra/groups/{group_id}/spec/index.yaml"
         purpose: "Group Spec 索引"
         mandatory: true
 
@@ -120,7 +120,7 @@ project_space_template:
 
     inherits_from:
       workflow:
-        path: "/brain/groups/org/{group_id}/workflow/index.yaml"
+        path: "/xkagent_infra/groups/{group_id}/workflow/index.yaml"
         note: "Project 继承 Group workflow，Group 继承 Base workflow"
 
     service_dependencies:
@@ -280,7 +280,7 @@ global_registration:
   # 注册点 1: Group projects.yaml（必须）
   # ------------------------------------------
   register_in_group:
-    file: "/brain/groups/org/{group_id}/spec/projects.yaml"
+    file: "/xkagent_infra/groups/{group_id}/spec/projects.yaml"
     section: "projects"
     action: "添加 Project 条目"
 
@@ -314,8 +314,8 @@ global_registration:
     entry_template: |
       - project_id: "{PROJECT_ID}"
         group_id: "{group_id}"
-        root: "/brain/groups/org/{group_id}/projects/{project_name}"
-        spec_index: "/brain/groups/org/{group_id}/projects/{project_name}/specs/00_index.yaml"
+        root: "/xkagent_infra/groups/{group_id}/projects/{project_name}"
+        spec_index: "/xkagent_infra/groups/{group_id}/projects/{project_name}/specs/00_index.yaml"
         description: "{description}"
         status: "active"
 
@@ -342,11 +342,11 @@ example:
   # a. 路径定义
   paths:
     brain_layer:
-      root: "/brain/groups/org/xkquant/projects/xkquant_notifier"
-      config: "/brain/groups/org/xkquant/projects/xkquant_notifier/config"
-      specs: "/brain/groups/org/xkquant/projects/xkquant_notifier/specs"
-      memory: "/brain/groups/org/xkquant/projects/xkquant_notifier/memory"
-      logs: "/brain/groups/org/xkquant/projects/xkquant_notifier/logs"
+      root: "/xkagent_infra/groups/xkquant/projects/xkquant_notifier"
+      config: "/xkagent_infra/groups/xkquant/projects/xkquant_notifier/config"
+      specs: "/xkagent_infra/groups/xkquant/projects/xkquant_notifier/specs"
+      memory: "/xkagent_infra/groups/xkquant/projects/xkquant_notifier/memory"
+      logs: "/xkagent_infra/groups/xkquant/projects/xkquant_notifier/logs"
 
     codebase_layer:
       root: "/app/domain/xkquant_notifier"
@@ -360,7 +360,7 @@ example:
   # b. 依赖引用
   dependencies:
     spec_refs:
-      - "/brain/groups/org/xkquant/workflow/index.yaml"
+      - "/xkagent_infra/groups/xkquant/workflow/index.yaml"
       - "/brain/base/spec/templates/spec_dsl.yaml"
     service_dependencies:
       - service: "collection_db"
@@ -415,7 +415,7 @@ example:
   # 全局注册
   global_registration:
     group_projects:
-      file: "/brain/groups/org/xkquant/spec/projects.yaml"
+      file: "/xkagent_infra/groups/xkquant/spec/projects.yaml"
       added: |
         - id: "PRJ-XKQUANT-NOTIFIER"
           name: "xkquant_notifier"
@@ -432,7 +432,7 @@ example:
       added: |
         - project_id: "PRJ-XKQUANT-NOTIFIER"
           group_id: "xkquant"
-          root: "/brain/groups/org/xkquant/projects/xkquant_notifier"
+          root: "/xkagent_infra/groups/xkquant/projects/xkquant_notifier"
           spec_index: ".../specs/00_index.yaml"
           status: "active"
 
