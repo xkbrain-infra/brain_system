@@ -81,8 +81,8 @@ cd /brain/groups/org/brain_system/agents/agent_kimi_coder
   "spinnerTipsEnabled": false,
   "skipDangerousModePermissionPrompt": true,
   "mcpServers": {
-    "brain-ipc-c": {
-      "command": "/brain/infrastructure/service/agent_abilities/mcp/brain_ipc_c/bin/current/brain_ipc_c_mcp_server",
+    "mcp-brain_ipc_c": {
+      "command": "/brain/bin/mcp/mcp-brain_ipc_c",
       "args": [],
       "env": {
         "BRAIN_AGENT_NAME": "替换为实际agent名",
@@ -116,7 +116,7 @@ claude --model kimi-for-coding --dangerously-skip-permissions
   },
 
   "mcpServers": {
-    "brain-ipc-c": {
+    "mcp-brain_ipc_c": {
       "env": {
         // 重要：必须与 agent 名称一致
         "BRAIN_AGENT_NAME": "agent_kimi_coder",

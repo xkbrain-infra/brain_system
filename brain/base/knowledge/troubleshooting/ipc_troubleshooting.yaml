@@ -250,15 +250,15 @@ problems:
 
   - id: "IPC-006"
     category: "ipc_errors"
-    title: "MCP server (brain-ipc-c) 启动失败"
-    keywords: ["MCP startup incomplete", "failed: brain-ipc-c", "mcp启动失败", "os error 2"]
+    title: "MCP server (mcp-brain_ipc_c) 启动失败"
+    keywords: ["MCP startup incomplete", "failed: mcp-brain_ipc_c", "mcp启动失败", "os error 2"]
     error_patterns:
       - "MCP startup incomplete"
-      - "failed: brain-ipc-c"
+      - "failed: mcp-brain_ipc_c"
       - "(os error 2)"
     description: |
-      Agent 的 brain-ipc-c MCP server 未能启动，导致所有 ipc_recv/ipc_send 调用失败或返回空。
-      tmux pane 会显示 "⚠ MCP startup incomplete (failed: brain-ipc-c)"。
+      Agent 的 mcp-brain_ipc_c MCP server 未能启动，导致所有 ipc_recv/ipc_send 调用失败或返回空。
+      tmux pane 会显示 "⚠ MCP startup incomplete (failed: mcp-brain_ipc_c)"。
       常见原因：MCP server 二进制文件缺失、权限不对、.mcp.json 配置错误。
 
       这是 2026-02-09 architect ipc_recv 返回 0 的实际根因。
@@ -394,7 +394,7 @@ diagnostic_commands:
 architecture_notes:
   message_delivery_flow: |
     发送方 Agent
-      → MCP server (brain-ipc-c) 调用 ipc_send
+      → MCP server (mcp-brain_ipc_c) 调用 ipc_send
       → Unix socket → brain_ipc
       → daemon 入队 msgqueue[resolved_agent_id]
       → daemon 通过 tmux send-keys 发 "[IPC] New message..." 到目标 pane
@@ -411,7 +411,7 @@ architecture_notes:
   key_files:
     daemon_binary: "/brain/infrastructure/service/brain_ipc/bin/brain_ipc"
     daemon_source: "/brain/infrastructure/service/brain_ipc/src/brain_ipc.c"
-    mcp_server: "/brain/infrastructure/service/agent_abilities/mcp/brain_ipc_c/bin/current/brain_ipc_c_mcp_server"
+    mcp_server: "/brain/bin/mcp/mcp-brain_ipc_c"
     daemon_socket: "/tmp/brain_ipc.sock"
     daemon_log: "/brain/runtime/logs/daemon.log"
 

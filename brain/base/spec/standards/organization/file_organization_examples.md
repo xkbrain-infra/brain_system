@@ -158,9 +158,9 @@ ensure_path(config_path)
 # 写入配置
 config = {
     "mcpServers": {
-        "brain-ipc-c": {
-            "command": "python",
-            "args": ["/brain/infrastructure/service/agent_abilities/mcp/brain_ipc_c/bin/current/brain_ipc_c_mcp_server"]
+        "mcp-brain_ipc_c": {
+            "command": "/brain/bin/mcp/mcp-brain_ipc_c",
+            "args": []
         }
     }
 }

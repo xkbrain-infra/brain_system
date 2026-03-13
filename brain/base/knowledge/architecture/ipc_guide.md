@@ -448,7 +448,7 @@ ipc_send(to="agent_system_devops", message='[pmo] APPROVAL_RESPONSE: approved', 
 | `BRAIN_AGENT_NAME` | `claude` | Agent 逻辑名称 |
 | `BRAIN_IPC_SOCKET` | `/tmp/brain_ipc.sock` | daemon Unix Socket 路径 |
 | `BRAIN_IPC_NOTIFY_SOCKET` | `/tmp/brain_ipc_notify.sock` | 通知 socket 路径 |
-| `BRAIN_IPC_AUTOSTART` | `1` | MCP Server 是否自动启动 daemon |
+| `BRAIN_DAEMON_AUTOSTART` | `0` | MCP Server 是否自动启动 daemon |
 | `BRAIN_TMUX_NOTIFY` | `1` | daemon 是否启用 tmux/pty 推送通知 |
 
 ---
@@ -460,8 +460,8 @@ ipc_send(to="agent_system_devops", message='[pmo] APPROVAL_RESPONSE: approved', 
 ```json
 {
   "mcpServers": {
-    "brain-ipc-c": {
-      "command": "/brain/infrastructure/service/agent_abilities/mcp/brain_ipc_c/bin/brain_ipc_c_mcp_server",
+    "mcp-brain_ipc_c": {
+      "command": "/brain/bin/mcp/mcp-brain_ipc_c",
       "args": [],
       "env": {
         "BRAIN_AGENT_NAME": "agent_system_devops"

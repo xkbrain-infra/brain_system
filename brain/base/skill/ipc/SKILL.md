@@ -4,7 +4,7 @@ name: ipc
 description: "This skill should be used when the user asks to \"发消息给 agent\", \"通知 agent\", \"查看消息\", \"收消息\", \"找 agent\", \"通知用户\", \"发 telegram\", \"ipc send\", \"ipc recv\", or mentions inter-agent communication, IPC messaging, and user notifications."
 user-invocable: true
 disable-model-invocation: false
-allowed-tools: mcp__brain_ipc_c__ipc_send, mcp__brain_ipc_c__ipc_recv, mcp__brain_ipc_c__ipc_search, mcp__brain_ipc_c__ipc_list_agents, mcp__brain_ipc_c__ipc_register, mcp__brain_ipc_c__conversation_create
+allowed-tools: mcp__mcp-brain_ipc_c__ipc_send, mcp__mcp-brain_ipc_c__ipc_recv, mcp__mcp-brain_ipc_c__ipc_search, mcp__mcp-brain_ipc_c__ipc_list_agents, mcp__mcp-brain_ipc_c__ipc_register, mcp__mcp-brain_ipc_c__conversation_create
 argument-hint: "[send|recv|search|list|wait|notify] [agent_name] [message]"
 ---
 

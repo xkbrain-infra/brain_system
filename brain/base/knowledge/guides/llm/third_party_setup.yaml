@@ -68,12 +68,12 @@ metadata:
   },
   "language": "中文",
   "mcpServers": {
-    "brain-ipc-c": {
-      "command": "/brain/infrastructure/service/agent_abilities/mcp/brain_ipc_c/brain_ipc_c_mcp_server",
+    "mcp-brain_ipc_c": {
+      "command": "/brain/bin/mcp/mcp-brain_ipc_c",
       "args": [],
       "env": {
         "BRAIN_AGENT_NAME": "<AGENT_NAME>",
-        "BRAIN_IPC_AUTOSTART": "1"
+        "BRAIN_DAEMON_AUTOSTART": "1"
       }
     }
   },
@@ -86,8 +86,8 @@ metadata:
 ```json
 {
   "mcpServers": {
-    "brain-ipc-c": {
-      "command": "/brain/infrastructure/service/agent_abilities/mcp/brain_ipc_c/brain_ipc_c_mcp_server",
+    "mcp-brain_ipc_c": {
+      "command": "/brain/bin/mcp/mcp-brain_ipc_c",
       "args": [],
       "env": {
         "BRAIN_AGENT_NAME": "<AGENT_NAME>",
@@ -166,12 +166,12 @@ scope:
 
 **必须使用正确的 MCP 服务器路径**:
 ```
-/brain/infrastructure/service/agent_abilities/mcp/brain_ipc_c/brain_ipc_c_mcp_server
+/brain/bin/mcp/mcp-brain_ipc_c
 ```
 
 **错误路径** (旧版本):
 ```
-/brain/base/runtime/engine/src/mcp/brain_ipc_c/brain_ipc_c_mcp_server  # ❌
+/brain/runtime/engine/src/mcp/brain_ipc_c/brain_ipc_c_mcp_server  # ❌
 ```
 
 ## 实际案例
@@ -346,10 +346,10 @@ claude --dangerously-skip-permissions
 2. **禁止使用旧版 MCP 路径**
    ```
    # ❌ 错误
-   /brain/base/runtime/engine/src/mcp/brain_ipc_c/brain_ipc_c_mcp_server
+   /brain/runtime/engine/src/mcp/brain_ipc_c/brain_ipc_c_mcp_server
 
    # ✅ 正确
-   /brain/infrastructure/service/agent_abilities/mcp/brain_ipc_c/brain_ipc_c_mcp_server
+   /brain/bin/mcp/mcp-brain_ipc_c
    ```
 
 3. **禁止直接修改全局环境变量**
@@ -403,7 +403,7 @@ claude --dangerously-skip-permissions
 cat .mcp.json | grep command
 
 # 应该是
-/brain/infrastructure/service/agent_abilities/mcp/brain_ipc_c/brain_ipc_c_mcp_server
+/brain/bin/mcp/mcp-brain_ipc_c
 ```
 
 ### 问题 2: 模型验证失败

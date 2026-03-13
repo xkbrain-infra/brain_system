@@ -240,8 +240,8 @@ multi_agent = true
 apps = true
 
 # IPC MCP Server
-[mcp_servers.brain-ipc-c]
-command = "/brain/runtime/engine/src/mcp/brain_ipc_c/brain_ipc_c_mcp_server"
+[mcp_servers.mcp-brain_ipc_c]
+command = "/brain/bin/mcp/mcp-brain_ipc_c"
 args = []
 env = { BRAIN_AGENT_NAME = "agent_kimi_demo", BRAIN_TMUX_SESSION = "agent_kimi_demo" }
 ```
@@ -395,14 +395,12 @@ tmux attach -t agent_kimi_demo
 
 通过 IPC 发送测试消息：
 
-```python
-# 在另一个 agent 或脚本中
-from brain_ipc_c_mcp_server import ipc_send
-
+```text
+# 在另一个 agent CLI 会话中调用 IPC MCP tool
 ipc_send(
-    to="agent_kimi_demo",
-    message="你好！请用中文介绍一下你自己，说明你使用的是什么模型。",
-    priority="normal"
+  to="agent_kimi_demo",
+  message="你好！请用中文介绍一下你自己，说明你使用的是什么模型。",
+  priority="normal"
 )
 ```
 

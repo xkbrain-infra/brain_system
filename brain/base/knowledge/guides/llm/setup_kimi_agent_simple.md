@@ -143,8 +143,8 @@ scope: brain_system
 ```json
 {
   "mcpServers": {
-    "brain-ipc-c": {
-      "command": "/brain/infrastructure/service/agent_abilities/mcp/brain_ipc_c/bin/current/brain_ipc_c_mcp_server",
+    "mcp-brain_ipc_c": {
+      "command": "/brain/bin/mcp/mcp-brain_ipc_c",
       "args": [],
       "env": {
         "BRAIN_AGENT_NAME": "agent_kimi_demo",
