@@ -103,6 +103,18 @@
 - audit report 完成
 - improvement actions 进入 knowledge / workflow / evolution
 
+## Spec Checklist 机制
+
+仅靠最终 audit 才发现“哪些点没做”，反馈太晚，也无法回答项目当前完成度到底是多少。
+
+因此这套 workflow 增加一个项目级 `spec checklist` 机制：
+
+- 它把 workflow steps、pass gate、deliverables、milestones、validation path 映射为结构化清单项
+- 每个清单项都有 `source_ref`、`completion_rule`、`status`、`evidence_refs`
+- 项目完成度不再是主观判断，而是按 checklist 自动汇总
+- `waive`、`defer`、`blocked` 都必须留痕，避免通过删项伪造完成
+- audit 要复核的不只是结果，还包括 checklist 是否完整、证据是否充分、是否有静默漏项
+
 ## 主流程顺序
 
 当前 multicore workflow 的推荐主流程顺序为：

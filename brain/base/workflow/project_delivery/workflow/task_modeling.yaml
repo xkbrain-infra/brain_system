@@ -6,10 +6,12 @@ workflow:
   note: "task modeling 负责把 project_plan 实例化为 task graph，不直接替代 execution dispatch"
   inputs:
     - project_plan
+    - spec_checklist
     - workflow_profile
     - planning_outputs
   steps:
     - "map deliverables and work packages into candidate tasks"
+    - "map spec checklist items to implementation, validation, release, and audit tasks"
     - "separate true tasks from internal todo items"
     - "assign owner / participants / reviewer for each task"
     - "explicitly model QA/verification tasks where validation cannot stay implicit"
@@ -21,6 +23,7 @@ workflow:
     - task_graph
     - ready_set_seed
     - task_design_report
+    - checklist_traceability_map
 
 pass_gate:
   id: "TASK_MODELING_PASS"
@@ -28,6 +31,8 @@ pass_gate:
   required_checks:
     deliverables_covered:
       description: "所有 deliverables 都有对应 task 或 task group 覆盖"
+    checklist_coverage_mapped:
+      description: "spec checklist item 已映射到 task、milestone 或 validation path，未覆盖项已显式暴露"
     task_granularity_valid:
       description: "task 粒度适中，未把全部 todo 误升格为 task"
     ownership_defined:
@@ -48,6 +53,7 @@ fail_gate:
   rule: "task graph 不完整或粒度失衡时，不得进入 execution"
   typical_reasons:
     - "deliverables not mapped"
+    - "spec checklist items not mapped"
     - "tasks too coarse or too fine"
     - "missing owner/reviewer"
     - "QA/verification path missing"
@@ -66,6 +72,7 @@ required_record:
     - dependency_rules
     - trigger_rules
     - conflict_rules
+    - spec_checklist_traceability_ref
     - initial_ready_set
     - task_modeling_decision
   note: "没有完整 task_design_report 的项目不得进入 execution"

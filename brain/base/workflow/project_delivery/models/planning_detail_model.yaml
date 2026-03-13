@@ -72,6 +72,7 @@ task_and_assignment:
 tracking_and_reporting:
   required_questions:
     - "项目怎么跟踪"
+    - "workflow 要求点如何映射为项目 spec checklist"
     - "snapshot cadence 多久一次"
     - "哪些 report 必须阶段性产出"
     - "哪些指标必须上 board"
@@ -79,6 +80,7 @@ tracking_and_reporting:
     - "使用哪些 config version 和 environment baseline"
   outputs:
     - tracking_plan
+    - spec_checklist_strategy
     - board_metrics
     - reporting_cadence
     - escalation_visibility_rules

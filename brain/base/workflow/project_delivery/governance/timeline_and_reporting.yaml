@@ -39,6 +39,7 @@ reports:
       - completed_tasks
       - incomplete_or_cancelled_tasks
       - milestone_summary
+      - checklist_summary
       - risk_summary
       - execution_timeline_ref
       - log_bundle_ref
@@ -61,6 +62,8 @@ reports:
     owner: "project orchestrator + release manager"
     required_fields:
       - project_id
+      - spec_checklist_ref
+      - checklist_history_ref
       - task_event_history_ref
       - project_snapshot_history_ref
       - timeline_log_ref
@@ -77,9 +80,11 @@ reports:
       - project_id
       - candidate_id
       - executive_summary
+      - checklist_coverage_assessment
       - major_findings
       - root_causes
       - improvement_actions
+      - unclosed_required_items
       - materialization_status
       - target_domains
       - supporting_log_refs
@@ -89,4 +94,5 @@ closure_rules:
   - "project released or failed 后，必须存在 delivery_report"
   - "进入 audit 前，必须存在 audit_input_bundle"
   - "audit 完成前，必须存在 audit_report"
+  - "没有 spec checklist summary 的 project 不得声称完成度可信"
   - "没有 report 的 project 不得标记为 CLOSED"

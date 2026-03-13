@@ -39,6 +39,7 @@ project_root_contract:
   rules:
     - "project_root 必须位于 group_root/projects/ 下"
     - "project_root 是项目的设计/规范/记录主目录"
+    - "project_root/spec/ 下应保留 workflow spec 主文档与 spec_checklist.yaml"
     - "sandbox 只消费 project_root 内容，不替代 project_root"
 
 sandbox_relationship:

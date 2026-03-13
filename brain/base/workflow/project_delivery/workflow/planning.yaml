@@ -27,10 +27,12 @@ workflow:
     - "define task manager state machine, task storage layout, and dispatch acknowledgement policy"
     - "define project tracking model, boards, reporting cadence, and escalation visibility"
     - "define validation path: review/test/release/audit checkpoints"
+    - "instantiate project spec checklist from workflow requirements, deliverables, milestones, and validation path"
     - "define risk handling and escalation thresholds"
     - "write project_plan record for task modeling phase"
   outputs:
     - project_plan
+    - spec_checklist
     - technical_baseline
     - architecture_plan
     - module_interface_estimate
@@ -88,6 +90,8 @@ pass_gate:
       description: "项目跟踪指标、snapshot cadence、report cadence 和升级可见性明确"
     validation_path_defined:
       description: "review/test/release/audit 检查点明确"
+    spec_checklist_initialized:
+      description: "workflow 要求点已实例化为项目级 spec checklist，并可统计总点数/完成度"
     risks_defined:
       description: "主要风险和升级阈值明确"
 
@@ -108,6 +112,7 @@ fail_gate:
     - "project agent strategy missing"
     - "task manager state/ack strategy missing"
     - "validation path missing"
+    - "spec checklist missing"
     - "parallelism strategy missing"
     - "tracking/reporting model missing"
 
@@ -144,6 +149,7 @@ required_record:
     - assignment_strategy
     - tracking_plan
     - validation_path
+    - spec_checklist_ref
     - release_path
     - audit_checkpoints
     - planning_decision

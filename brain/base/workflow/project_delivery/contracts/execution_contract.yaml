@@ -7,6 +7,14 @@ execution_positioning:
   role: "runtime delivery phase"
   description: "execution 在 task_modeling 之后，负责把 task graph 推进到 deliverables ready"
 
+spec_checklist_sync:
+  required_actions:
+    - "execution 开始前加载 spec checklist baseline"
+    - "task/review/test/release 关键事件发生后同步 checklist item 状态"
+    - "DONE item 必须附带 evidence_refs 或显式引用等价 evidence"
+  rule:
+    - "task done 不等于 checklist done；只有 completion_rule 满足后 checklist item 才可关闭"
+
 dispatch_cycle:
   steps:
     - "orchestrator computes READY set from current task graph"
@@ -74,3 +82,4 @@ evidence_requirements:
   - "task 完成必须有 artifact_refs"
   - "review/test 必须有结果记录"
   - "执行阶段所有关键动作必须追加 event history"
+  - "影响 release/audit 的 checklist item 必须可追溯到 evidence_refs"

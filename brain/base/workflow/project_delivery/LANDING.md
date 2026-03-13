@@ -8,6 +8,9 @@
 
 - 目录说明：`README.md`
 - 设计总览：`DESIGN.md`
+- 标准清单：`SPEC_CHECKLIST.yaml`
+- 实例模板：`spec_checklist.instance.template.yaml`
+- Agent 操作：`SPEC_CHECKLIST_GUIDE.md`
 - 发布映射：`index.yaml`
 - 发布批次：`MANIFEST.proposal.yaml`
 
@@ -24,7 +27,9 @@
 
 ## 核心契约
 
+- `SPEC_CHECKLIST.yaml`
 - `contracts/state_machines.yaml`
+- `contracts/spec_checklist_contract.yaml`
 - `contracts/unified_schemas.yaml`
 - `contracts/identifier_conventions.yaml`
 - `governance/observability.yaml`

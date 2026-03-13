@@ -5,6 +5,7 @@ audit_review_model:
 
 review_flow:
   - "load audit_input_bundle"
+  - "load spec checklist baseline and history"
   - "reconstruct project timeline"
   - "identify critical deviations"
   - "group findings by domain"
@@ -15,6 +16,7 @@ review_flow:
 finding_categories:
   - planning_gap
   - execution_gap
+  - spec_coverage_gap
   - quality_gap
   - release_gap
   - environment_gap
@@ -22,6 +24,7 @@ finding_categories:
 
 required_report_sections:
   - executive_summary
+  - checklist_coverage_assessment
   - timeline_summary
   - major_findings
   - root_causes
@@ -31,3 +34,4 @@ required_report_sections:
 
 rule:
   - "audit report 不得只有问题列表，必须包含 root causes 和 action routing"
+  - "audit report 必须明确列出未覆盖 requirement、缺证据完成和未经审批的 waive"

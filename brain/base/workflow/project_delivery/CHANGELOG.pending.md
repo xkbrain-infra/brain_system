@@ -11,6 +11,7 @@
 - 新增 config registration sequences，固化 bootstrap/runtime/release 阶段的注册顺序流
 - 新增 brain manager runtime package 发布控制设计，覆盖校验、发布、归档与 promotion 到 base 的规则
 - 新增最小上线顺序与运行拓扑设计，固定 foundation/execution_core/visibility/delivery 的 rollout 路径
+- 新增 `spec checklist` 契约，把 workflow 要求点落成项目级完成清单，并把完成度/evidence 接入 planning、execution、audit
 
 ## Scope
 

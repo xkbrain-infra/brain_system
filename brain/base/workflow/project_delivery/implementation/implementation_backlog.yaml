@@ -613,3 +613,46 @@ milestones:
   - milestone_id: "MWF-M18"
     title: "Rollout degrade-mode contract complete"
     includes: ["MWF-E20-T1", "MWF-E20-T2"]
+
+  - epic_id: "MWF-E21"
+    title: "Spec Checklist and Completion Coverage"
+    goal: "把 workflow requirement 落成项目级 spec checklist，并将完成度与 evidence 纳入 gate 和 audit"
+    tasks:
+      - task_id: "MWF-E21-T1"
+        title: "define project spec checklist schema and status formulas"
+        owner: "architect"
+        priority: "critical"
+        depends_on: ["MWF-E7-T3", "MWF-E9-T3", "MWF-E12-T2"]
+        acceptance:
+          - "workflow requirement -> checklist item 的映射规则固定"
+          - "completion_pct/evidence_coverage_pct 口径固定"
+          - "waive/block/evidence 的最小字段固定"
+      - task_id: "MWF-E21-T2"
+        title: "generate checklist baseline during planning and persist under project_root/spec"
+        owner: "developer"
+        priority: "critical"
+        depends_on: ["MWF-E21-T1"]
+        acceptance:
+          - "项目 planning 后可自动生成 spec_checklist.yaml"
+          - "总点数和 stage_completion 可初始化"
+      - task_id: "MWF-E21-T3"
+        title: "sync checklist status with task, review, test, and release evidence"
+        owner: "developer"
+        priority: "high"
+        depends_on: ["MWF-E21-T2", "MWF-E9-T3", "MWF-E11-T2"]
+        acceptance:
+          - "task/review/test/release 事件可回写 checklist"
+          - "没有 evidence 的 done 不可计入高可信完成"
+      - task_id: "MWF-E21-T4"
+        title: "add audit checks for uncovered requirements and false completion"
+        owner: "developer"
+        priority: "high"
+        depends_on: ["MWF-E21-T3", "MWF-E6-T3"]
+        acceptance:
+          - "audit report 可输出 uncovered requirements"
+          - "静默漏项、伪完成、未审批 waive 可被识别"
+          - "高风险 coverage gap 会 materialize 成 follow-up item"
+
+  - milestone_id: "MWF-M19"
+    title: "Spec checklist coverage contract complete"
+    includes: ["MWF-E21-T1", "MWF-E21-T2", "MWF-E21-T3", "MWF-E21-T4"]

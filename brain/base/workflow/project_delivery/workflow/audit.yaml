@@ -9,6 +9,7 @@ workflow:
   note: "audit 负责执行后/发布后复查，并将问题 materialize 为可追踪改进项"
   steps:
     - "collect execution trace, snapshots, release records, blockers, retries"
+    - "compare workflow requirements, project spec checklist, and actual execution evidence"
     - "analyze bottlenecks, missed gates, repeated failure patterns"
     - "produce findings and root causes"
     - "draft improvement actions"
@@ -16,6 +17,7 @@ workflow:
     - "close project only after feedback is synced"
   outputs:
     - audit_report
+    - spec_checklist_coverage_assessment
     - improvement_actions
     - knowledge_patch proposals
     - evolution proposals
@@ -31,6 +33,8 @@ pass_gate:
       description: "主要问题已按 domain 分类"
     root_causes_recorded:
       description: "高优先级 findings 已有 root cause"
+    checklist_coverage_reviewed:
+      description: "spec checklist 的覆盖完整性、缺证据项和漏项已审计"
     followups_materialized:
       description: "高优先级与重复问题已生成 follow-up items 或 patch proposals"
     feedback_routed:

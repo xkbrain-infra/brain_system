@@ -64,6 +64,7 @@ project_snapshot:
   optional_fields:
     - current_risks
     - current_milestone
+    - checklist_progress_summary
     - stale_flags
 
 task_summary:
@@ -89,6 +90,27 @@ task_summary:
     - next_check_at
     - escalation_state
 
+spec_checklist:
+  required_fields:
+    - checklist_id
+    - group_id
+    - project_id
+    - workflow_profile
+    - workflow_package_ref
+    - total_items
+    - done_items
+    - blocked_items
+    - waived_items
+    - completion_pct
+    - evidence_coverage_pct
+    - stage_completion
+    - items
+    - updated_at
+  optional_fields:
+    - source_workflow_refs
+    - uncovered_requirements
+    - last_audited_at
+
 delivery_report:
   required_fields:
     - report_id
@@ -101,12 +123,14 @@ delivery_report:
     - incomplete_tasks
     - cancelled_tasks
     - milestone_summary
+    - checklist_summary
     - risk_summary
     - execution_timeline_ref
     - log_bundle_ref
     - generated_by
     - created_at
   optional_fields:
+    - spec_checklist_ref
     - quality_summary
     - known_gaps
 
@@ -144,6 +168,7 @@ audit_report:
     - root_causes
     - improvement_actions
     - materialized_followups
+    - checklist_coverage_assessment
     - target_domains
     - delivery_report_ref
     - release_report_ref

@@ -11,6 +11,8 @@ required_inputs:
   - audit_input_bundle
   - delivery_report
   - release_report
+  - spec_checklist
+  - spec_checklist_history
   - task_event_history
   - project_snapshot_history
   - blocker_history
@@ -26,6 +28,11 @@ audit_dimensions:
     checks:
       - "planning 是否低估模块/接口/联调复杂度"
       - "计划与实际偏差是否可解释"
+  spec_coverage_quality:
+    checks:
+      - "workflow 要求点是否都进入 spec checklist"
+      - "完成项是否都有足够 evidence"
+      - "是否存在静默漏项、伪完成或未审批 waive"
   release_quality:
     checks:
       - "release gate 是否完整"
@@ -62,6 +69,8 @@ materialization_gate:
       description: "每个改进项已明确 owner"
     board_visible:
       description: "follow-up item 在 manager board 上可见"
+    checklist_gaps_materialized:
+      description: "漏项、伪完成和缺证据完成已转成 follow-up item 或规则修补"
 
 outcomes:
   completed:
