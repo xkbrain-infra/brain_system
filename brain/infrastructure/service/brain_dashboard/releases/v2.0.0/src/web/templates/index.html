@@ -34,6 +34,7 @@
                     <button onclick="switchTab('projects')" id="nav-projects" class="nav-tab px-4 py-2 rounded text-sm font-medium">📁 Projects</button>
                     <button onclick="switchTab('registry')" id="nav-registry" class="nav-tab px-4 py-2 rounded text-sm font-medium">Registry</button>
                     <button onclick="switchTab('logs')" id="nav-logs" class="nav-tab px-4 py-2 rounded text-sm font-medium">Logs</button>
+                    <button onclick="switchTab('traffic')" id="nav-traffic" class="nav-tab px-4 py-2 rounded text-sm font-medium">📊 Traffic</button>
                 </div>
                 <div class="flex items-center gap-2">
                     <span id="nav-status" class="flex items-center gap-1 text-xs">
@@ -428,6 +429,122 @@
                         <p class="text-gray-500">Click "Connect" to start streaming logs...</p>
                     </div>
                     <div class="mt-2 text-xs text-gray-500" id="log-stats">0 lines</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TRAFFIC TAB -->
+        <div id="tab-traffic" class="tab-content">
+            <!-- Traffic Stats Cards -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                <div class="bg-gray-800 rounded-lg p-4 border border-gray-700">
+                    <div class="text-gray-400 text-sm">Total Messages</div>
+                    <div class="text-2xl font-bold text-blue-400" id="traffic-total-messages">-</div>
+                    <div class="text-xs text-gray-500 mt-1">IPC + API</div>
+                </div>
+                <div class="bg-gray-800 rounded-lg p-4 border border-gray-700">
+                    <div class="text-gray-400 text-sm">IPC Sent/Received</div>
+                    <div class="text-2xl font-bold text-green-400" id="traffic-ipc-count">-</div>
+                    <div class="text-xs text-gray-500 mt-1">Messages</div>
+                </div>
+                <div class="bg-gray-800 rounded-lg p-4 border border-gray-700">
+                    <div class="text-gray-400 text-sm">API Requests</div>
+                    <div class="text-2xl font-bold text-yellow-400" id="traffic-api-count">-</div>
+                    <div class="text-xs text-gray-500 mt-1">Total</div>
+                </div>
+                <div class="bg-gray-800 rounded-lg p-4 border border-gray-700">
+                    <div class="text-gray-400 text-sm">Error Rate</div>
+                    <div class="text-2xl font-bold text-red-400" id="traffic-error-rate">-</div>
+                    <div class="text-xs text-gray-500 mt-1">API + IPC</div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <!-- System Resources -->
+                <div class="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
+                    <div class="px-4 py-3 border-b border-gray-700 flex justify-between items-center">
+                        <h3 class="font-semibold">System Resources</h3>
+                        <span class="text-xs text-gray-400" id="traffic-last-update">-</span>
+                    </div>
+                    <div class="p-4">
+                        <div class="space-y-4">
+                            <div>
+                                <div class="flex justify-between text-sm mb-1">
+                                    <span class="text-gray-400">CPU Usage</span>
+                                    <span class="text-blue-400" id="traffic-cpu">-</span>
+                                </div>
+                                <div class="w-full bg-gray-700 rounded-full h-2">
+                                    <div id="traffic-cpu-bar" class="bg-blue-500 h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
+                                </div>
+                            </div>
+                            <div>
+                                <div class="flex justify-between text-sm mb-1">
+                                    <span class="text-gray-400">Memory Usage</span>
+                                    <span class="text-green-400" id="traffic-memory">-</span>
+                                </div>
+                                <div class="w-full bg-gray-700 rounded-full h-2">
+                                    <div id="traffic-memory-bar" class="bg-green-500 h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
+                                </div>
+                            </div>
+                            <div>
+                                <div class="flex justify-between text-sm mb-1">
+                                    <span class="text-gray-400">Avg Response Time</span>
+                                    <span class="text-yellow-400" id="traffic-response-time">-</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Top Endpoints -->
+                <div class="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
+                    <div class="px-4 py-3 border-b border-gray-700">
+                        <h3 class="font-semibold">Top API Endpoints</h3>
+                    </div>
+                    <div class="p-4">
+                        <div id="traffic-endpoints" class="space-y-2">
+                            <p class="text-gray-500 text-sm">Loading...</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- IPC Message Types -->
+                <div class="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
+                    <div class="px-4 py-3 border-b border-gray-700">
+                        <h3 class="font-semibold">IPC Message Types</h3>
+                    </div>
+                    <div class="p-4">
+                        <div id="traffic-message-types" class="space-y-2">
+                            <p class="text-gray-500 text-sm">Loading...</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Traffic History -->
+                <div class="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
+                    <div class="px-4 py-3 border-b border-gray-700">
+                        <h3 class="font-semibold">Traffic History (Last Hour)</h3>
+                    </div>
+                    <div class="p-4">
+                        <div class="space-y-2">
+                            <div class="flex justify-between text-sm">
+                                <span class="text-gray-400">Data Points</span>
+                                <span class="text-blue-400" id="traffic-history-count">-</span>
+                            </div>
+                            <div class="h-32 flex items-end gap-1" id="traffic-history-chart">
+                                <div class="flex-1 bg-gray-700 rounded-t" style="height: 10%"></div>
+                                <div class="flex-1 bg-gray-700 rounded-t" style="height: 30%"></div>
+                                <div class="flex-1 bg-gray-700 rounded-t" style="height: 50%"></div>
+                                <div class="flex-1 bg-gray-700 rounded-t" style="height: 40%"></div>
+                                <div class="flex-1 bg-gray-700 rounded-t" style="height: 60%"></div>
+                                <div class="flex-1 bg-gray-700 rounded-t" style="height: 80%"></div>
+                                <div class="flex-1 bg-gray-700 rounded-t" style="height: 70%"></div>
+                                <div class="flex-1 bg-gray-700 rounded-t" style="height: 90%"></div>
+                                <div class="flex-1 bg-gray-700 rounded-t" style="height: 100%"></div>
+                                <div class="flex-1 bg-gray-700 rounded-t" style="height: 85%"></div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1013,6 +1130,140 @@
         // ==================== INITIAL LOAD ====================
         loadProxyStats();
         setInterval(loadProxyStats, 5000);
+
+        // ==================== TRAFFIC MONITORING ====================
+        let trafficData = null;
+
+        async function loadTrafficStats() {
+            try {
+                const response = await fetch('/api/v2/traffic');
+                const result = await response.json();
+                if (result.status === 'ok') {
+                    trafficData = result.data;
+                    updateTrafficUI(trafficData);
+                }
+            } catch (err) {
+                console.error('Failed to load traffic stats:', err);
+            }
+        }
+
+        async function loadTrafficEndpoints() {
+            try {
+                const response = await fetch('/api/v2/traffic/endpoints');
+                const result = await response.json();
+                if (result.status === 'ok') {
+                    updateTrafficEndpoints(result.endpoints);
+                }
+            } catch (err) {
+                console.error('Failed to load traffic endpoints:', err);
+            }
+        }
+
+        async function loadTrafficMessageTypes() {
+            try {
+                const response = await fetch('/api/v2/traffic/message-types');
+                const result = await response.json();
+                if (result.status === 'ok') {
+                    updateTrafficMessageTypes(result.message_types);
+                }
+            } catch (err) {
+                console.error('Failed to load message types:', err);
+            }
+        }
+
+        async function loadTrafficHistory() {
+            try {
+                const response = await fetch('/api/v2/traffic/history?minutes=60');
+                const result = await response.json();
+                if (result.status === 'ok') {
+                    updateTrafficHistory(result.history, result.count);
+                }
+            } catch (err) {
+                console.error('Failed to load traffic history:', err);
+            }
+        }
+
+        function updateTrafficUI(data) {
+            // Update main stats
+            const totalMessages = (data.ipc?.total_messages || 0) + (data.api?.total_requests || 0);
+            document.getElementById('traffic-total-messages').textContent = totalMessages.toLocaleString();
+            document.getElementById('traffic-ipc-count').textContent = (data.ipc?.total_messages || 0).toLocaleString();
+            document.getElementById('traffic-api-count').textContent = (data.api?.total_requests || 0).toLocaleString();
+            document.getElementById('traffic-error-rate').textContent = (data.api?.error_rate || 0).toFixed(1) + '%';
+
+            // Update system resources
+            if (data.system) {
+                const cpu = data.system.cpu_percent || 0;
+                const memory = data.system.memory_percent || 0;
+                document.getElementById('traffic-cpu').textContent = cpu.toFixed(1) + '%';
+                document.getElementById('traffic-cpu-bar').style.width = Math.min(cpu, 100) + '%';
+                document.getElementById('traffic-memory').textContent = memory.toFixed(1) + '%';
+                document.getElementById('traffic-memory-bar').style.width = Math.min(memory, 100) + '%';
+            }
+
+            // Update response time
+            if (data.api?.avg_response_time_ms) {
+                document.getElementById('traffic-response-time').textContent = data.api.avg_response_time_ms.toFixed(2) + ' ms';
+            }
+
+            // Update last update time
+            document.getElementById('traffic-last-update').textContent = new Date().toLocaleTimeString();
+        }
+
+        function updateTrafficEndpoints(endpoints) {
+            const container = document.getElementById('traffic-endpoints');
+            if (!endpoints || endpoints.length === 0) {
+                container.innerHTML = '<p class="text-gray-500 text-sm">No data yet</p>';
+                return;
+            }
+            container.innerHTML = endpoints.map(ep => `
+                <div class="flex justify-between items-center py-1 border-b border-gray-700 last:border-0">
+                    <code class="text-xs text-blue-400">${ep.endpoint}</code>
+                    <span class="text-sm font-medium">${ep.count}</span>
+                </div>
+            `).join('');
+        }
+
+        function updateTrafficMessageTypes(messageTypes) {
+            const container = document.getElementById('traffic-message-types');
+            const types = Object.entries(messageTypes || {});
+            if (types.length === 0) {
+                container.innerHTML = '<p class="text-gray-500 text-sm">No data yet</p>';
+                return;
+            }
+            container.innerHTML = types.map(([type, count]) => `
+                <div class="flex justify-between items-center py-1 border-b border-gray-700 last:border-0">
+                    <span class="text-sm text-gray-300">${type}</span>
+                    <span class="text-sm font-medium text-green-400">${count}</span>
+                </div>
+            `).join('');
+        }
+
+        function updateTrafficHistory(history, count) {
+            document.getElementById('traffic-history-count').textContent = count;
+            const chart = document.getElementById('traffic-history-chart');
+            if (!history || history.length === 0) {
+                chart.innerHTML = '<p class="text-gray-500 text-sm">No history data</p>';
+                return;
+            }
+            // Simple bar chart using last 10 data points
+            const recent = history.slice(-10);
+            const maxRequests = Math.max(...recent.map(h => h.api?.total_requests || 0), 1);
+            chart.innerHTML = recent.map(h => {
+                const height = ((h.api?.total_requests || 0) / maxRequests * 100) || 10;
+                return `<div class="flex-1 bg-blue-500 rounded-t opacity-70 hover:opacity-100 transition-opacity" style="height: ${Math.max(height, 5)}%"></div>`;
+            }).join('');
+        }
+
+        // Load traffic data initially and periodically
+        loadTrafficStats();
+        loadTrafficEndpoints();
+        loadTrafficMessageTypes();
+        loadTrafficHistory();
+        setInterval(loadTrafficStats, 30000);
+        setInterval(loadTrafficEndpoints, 30000);
+        setInterval(loadTrafficMessageTypes, 30000);
+        setInterval(loadTrafficHistory, 60000);
     </script>
 </body>
 </html>

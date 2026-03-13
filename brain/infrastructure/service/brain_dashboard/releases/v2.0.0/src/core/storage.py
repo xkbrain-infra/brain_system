@@ -115,6 +115,24 @@ class Storage:
 
                 CREATE INDEX IF NOT EXISTS idx_context_session_time
                 ON context_usage(session_id, collected_at);
+
+                -- Traffic monitoring time-series
+                CREATE TABLE IF NOT EXISTS traffic_snapshots (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp INTEGER NOT NULL,
+                    ipc_total_sent INTEGER DEFAULT 0,
+                    ipc_total_received INTEGER DEFAULT 0,
+                    ipc_bytes INTEGER DEFAULT 0,
+                    ipc_errors INTEGER DEFAULT 0,
+                    api_total_requests INTEGER DEFAULT 0,
+                    api_errors INTEGER DEFAULT 0,
+                    api_error_rate REAL DEFAULT 0.0,
+                    cpu_percent REAL DEFAULT 0.0,
+                    memory_percent REAL DEFAULT 0.0
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_traffic_time
+                ON traffic_snapshots(timestamp);
             """)
             conn.commit()
         logger.info(f"Dashboard database initialized: {self.db_path}")
@@ -293,4 +311,37 @@ class Storage:
                 WHERE session_id = ? AND collected_at >= ?
                 ORDER BY collected_at
             """, (session_id, since)).fetchall()
+            return [dict(row) for row in rows]
+
+    def save_traffic_snapshot(self, data: dict) -> None:
+        """Save traffic snapshot to database."""
+        with self._get_conn() as conn:
+            conn.execute("""
+                INSERT INTO traffic_snapshots
+                (timestamp, ipc_total_sent, ipc_total_received, ipc_bytes, ipc_errors,
+                 api_total_requests, api_errors, api_error_rate, cpu_percent, memory_percent)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                data.get("timestamp"),
+                data.get("ipc_total_sent", 0),
+                data.get("ipc_total_received", 0),
+                data.get("ipc_bytes", 0),
+                data.get("ipc_errors", 0),
+                data.get("api_total_requests", 0),
+                data.get("api_errors", 0),
+                data.get("api_error_rate", 0.0),
+                data.get("cpu_percent", 0.0),
+                data.get("memory_percent", 0.0),
+            ))
+            conn.commit()
+
+    def get_traffic_history(self, minutes: int = 60) -> list[dict[str, Any]]:
+        """Get traffic history for the past N minutes."""
+        since = int(time.time()) - (minutes * 60)
+        with self._get_conn() as conn:
+            rows = conn.execute("""
+                SELECT * FROM traffic_snapshots
+                WHERE timestamp >= ?
+                ORDER BY timestamp
+            """, (since,)).fetchall()
             return [dict(row) for row in rows]
