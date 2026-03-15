@@ -59,7 +59,7 @@ routing:
 # 数据存储
 # =========================================================
 offset_manager:
-  db_path: "/brain/infrastructure/data/telegram_api/offset.db"
+  db_path: "/xkagent_infra/runtime/data/telegram_api/offset.db"
 
 # =========================================================
 # 日志

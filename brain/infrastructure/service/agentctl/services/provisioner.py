@@ -239,7 +239,7 @@ def _as_bool(v: Any) -> bool:
 
 
 def _workspace_dir(name: str) -> Path:
-    return Path("/xkagent_infra/brain/runtime/agents") / name
+    return Path("/xkagent_infra/runtime/agents") / name
 
 
 class Provisioner:

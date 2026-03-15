@@ -5,11 +5,6 @@
 #   ./deploy.sh <service> [target] [--dry-run]   部署指定服务/目标
 #   ./deploy.sh all                               部署全部服务
 #   ./deploy.sh list                              列出注册的服务
-#
-# 示例:
-#   ./deploy.sh agent_abilities hooks             # 部署 hooks 到各 agent
-#   ./deploy.sh agent_abilities hooks --dry-run  # 预演（不实际部署）
-#   ./deploy.sh list                              # 列出所有服务
 
 set -euo pipefail
 
@@ -30,7 +25,6 @@ fail() { echo -e "${RED}[deploy] ✗${RESET} $1"; exit 1; }
 
 # ─── 已注册的服务 ────────────────────────────────────────────────────
 declare -A SERVICE_SCRIPTS=(
-    [agent_abilities]="services/agent_abilities/deploy.sh"
     [brain_gateway]="services/brain_gateway/deploy.sh"
     [task_manager]="services/task_manager/deploy.sh"
 )
@@ -86,13 +80,13 @@ case "$CMD" in
     all)
         echo -e "${BOLD}══ Deploying all services ══${RESET}"
         DRY_RUN_ARG="${2:-}"
-        for svc in agent_abilities brain_gateway task_manager; do
+        for svc in brain_gateway task_manager; do
             log "Service: $svc"
             run_service "$svc" "" "$DRY_RUN_ARG" || warn "$svc deploy failed"
         done
         ok "All services processed"
         ;;
-    agent_abilities|brain_gateway|task_manager)
+    brain_gateway|task_manager)
         SVC="$CMD"
         TARGET="${2:-}"
         DRY_RUN_ARG="${3:-}"
@@ -113,8 +107,7 @@ case "$CMD" in
         done
         echo ""
         echo "Examples:"
-        echo "  $0 agent_abilities hooks"
-        echo "  $0 agent_abilities hooks --dry-run"
+        echo "  $0 brain_gateway restart"
         echo "  $0 list"
         ;;
     *)

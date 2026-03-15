@@ -15,7 +15,7 @@ groups:
     role: manager
     scope: group
     group: brain
-    path: /xkagent_infra/groups/brain/agents/agent-brain_manager
+    path: /xkagent_infra/brain/agents/agent-brain_manager
     tmux_session: agent-brain_manager
     desired_state: running
     status: active
@@ -25,7 +25,7 @@ groups:
     role: dev
     scope: group
     group: brain
-    path: /xkagent_infra/groups/brain/agents/agent-brain_dev
+    path: /xkagent_infra/brain/agents/agent-brain_dev
     tmux_session: agent-brain_dev
     required: false
     desired_state: running
@@ -35,82 +35,24 @@ groups:
     role: frontdesk
     scope: group
     group: brain
-    path: /xkagent_infra/groups/brain/agents/agent-brain_frontdesk
+    path: /xkagent_infra/brain/agents/agent-brain_frontdesk
     tmux_session: agent-brain_frontdesk
     required: false
     desired_state: running
     status: active
-  - name: tmp-agent-gemini-cli
+  - name: agent-brain_codex_foos
     description: brain 的 dev Agent
     role: dev
     scope: group
     group: brain
-    path: /xkagent_infra/groups/brain/agents/tmp-agent-gemini-cli
-    tmux_session: tmp-agent-gemini-cli
-    required: false
-    desired_state: stopped
-    status: active
-  - name: tmp-agent-review-kimi
-    description: brain 的 reviewer Agent
-    role: reviewer
-    scope: group
-    group: brain
-    path: /xkagent_infra/groups/brain/agents/tmp-agent-review-kimi
-    agent_type: alibaba
+    path: /xkagent_infra/brain/agents/agent-brain_codex_foos
+    agent_type: openai
     agent_cli: claude
-    agent_model: kimi-k2.5
+    agent_model: openai/gpt-5.4
     cli_type: claude
-    model: kimi-k2.5
+    model: openai/gpt-5.4
     transport_mode: proxy
-    tmux_session: tmp-agent-review-kimi
-    required: false
-    desired_state: running
-    status: active
-  - name: tmp-agent-review-claude-sonnet
-    description: brain 的 reviewer Agent
-    role: reviewer
-    scope: group
-    group: brain
-    path: /xkagent_infra/groups/brain/agents/tmp-agent-review-claude-sonnet
-    agent_type: copilot
-    agent_cli: claude
-    agent_model: claude-sonnet-4.6
-    cli_type: claude
-    model: claude-sonnet-4.6
-    transport_mode: proxy
-    tmux_session: tmp-agent-review-claude-sonnet
-    required: false
-    desired_state: running
-    status: active
-  - name: tmp-agent-review-gemini
-    description: brain 的 reviewer Agent
-    role: reviewer
-    scope: group
-    group: brain
-    path: /xkagent_infra/groups/brain/agents/tmp-agent-review-gemini
-    agent_type: copilot
-    agent_cli: claude
-    agent_model: gemini-3.1-pro-preview
-    cli_type: claude
-    model: gemini-3.1-pro-preview
-    transport_mode: proxy
-    tmux_session: tmp-agent-review-gemini
-    required: false
-    desired_state: running
-    status: active
-  - name: tmp-agent-review-minimax
-    description: brain 的 reviewer Agent
-    role: reviewer
-    scope: group
-    group: brain
-    path: /xkagent_infra/groups/brain/agents/tmp-agent-review-minimax
-    agent_type: minimax
-    agent_cli: claude
-    agent_model: MiniMax-M2.5
-    cli_type: claude
-    model: MiniMax-M2.5
-    transport_mode: proxy
-    tmux_session: tmp-agent-review-minimax
+    tmux_session: agent-brain_codex_foos
     required: false
     desired_state: running
     status: active
@@ -135,6 +77,90 @@ groups:
     desired_state: running
     status: active
     required: false
+  - name: agent-system_dashboard_architect
+    description: system 的 custom Agent
+    role: custom
+    scope: group
+    group: system
+    path: /xkagent_infra/groups/system/agents/agent-system_dashboard_architect
+    agent_type: claude
+    agent_model: Sonnet
+    model: Sonnet
+    transport_mode: proxy
+    tmux_session: agent-system_dashboard_architect
+    required: false
+    desired_state: running
+    status: active
+  - name: agent-system_dashboard_test_engineer
+    description: system 的 custom Agent
+    role: custom
+    scope: group
+    group: system
+    path: /xkagent_infra/groups/system/agents/agent-system_dashboard_test_engineer
+    agent_type: codex
+    agent_model: gpt-5.3-codex
+    model: gpt-5.3-codex
+    transport_mode: proxy
+    tmux_session: agent-system_dashboard_test_engineer
+    required: false
+    desired_state: running
+    status: active
+  - name: agent-system_dashboard_auditor
+    description: system 的 custom Agent
+    role: custom
+    scope: group
+    group: system
+    path: /xkagent_infra/groups/system/agents/agent-system_dashboard_auditor
+    agent_type: claude
+    agent_model: Sonnet
+    model: Sonnet
+    transport_mode: proxy
+    tmux_session: agent-system_dashboard_auditor
+    required: false
+    desired_state: running
+    status: active
+  - name: agent-system_dashboard_devops
+    description: system 的 custom Agent
+    role: custom
+    scope: group
+    group: system
+    path: /xkagent_infra/groups/system/agents/agent-system_dashboard_devops
+    agent_type: claude
+    agent_model: Sonnet
+    model: Sonnet
+    transport_mode: proxy
+    tmux_session: agent-system_dashboard_devops
+    required: false
+    desired_state: running
+    status: active
+  - name: agent-system_dashboard_researcher
+    description: system 的 custom Agent
+    role: custom
+    scope: group
+    group: system
+    path: /xkagent_infra/groups/system/agents/agent-system_dashboard_researcher
+    agent_type: codex
+    agent_model: gpt-5.3-codex
+    model: gpt-5.3-codex
+    transport_mode: proxy
+    tmux_session: agent-system_dashboard_researcher
+    required: false
+    desired_state: running
+    status: active
+  - name: agent-system_dashboard_dev1
+    description: system 的 custom Agent
+    role: custom
+    scope: group
+    group: system
+    path: /xkagent_infra/groups/system/agents/agent-system_dashboard_dev1
+    agent_type: claude
+    agent_model: Sonnet
+    model: Sonnet
+    transport_mode: proxy
+    tmux_session: agent-system_dashboard_dev1
+    required: false
+    desired_state: running
+    status: active
 services:
   infrastructure:
   - name: service-brain_task_manager
@@ -149,11 +175,11 @@ services:
     depends_on: []
     binary: /xkagent_infra/brain/infrastructure/service/brain_task_manager/bin/brain_task_manager
     config: /xkagent_infra/brain/infrastructure/config/brain_task_manager/brain_task_manager.json
-    log_stdout: /xkagent_infra/brain/runtime/logs/brain_task_manager.log
-    log_stderr: /xkagent_infra/brain/runtime/logs/brain_task_manager_error.log
+    log_stdout: /xkagent_infra/runtime/logs/brain_task_manager.log
+    log_stderr: /xkagent_infra/runtime/logs/brain_task_manager_error.log
     port: 8091
     ipc_name: service-brain_task_manager
-    version: v0.1.0
+    version: v1.0.0
     language: cpp
     tags:
     - infrastructure
@@ -195,11 +221,11 @@ services:
     depends_on: []
     binary: /xkagent_infra/brain/infrastructure/service/brain_dashboard/bin/brain_dashboard
     config: null
-    log_stdout: /brain/runtime/logs/brain_dashboard.log
-    log_stderr: /brain/runtime/logs/brain_dashboard_error.log
+    log_stdout: /xkagent_infra/runtime/logs/brain_dashboard.log
+    log_stderr: /xkagent_infra/runtime/logs/brain_dashboard_error.log
     port: 8080
     ipc_name: service-brain_dashboard
-    version: v2.0.0
+    version: v1.0.0
     language: python
     tags:
     - infrastructure

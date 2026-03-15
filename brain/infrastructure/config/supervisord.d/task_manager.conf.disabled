@@ -9,5 +9,5 @@ autorestart=true
 startsecs=5
 stopasgroup=true
 killasgroup=true
-stdout_logfile=/brain/runtime/logs/service-task_manager.log
-stderr_logfile=/brain/runtime/logs/service-task_manager_error.log
+stdout_logfile=/xkagent_infra/runtime/logs/service-task_manager.log
+stderr_logfile=/xkagent_infra/runtime/logs/service-task_manager_error.log

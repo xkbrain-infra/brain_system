@@ -1016,6 +1016,14 @@ _REGISTRY_PATHS = [
     Path("/brain/groups/org/brain_system/projects/agent_orchestrator/config/agents_registry.yaml"),
 ]
 _GROUPS_BASE_DIR = Path("/xkagent_infra/groups")
+_BRAIN_BASE_DIR = Path("/xkagent_infra/brain")
+
+
+def _resolve_agent_dir(group: str, name: str) -> Path:
+    group_name = str(group or "").strip()
+    if group_name == "brain":
+        return _BRAIN_BASE_DIR / "agents" / name
+    return _GROUPS_BASE_DIR / group_name / "agents" / name
 
 
 def cmd_add(args: argparse.Namespace) -> int:
@@ -1072,7 +1080,7 @@ def cmd_add(args: argparse.Namespace) -> int:
         tags = role_defaults.get("tags", [])
 
     desired_state = args.desired_state or "stopped"
-    agent_dir = str(_GROUPS_BASE_DIR / group / "agents" / name)
+    agent_dir = str(_resolve_agent_dir(group, name))
 
     entry = AgentEntry(
         name=name,

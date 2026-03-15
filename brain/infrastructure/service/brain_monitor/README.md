@@ -136,21 +136,21 @@ curl http://127.0.0.1:8100/api/ipc/stats
 #### System Status = critical
 1. 检查 daemon 服务: `ps aux | grep brain_ipc`
 2. 检查 daemon socket: `ls -la /tmp/brain_ipc.sock`
-3. 重启 daemon: `/brain/runtime/engine/src/daemon/daemon.py`
+3. 重启 IPC 服务: `supervisorctl restart brain_ipc`
 
 #### Agents = down (online_ratio < 0.70)
 1. 列出所有 agents: `curl http://127.0.0.1:8100/api/agents?include_offline=true`
 2. 检查离线 agents 的 tmux session
-3. 检查 orchestrator 日志: `/brain/runtime/logs/orchestrator/`
+3. 检查 orchestrator 日志: `/xkagent_infra/runtime/logs/orchestrator/`
 
 #### IPC = degraded (有失败消息)
 1. 查看失败详情: `curl http://127.0.0.1:8100/api/ipc/stats`
-2. 检查 IPC state DB: `/brain/runtime/data/ipc_state.db`
-3. 查看 timer service 日志: `/brain/runtime/logs/timer/`
+2. 检查 IPC state DB: `/xkagent_infra/runtime/data/ipc_state.db`
+3. 查看 timer service 日志: `/xkagent_infra/runtime/logs/timer/`
 
 #### Timer/Gateway = down
 1. 检查服务进程: `ps aux | grep timer` / `ps aux | grep gateway`
-2. 检查日志: `/brain/runtime/logs/{service}/`
+2. 检查日志: `/xkagent_infra/runtime/logs/{service}/`
 3. 尝试手动访问 health 端点: `curl http://127.0.0.1:{port}/health`
 
 ---
@@ -226,8 +226,8 @@ python3 /brain/infrastructure/service/monitor/releases/current/src/task_monitor.
 
 - Python 3.8+
 - Brain IPC daemon (用于 agents_status.py)
-- IPC 日志目录: `/brain/runtime/logs/ipc/`
-- Timer 日志目录: `/brain/runtime/logs/timer/`
+- IPC 日志目录: `/xkagent_infra/runtime/logs/ipc/`
+- Timer 日志目录: `/xkagent_infra/runtime/logs/timer/`
 
 ## 未来扩展
 

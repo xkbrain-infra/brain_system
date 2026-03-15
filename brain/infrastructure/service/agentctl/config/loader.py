@@ -273,5 +273,11 @@ class YAMLConfigLoader:
     def get_agents_registry(self) -> dict[str, Any]:
         return self._get("agents_registry.yaml").data
 
+    def get_skill_bindings(self) -> dict[str, Any]:
+        return self._get("skill_bindings.yaml").data
+
+    def get_lep_bindings(self) -> dict[str, Any]:
+        return self._get("lep_bindings.yaml").data
+
     def get_whitelist(self) -> dict[str, Any]:
         return self._get("whitelist.yaml").data

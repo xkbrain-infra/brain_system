@@ -4,14 +4,6 @@
 version: "1.0"
 
 services:
-  agent_abilities:
-    description: "Agent Hooks + MCP Server 部署"
-    script: services/agent_abilities/deploy.sh
-    targets:
-      hooks:
-        description: "把 bin/hooks/current/ 部署到所有 Claude agent 的 .claude/hooks/"
-        note: "需要先 build hooks 才能部署最新版本"
-
   brain_gateway:
     description: "brain_gateway 服务部署（重启）"
     script: services/brain_gateway/deploy.sh
@@ -28,6 +20,5 @@ services:
 
 # ─── 快速组合 ─────────────────────────────────────────────────────────
 aliases:
-  all: [agent_abilities, brain_gateway, task_manager]
+  all: [brain_gateway, task_manager]
   runtime: [brain_gateway, task_manager]
-  hooks_only: [agent_abilities]

@@ -8,8 +8,8 @@ SSOT for audit logging. Intended to be called by:
 - Any other agent integration
 
 Dual-write targets (when scope can be inferred):
-- Global (LEP): /brain/runtime/logs/agents/global_agent_log_{YYYY-MM-DD}.jsonl
-- Global legacy: /brain/runtime/memory/agents/global_agent_log_{YYYY-MM-DD}.jsonl
+- Global (LEP): /xkagent_infra/runtime/logs/agents/global_agent_log_{YYYY-MM-DD}.jsonl
+- Global legacy: /xkagent_infra/runtime/memory/agents/global_agent_log_{YYYY-MM-DD}.jsonl
 - Group: /brain/groups/{group}/memory/group_activity_{YYYY-MM-DD}.jsonl
 - Project (legacy): /brain/groups/{group}/projects/{project}/memory/execution_logs/{YYYY-MM-DD}.jsonl
 - Project (LEP): /brain/groups/{group}/projects/{project}/logs/{YYYY-MM-DD}.jsonl
@@ -32,8 +32,8 @@ from zoneinfo import ZoneInfo
 
 TZ = ZoneInfo("Asia/Shanghai")
 
-GLOBAL_LOG_DIR = Path("/brain/runtime/logs/agents")
-GLOBAL_LEGACY_DIR = Path("/brain/runtime/memory/agents")
+GLOBAL_LOG_DIR = Path("/xkagent_infra/runtime/logs/agents")
+GLOBAL_LEGACY_DIR = Path("/xkagent_infra/runtime/memory/agents")
 
 
 @dataclass(frozen=True)

@@ -1,0 +1,72 @@
+skill_bindings:
+  version: "1.1"
+  updated: "2026-03-15"
+  owner: "brain"
+  description: "Agent skill 绑定策略。与 agents_registry.yaml 分离，专门描述 role/agent/workflow 对 skill 的绑定关系。"
+
+  resolution_order:
+    - "workflow.required_skills"
+    - "agent.extra_skills"
+    - "role.default_skills"
+  merge_rules:
+    dedupe: true
+    preserve_order: true
+    allow_unknown_skills: false
+
+  roles:
+    manager:
+      default_skills:
+        - preset
+        - brain-publish
+        - lep
+        - agentctl
+        - ipc
+        - sandbox
+
+    pmo:
+      default_skills:
+        - lep
+        - ipc
+
+    devops:
+      default_skills:
+        - brain-publish
+        - lep
+        - agentctl
+        - tmux
+        - sandbox
+
+    dev:
+      default_skills:
+        - lep
+        - doc-search
+        - tmux
+        - sandbox
+
+    frontdesk:
+      default_skills:
+        - lep
+        - ipc
+
+    custom:
+      default_skills:
+        - lep
+
+  agents:
+    agent-brain_manager:
+      extra_skills:
+        - validate-alignment
+
+    agent-brain_codex_foos:
+      extra_skills:
+        - doc-search
+
+  workflows:
+    project_delivery:
+      required_skills:
+        - project_delivery
+        - sandbox
+      recommended_roles:
+        - manager
+        - pmo
+        - devops

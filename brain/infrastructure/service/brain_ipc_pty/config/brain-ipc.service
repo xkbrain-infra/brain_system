@@ -1,7 +1,7 @@
 [Unit]
 Description=Brain IPC - Agent IPC Service
 After=network.target
-Documentation=file:///brain/runtime/engine/docs/agent_ipc_guide.md
+Documentation=file:///brain/base/knowledge/architecture/ipc_guide.md
 
 [Service]
 Type=simple
@@ -13,7 +13,7 @@ StandardError=journal
 
 # Environment
 Environment=BRAIN_IPC_SOCKET=/tmp/brain_ipc.sock
-Environment=BRAIN_IPC_LOG=/brain/runtime/logs/brain_ipc.log
+Environment=BRAIN_IPC_LOG=/xkagent_infra/runtime/logs/brain_ipc.log
 
 # Security
 NoNewPrivileges=true

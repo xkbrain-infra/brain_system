@@ -1,0 +1,130 @@
+# Runtime Env Source Registry
+# 持久化配置源索引；实际密钥文件保存在 /brain/secrets/
+
+id: RUNTIME-ENV-SOURCE
+version: "1.0"
+last_updated: "2026-03-14"
+description: |
+  Brain 运行时环境变量的配置源索引。
+  由 /brain/infrastructure/launch/loader_env_vars.py 读取，
+  再渲染到 /xkagent_infra/runtime/config/。
+
+categories:
+  broker/futu:
+    description: "富途证券 API 配置"
+    path: "./broker/futu/"
+    files:
+      - name: "api_config.env"
+        description: "FUTU API 连接配置"
+        permissions: "600"
+        env_vars:
+          - FUTU_USER_ID
+          - FUTU_ACCOUNT_ID
+          - FUTU_OPEND_HOST
+          - FUTU_OPEND_PORT
+          - FUTU_RSA_KEY_PATH
+      - name: "rsa_private.pem"
+        description: "RSA 私钥"
+        permissions: "600"
+        env_vars: []
+
+  IM/telegram:
+    description: "Telegram Bot 配置"
+    path: "./IM/telegram/"
+    files:
+      - name: "bot_token.env"
+        description: "Telegram Bot Token 和 Chat ID"
+        permissions: "600"
+        env_vars:
+          - TELEGRAM_BOT_TOKEN
+          - TELEGRAM_CHAT_ID
+
+  xkquant/postgres:
+    description: "XKQuant PostgreSQL 数据库配置"
+    path: "./xkquant/postgres/"
+    files:
+      - name: "postgres.env"
+        description: "PostgreSQL 和 Realtime DB 配置"
+        permissions: "600"
+        env_vars:
+          - POSTGRES_USER
+          - POSTGRES_PASSWORD
+          - POSTGRES_DB
+          - REALTIME_DB_HOST
+          - REALTIME_DB_PORT
+          - REALTIME_DB_NAME
+          - REALTIME_DB_USER
+          - REALTIME_DB_PASSWORD
+
+  xkquant/clickhouse:
+    description: "NewsAlpha ClickHouse 数据库配置"
+    path: "./xkquant/clickhouse/"
+    files:
+      - name: "clickhouse.env"
+        description: "ClickHouse 用户和密码"
+        permissions: "600"
+        env_vars:
+          - NEWSALPHA_CLICKHOUSE_USER
+          - NEWSALPHA_CLICKHOUSE_PASSWORD
+
+  brain/google_api:
+    description: "Brain Google API OAuth 配置"
+    path: "./brain/google_api/"
+    files:
+      - name: "credentials.json"
+        description: "OAuth 客户端凭据 (client_id, client_secret)"
+        permissions: "600"
+        env_vars: []
+      - name: "token.json"
+        description: "用户授权令牌"
+        permissions: "600"
+        env_vars: []
+
+  google/oauth:
+    description: "Google OAuth 2.0 凭据（Drive, Docs, Sheets）"
+    path: "./google/oauth/"
+    files:
+      - name: "credentials.json"
+        description: "OAuth 客户端凭据"
+        permissions: "600"
+        usage: "Google MCP 服务器"
+        env_vars: []
+      - name: "token.json"
+        description: "用户授权令牌"
+        permissions: "600"
+        usage: "Google MCP 服务器"
+        env_vars: []
+
+  system/agents:
+    description: "Agent 专用配置（LLM tokens, API keys）"
+    path: "./system/agents/"
+    files:
+      - name: "llm_tokens.env"
+        description: "LLM API tokens（Kimi, MiniMax, OpenAI 等）"
+        permissions: "600"
+        env_vars:
+          - KIMI_API_KEY
+          - KIMI_API_BASE
+          - KIMI_MODEL
+          - MINIMAX_API_KEY
+          - MINIMAX_GROUP_ID
+          - MINIMAX_API_BASE
+          - MINIMAX_MODEL
+
+  system/github:
+    description: "GitHub 组织级配置（PAT + Organization）"
+    path: "./system/github/"
+    files:
+      - name: "github.env"
+        description: "GitHub 访问令牌与组织标识"
+        permissions: "600"
+        env_vars:
+          - GITHUB_TOKEN
+          - GITHUB_ORG
+
+usage:
+  add_new_category:
+    - "优先更新 /brain/infrastructure/config/runtime_env/index.yaml"
+    - "在 /brain/secrets/ 下创建对应 secret payload 文件"
+    - "设置正确权限: chmod 600 {file}"
+    - "重新加载配置: /brain/infrastructure/launch/loader_env_vars.py --reload"

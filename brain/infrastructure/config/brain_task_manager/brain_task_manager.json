@@ -4,7 +4,7 @@
     "socket_path": "/tmp/brain_ipc.sock",
     "notify_socket_path": "/tmp/brain_ipc_notify.sock",
     "health_port": 8091,
-    "data_dir": "/xkagent_infra/brain/runtime/data/brain_task_manager/",
+    "data_dir": "/xkagent_infra/runtime/data/brain_task_manager/",
     "log_level": "INFO"
   },
   "scheduler": {

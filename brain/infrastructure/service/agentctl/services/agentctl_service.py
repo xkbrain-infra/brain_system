@@ -21,7 +21,7 @@ from core.dispatcher import BrainDaemonClient, Dispatcher
 
 # NotifyClient for push-based IPC
 sys.path.insert(0, "/xkagent_infra/brain/infrastructure/service/utils/ipc/bin/current")
-from daemon_client import NotifyClient
+from ipc_client import NotifyClient
 from core.router import RouteDecision, Router
 from handlers.command_handler import CommandHandler
 from services.audit_logger import AuditLogger

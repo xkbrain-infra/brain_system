@@ -639,12 +639,12 @@ class Launcher:
     # G-GATE-MEMORY-PERSIST implementation
     # Spec: /xkagent_infra/brain/base/spec/policies/memory/persistence.yaml
     # ------------------------------------------------------------------
-    _MEMORY_ROOT = Path("/xkagent_infra/brain/runtime/memory")
+    _MEMORY_ROOT = Path("/xkagent_infra/runtime/memory")
 
     def _setup_memory_capture(self, agent_name: str, tmux_session: str) -> None:
         """Configure tmux pipe-pane to capture agent session output.
 
-        Directory layout: /xkagent_infra/brain/runtime/memory/{date}/{agent_name}/
+        Directory layout: /xkagent_infra/runtime/memory/{date}/{agent_name}/
         File: {tmux_session}_{HHMMSS}.log
         """
         try:

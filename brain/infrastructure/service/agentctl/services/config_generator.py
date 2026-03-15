@@ -13,6 +13,8 @@ import re
 from pathlib import Path
 from typing import Any
 
+from config.loader import YAMLConfigLoader
+
 # Default MCP server - every agent must bind IPC (C version)
 DEFAULT_MCP_SERVER = {
     "mcp-brain_ipc_c": {
@@ -33,6 +35,22 @@ CORE_TEMPLATE_DIR = Path("/brain/base/spec/templates/core")
 ROLE_TEMPLATE_DIR = Path("/brain/base/spec/templates/roles")
 LEGACY_TEMPLATE_DIR = Path("/brain/base/spec/templates/agent")
 RUNTIME_MANIFEST_RELATIVE_PATH = ".brain/agent_runtime.json"
+_CONFIG_LOADER = YAMLConfigLoader()
+_MANAGED_SKILL_ENV_VARS = {
+    "BRAIN_SKILL_BINDINGS_FILE",
+    "BRAIN_ENABLED_SKILLS",
+    "BRAIN_ROLE_DEFAULT_SKILLS",
+    "BRAIN_AGENT_EXTRA_SKILLS",
+    "BRAIN_WORKFLOW_REQUIRED_SKILLS",
+}
+_MANAGED_LEP_ENV_VARS = {
+    "BRAIN_LEP_BINDINGS_FILE",
+    "BRAIN_ENABLED_LEP_PROFILES",
+    "BRAIN_ROLE_DEFAULT_LEP_PROFILES",
+    "BRAIN_AGENT_EXTRA_LEP_PROFILES",
+    "BRAIN_WORKFLOW_REQUIRED_LEP_PROFILES",
+}
+_MANAGED_BINDING_ENV_VARS = _MANAGED_SKILL_ENV_VARS | _MANAGED_LEP_ENV_VARS
 
 
 # ------------------------------------------------------------------
@@ -127,6 +145,64 @@ def _resolve_runtime_command(spec: dict[str, Any]) -> tuple[str, bool]:
     return agent_type, False
 
 
+def _build_skill_bindings_initial_prompt(skill_bindings: dict[str, Any] | None) -> str:
+    """Build a short startup prompt that tells Claude CLI which skills are bound."""
+    bindings = skill_bindings or {}
+    resolved = [str(item).strip() for item in (bindings.get("resolved_skills") or []) if str(item).strip()]
+    if not resolved:
+        return ""
+
+    workflow_skills = [str(item).strip() for item in (bindings.get("workflow_skills") or []) if str(item).strip()]
+    agent_skills = [str(item).strip() for item in (bindings.get("agent_skills") or []) if str(item).strip()]
+    role_skills = [str(item).strip() for item in (bindings.get("role_skills") or []) if str(item).strip()]
+
+    lines = [
+        "[Brain Skill Bindings]",
+        f"Enabled skills: {', '.join(resolved)}.",
+        "When a task matches these skills or the bound workflow, load and follow the corresponding skill before execution.",
+    ]
+    if workflow_skills:
+        lines.append(f"Workflow-required first: {', '.join(workflow_skills)}.")
+    if agent_skills:
+        lines.append(f"Agent-specific additions: {', '.join(agent_skills)}.")
+    if role_skills:
+        lines.append(f"Role defaults: {', '.join(role_skills)}.")
+    return "\n".join(lines)
+
+
+def _build_lep_profiles_initial_prompt(lep_bindings: dict[str, Any] | None) -> str:
+    """Build a short startup prompt that tells Claude CLI which LEP profiles apply."""
+    bindings = lep_bindings or {}
+    resolved = [str(item).strip() for item in (bindings.get("resolved_lep_profiles") or []) if str(item).strip()]
+    if not resolved:
+        return ""
+
+    workflow_profiles = [str(item).strip() for item in (bindings.get("workflow_lep_profiles") or []) if str(item).strip()]
+    agent_profiles = [str(item).strip() for item in (bindings.get("agent_lep_profiles") or []) if str(item).strip()]
+    role_profiles = [str(item).strip() for item in (bindings.get("role_lep_profiles") or []) if str(item).strip()]
+
+    lines = [
+        "[Brain LEP Profiles]",
+        f"Enabled LEP profiles: {', '.join(resolved)}.",
+        "These LEP profiles tighten hook enforcement and should be treated as mandatory operating constraints.",
+    ]
+    if workflow_profiles:
+        lines.append(f"Workflow-required first: {', '.join(workflow_profiles)}.")
+    if agent_profiles:
+        lines.append(f"Agent-specific additions: {', '.join(agent_profiles)}.")
+    if role_profiles:
+        lines.append(f"Role defaults: {', '.join(role_profiles)}.")
+    return "\n".join(lines)
+
+
+def _strip_managed_prompt_block(initial_prompt: str, marker: str) -> str:
+    text = str(initial_prompt or "").strip()
+    if marker not in text:
+        return text
+    prefix, _, _ = text.partition(marker)
+    return prefix.rstrip()
+
+
 def generate_runtime_manifest(spec: dict[str, Any]) -> str | None:
     """Persist launch-time runtime details into the agent directory."""
     cwd = str(spec.get("cwd") or spec.get("path") or "").strip()
@@ -142,6 +218,9 @@ def generate_runtime_manifest(spec: dict[str, Any]) -> str | None:
     cli_args = [str(arg).strip() for arg in (spec.get("cli_args") or []) if str(arg).strip()]
     model = str(spec.get("model") or spec.get("agent_model") or "").strip()
     initial_prompt = str(spec.get("initial_prompt") or "").strip()
+    reasoning_effort = str(spec.get("reasoning_effort") or "").strip().lower()
+    skill_bindings = spec.get("_skill_bindings") or {}
+    lep_bindings = spec.get("_lep_bindings") or {}
     env_map: dict[str, str] = {}
 
     raw_env = spec.get("env") or {}
@@ -149,7 +228,7 @@ def generate_runtime_manifest(spec: dict[str, Any]) -> str | None:
         for key, value in raw_env.items():
             key = str(key).strip()
             value = str(value).strip()
-            if key:
+            if key and key not in _MANAGED_BINDING_ENV_VARS:
                 env_map[key] = value
 
     raw_export = spec.get("export_cmd") or {}
@@ -165,12 +244,50 @@ def generate_runtime_manifest(spec: dict[str, Any]) -> str | None:
     elif agent_type == "kimi":
         env_map.setdefault("KIMI_HOME", f"{cwd}/.kimi")
 
+    resolved_skills = [str(item).strip() for item in (skill_bindings.get("resolved_skills") or []) if str(item).strip()]
+    role_skills = [str(item).strip() for item in (skill_bindings.get("role_skills") or []) if str(item).strip()]
+    agent_skills = [str(item).strip() for item in (skill_bindings.get("agent_skills") or []) if str(item).strip()]
+    workflow_skills = [str(item).strip() for item in (skill_bindings.get("workflow_skills") or []) if str(item).strip()]
+    if resolved_skills:
+        env_map["BRAIN_SKILL_BINDINGS_FILE"] = str(skill_bindings.get("source") or "")
+        env_map["BRAIN_ENABLED_SKILLS"] = ",".join(resolved_skills)
+        if role_skills:
+            env_map["BRAIN_ROLE_DEFAULT_SKILLS"] = ",".join(role_skills)
+        if agent_skills:
+            env_map["BRAIN_AGENT_EXTRA_SKILLS"] = ",".join(agent_skills)
+        if workflow_skills:
+            env_map["BRAIN_WORKFLOW_REQUIRED_SKILLS"] = ",".join(workflow_skills)
+
+    resolved_lep_profiles = [
+        str(item).strip() for item in (lep_bindings.get("resolved_lep_profiles") or []) if str(item).strip()
+    ]
+    role_lep_profiles = [
+        str(item).strip() for item in (lep_bindings.get("role_lep_profiles") or []) if str(item).strip()
+    ]
+    agent_lep_profiles = [
+        str(item).strip() for item in (lep_bindings.get("agent_lep_profiles") or []) if str(item).strip()
+    ]
+    workflow_lep_profiles = [
+        str(item).strip() for item in (lep_bindings.get("workflow_lep_profiles") or []) if str(item).strip()
+    ]
+    if resolved_lep_profiles:
+        env_map["BRAIN_LEP_BINDINGS_FILE"] = str(lep_bindings.get("source") or "")
+        env_map["BRAIN_ENABLED_LEP_PROFILES"] = ",".join(resolved_lep_profiles)
+        if role_lep_profiles:
+            env_map["BRAIN_ROLE_DEFAULT_LEP_PROFILES"] = ",".join(role_lep_profiles)
+        if agent_lep_profiles:
+            env_map["BRAIN_AGENT_EXTRA_LEP_PROFILES"] = ",".join(agent_lep_profiles)
+        if workflow_lep_profiles:
+            env_map["BRAIN_WORKFLOW_REQUIRED_LEP_PROFILES"] = ",".join(workflow_lep_profiles)
+
     args: list[str] = []
     if model:
         if use_claude_cli:
             args.extend(["--model", model])
         elif agent_type in ("kimi", "gemini"):
             args.extend(["--model", model])
+    if use_claude_cli and reasoning_effort and "--effort" not in cli_args:
+        args.extend(["--effort", reasoning_effort])
 
     if agent_type == "kimi" and not use_claude_cli:
         args.extend(["--mcp-config-file", f"{cwd}/.kimi/mcp.json"])
@@ -178,12 +295,35 @@ def generate_runtime_manifest(spec: dict[str, Any]) -> str | None:
         args.append(kimi_subcommand or "acp")
 
     args.extend(cli_args)
+    initial_prompt = _strip_managed_prompt_block(initial_prompt, "[Brain Skill Bindings]")
+    initial_prompt = _strip_managed_prompt_block(initial_prompt, "[Brain LEP Profiles]")
+    skill_prompt = _build_skill_bindings_initial_prompt(skill_bindings)
+    lep_prompt = _build_lep_profiles_initial_prompt(lep_bindings)
+    if use_claude_cli:
+        managed_prompts = [prompt for prompt in (skill_prompt, lep_prompt) if prompt]
+        if managed_prompts:
+            managed_block = "\n\n".join(managed_prompts)
+            initial_prompt = f"{initial_prompt}\n\n{managed_block}".strip() if initial_prompt else managed_block
     if initial_prompt and use_claude_cli:
         args.append(initial_prompt)
 
     payload = {
         "version": 1,
         "agent_name": agent_name,
+        "skill_bindings": {
+            "source": str(skill_bindings.get("source") or ""),
+            "resolved_skills": resolved_skills,
+            "role_skills": role_skills,
+            "agent_skills": agent_skills,
+            "workflow_skills": workflow_skills,
+        },
+        "lep_bindings": {
+            "source": str(lep_bindings.get("source") or ""),
+            "resolved_lep_profiles": resolved_lep_profiles,
+            "role_lep_profiles": role_lep_profiles,
+            "agent_lep_profiles": agent_lep_profiles,
+            "workflow_lep_profiles": workflow_lep_profiles,
+        },
         "runtime": {
             "command": command,
             "args": args,
@@ -489,6 +629,107 @@ def _process_conditionals(text: str, role: str) -> str:
     return re.sub(pattern, replacer, text, flags=re.DOTALL)
 
 
+def _dedupe_preserve_order(items: list[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for item in items:
+        if not item or item in seen:
+            continue
+        seen.add(item)
+        result.append(item)
+    return result
+
+
+def _resolve_bound_skills(spec: dict[str, Any]) -> dict[str, Any]:
+    role = str(spec.get("role") or "").strip()
+    agent_name = str(spec.get("name") or "").strip()
+    workflow_names_raw = spec.get("workflow") or spec.get("workflows") or []
+
+    workflow_names: list[str]
+    if isinstance(workflow_names_raw, str):
+        workflow_names = [workflow_names_raw]
+    elif isinstance(workflow_names_raw, list):
+        workflow_names = [str(item).strip() for item in workflow_names_raw if str(item).strip()]
+    else:
+        workflow_names = []
+
+    try:
+        bindings = _CONFIG_LOADER.get_skill_bindings().get("skill_bindings", {})
+    except Exception:
+        bindings = {}
+
+    roles_map = bindings.get("roles") or {}
+    agents_map = bindings.get("agents") or {}
+    workflows_map = bindings.get("workflows") or {}
+
+    role_skills = roles_map.get(role, {}).get("default_skills") or []
+    agent_skills = agents_map.get(agent_name, {}).get("extra_skills") or []
+
+    workflow_skills: list[str] = []
+    for workflow_name in workflow_names:
+        workflow_spec = workflows_map.get(workflow_name) or {}
+        workflow_skills.extend(workflow_spec.get("required_skills") or [])
+
+    resolved = _dedupe_preserve_order(
+        [str(item).strip() for item in [*workflow_skills, *agent_skills, *role_skills] if str(item).strip()]
+    )
+    return {
+        "role": role,
+        "agent_name": agent_name,
+        "workflows": workflow_names,
+        "role_skills": _dedupe_preserve_order([str(item).strip() for item in role_skills if str(item).strip()]),
+        "agent_skills": _dedupe_preserve_order([str(item).strip() for item in agent_skills if str(item).strip()]),
+        "workflow_skills": _dedupe_preserve_order([str(item).strip() for item in workflow_skills if str(item).strip()]),
+        "resolved_skills": resolved,
+        "source": str(_CONFIG_LOADER.config_dir / "skill_bindings.yaml"),
+    }
+
+
+def _resolve_bound_lep_profiles(spec: dict[str, Any]) -> dict[str, Any]:
+    role = str(spec.get("role") or "").strip()
+    agent_name = str(spec.get("name") or "").strip()
+    workflow_names_raw = spec.get("workflow") or spec.get("workflows") or []
+
+    workflow_names: list[str]
+    if isinstance(workflow_names_raw, str):
+        workflow_names = [workflow_names_raw]
+    elif isinstance(workflow_names_raw, list):
+        workflow_names = [str(item).strip() for item in workflow_names_raw if str(item).strip()]
+    else:
+        workflow_names = []
+
+    try:
+        bindings = _CONFIG_LOADER.get_lep_bindings().get("lep_bindings", {})
+    except Exception:
+        bindings = {}
+
+    roles_map = bindings.get("roles") or {}
+    agents_map = bindings.get("agents") or {}
+    workflows_map = bindings.get("workflows") or {}
+
+    role_profiles = roles_map.get(role, {}).get("default_lep_profiles") or []
+    agent_profiles = agents_map.get(agent_name, {}).get("extra_lep_profiles") or []
+
+    workflow_profiles: list[str] = []
+    for workflow_name in workflow_names:
+        workflow_spec = workflows_map.get(workflow_name) or {}
+        workflow_profiles.extend(workflow_spec.get("required_lep_profiles") or [])
+
+    resolved = _dedupe_preserve_order(
+        [str(item).strip() for item in [*workflow_profiles, *agent_profiles, *role_profiles] if str(item).strip()]
+    )
+    return {
+        "role": role,
+        "agent_name": agent_name,
+        "workflows": workflow_names,
+        "role_lep_profiles": _dedupe_preserve_order([str(item).strip() for item in role_profiles if str(item).strip()]),
+        "agent_lep_profiles": _dedupe_preserve_order([str(item).strip() for item in agent_profiles if str(item).strip()]),
+        "workflow_lep_profiles": _dedupe_preserve_order([str(item).strip() for item in workflow_profiles if str(item).strip()]),
+        "resolved_lep_profiles": resolved,
+        "source": str(_CONFIG_LOADER.config_dir / "lep_bindings.yaml"),
+    }
+
+
 def generate_claude_md(
     agent_name: str,
     role: str,
@@ -496,6 +737,7 @@ def generate_claude_md(
     spec: dict[str, Any],
     *,
     force: bool = False,
+    bound_skills: dict[str, Any] | None = None,
 ) -> str | None:
     """Generate CLAUDE.md (claude) or AGENTS.md (codex) from templates.
 
@@ -547,7 +789,7 @@ def generate_claude_md(
     role_sections = _load_role_sections(role)
 
     # Build scope_path from group
-    scope_path = str(_GROUPS_BASE_DIR / group) if group else str(_GROUPS_BASE_DIR)
+    scope_path = str(_resolve_group_scope_path(group))
 
     # Build capabilities list
     capabilities = spec.get("capabilities") or []
@@ -576,6 +818,16 @@ def generate_claude_md(
 
     # Process conditionals
     rendered = _process_conditionals(rendered, role)
+
+    # Append resolved skill bindings for visibility in generated agent docs.
+    resolved_skills = list((bound_skills or {}).get("resolved_skills") or [])
+    if resolved_skills:
+        rendered = (
+            rendered.rstrip()
+            + "\n\n## Skill Bindings\n"
+            + f"- Source: `{(bound_skills or {}).get('source', '')}`\n"
+            + f"- Resolved skills: {', '.join(resolved_skills)}\n"
+        )
 
     # Write output
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -650,6 +902,11 @@ def generate_all_configs(
     if existing_runtime_manifest:
         result["runtime_manifest"] = str(runtime_manifest_path(cwd))
 
+    bound_skills = _resolve_bound_skills(effective_spec)
+    result["resolved_skills"] = bound_skills.get("resolved_skills") or []
+    bound_lep_profiles = _resolve_bound_lep_profiles(effective_spec)
+    result["resolved_lep_profiles"] = bound_lep_profiles.get("resolved_lep_profiles") or []
+
     # 1. Generate MCP config (.mcp.json or .codex/config.toml)
     if agent_type:
         generate_mcp_config(agent_name, agent_type, cwd, effective_spec)
@@ -658,7 +915,7 @@ def generate_all_configs(
     # 2. Generate CLAUDE.md / AGENTS.md (only if role is specified)
     if role and agent_type:
         md_path = generate_claude_md(
-            agent_name, role, group, effective_spec, force=force_claude_md,
+            agent_name, role, group, effective_spec, force=force_claude_md, bound_skills=bound_skills,
         )
         result["claude_md"] = md_path
 
@@ -673,10 +930,14 @@ def generate_all_configs(
         ))
     )
     if needs_claude_settings and agent_type:
+        effective_spec["_skill_bindings"] = bound_skills
+        effective_spec["_lep_bindings"] = bound_lep_profiles
         settings_path = _generate_settings_local(cwd, role, group, effective_spec)
         if settings_path:
             result["settings_local"] = settings_path
 
+    effective_spec["_skill_bindings"] = bound_skills
+    effective_spec["_lep_bindings"] = bound_lep_profiles
     runtime_path = generate_runtime_manifest(effective_spec)
     if runtime_path:
         result["runtime_manifest"] = runtime_path
@@ -690,6 +951,14 @@ def generate_all_configs(
 
 _SECRETS_FILE = Path("/brain/secrets/system/agents/llm_tokens.env")
 _GROUPS_BASE_DIR = Path("/xkagent_infra/groups")
+_BRAIN_BASE_DIR = Path("/xkagent_infra/brain")
+
+
+def _resolve_group_scope_path(group: str) -> Path:
+    group_name = str(group or "").strip()
+    if group_name == "brain":
+        return _BRAIN_BASE_DIR
+    return _GROUPS_BASE_DIR / group_name if group_name else _GROUPS_BASE_DIR
 
 # agent_type -> provider_id in brain_agent_proxy (proxy-first defaults)
 _AGENT_TYPE_PROXY_PROVIDER_MAP: dict[str, str] = {
@@ -779,10 +1048,28 @@ _STATUS_LINE = {
         'input=$(cat); '
         'model=$(echo "$input" | jq -r \'.model.display_name // "Claude"\'); '
         'dir=$(echo "$input" | jq -r \'.workspace.current_dir // "~"\'); '
-        'used=$(echo "$input" | jq -r \'.context_window.used_percentage // empty\'); '
+        'used=$(echo "$input" | jq -r \''
+        'def token_pct($ctx): '
+        'if (($ctx.context_window_size // 0) | tonumber) > 0 then '
+        '((($ctx.current_usage.input_tokens // $ctx.total_input_tokens // 0) '
+        '+ ($ctx.current_usage.output_tokens // $ctx.total_output_tokens // 0) '
+        '+ ($ctx.current_usage.cache_creation_input_tokens // 0) '
+        '+ ($ctx.current_usage.cache_read_input_tokens // 0)) '
+        '/ ($ctx.context_window_size | tonumber) * 100) '
+        'else empty end; '
+        '(.context_window.used_percentage '
+        '// .context_window.percent_used '
+        '// .contextWindow.usedPercentage '
+        '// .contextWindow.percentUsed '
+        '// .session.context_window.used_percentage '
+        '// .usage.context_window.used_percentage '
+        '// empty) as $reported | '
+        '(.context_window // .contextWindow // .session.context_window // .usage.context_window // {}) as $ctx | '
+        'if ($reported | tostring | length) > 0 then $reported else token_pct($ctx) end'
+        '\'); '
         'if [ -n "$used" ]; then '
         'printf "%s | %s | Context: %.1f%% used" "$model" "$dir" "$used"; '
-        'else printf "%s | %s" "$model" "$dir"; fi'
+        'else printf "%s | %s | Context: n/a" "$model" "$dir"; fi'
     ),
 }
 
@@ -944,19 +1231,22 @@ def _generate_settings_local(
     - hooks (if configured in registry)
     """
     claude_dir = Path(cwd) / ".claude"
-    settings_path = claude_dir / "settings.local.json"
-
-    # Don't overwrite existing settings
-    if settings_path.exists():
-        return None
-
     claude_dir.mkdir(parents=True, exist_ok=True)
+    settings_path = claude_dir / "settings.local.json"
+    existing_settings: dict[str, Any] = {}
+    if settings_path.exists():
+        try:
+            loaded = json.loads(settings_path.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict):
+                existing_settings = loaded
+        except Exception:
+            existing_settings = {}
 
     agent_name = str(spec.get("name") or "").strip()
     agent_type = str(spec.get("agent_type") or "claude").strip()
 
     # --- Build settings ---
-    settings: dict[str, Any] = {}
+    settings: dict[str, Any] = dict(existing_settings)
 
     # 1. Permissions — use dontAsk + allow list (works reliably with Kimi/non-claude models)
     settings["permissions"] = {
@@ -980,6 +1270,43 @@ def _generate_settings_local(
     env_map = _build_settings_env(agent_type, spec)
     if env_map:
         settings["env"] = env_map
+    elif "env" in settings and isinstance(settings["env"], dict):
+        settings["env"] = dict(settings["env"])
+
+    settings.setdefault("env", {})
+    if isinstance(settings["env"], dict):
+        for key in _MANAGED_BINDING_ENV_VARS:
+            settings["env"].pop(key, None)
+
+    skill_bindings = spec.get("_skill_bindings") or {}
+    resolved_skills = skill_bindings.get("resolved_skills") or []
+    if resolved_skills:
+        settings["env"]["BRAIN_SKILL_BINDINGS_FILE"] = str(skill_bindings.get("source") or "")
+        settings["env"]["BRAIN_ENABLED_SKILLS"] = ",".join(resolved_skills)
+        role_skills = skill_bindings.get("role_skills") or []
+        agent_skills = skill_bindings.get("agent_skills") or []
+        workflow_skills = skill_bindings.get("workflow_skills") or []
+        if role_skills:
+            settings["env"]["BRAIN_ROLE_DEFAULT_SKILLS"] = ",".join(role_skills)
+        if agent_skills:
+            settings["env"]["BRAIN_AGENT_EXTRA_SKILLS"] = ",".join(agent_skills)
+        if workflow_skills:
+            settings["env"]["BRAIN_WORKFLOW_REQUIRED_SKILLS"] = ",".join(workflow_skills)
+
+    lep_bindings = spec.get("_lep_bindings") or {}
+    resolved_lep_profiles = lep_bindings.get("resolved_lep_profiles") or []
+    if resolved_lep_profiles:
+        settings["env"]["BRAIN_LEP_BINDINGS_FILE"] = str(lep_bindings.get("source") or "")
+        settings["env"]["BRAIN_ENABLED_LEP_PROFILES"] = ",".join(resolved_lep_profiles)
+        role_lep_profiles = lep_bindings.get("role_lep_profiles") or []
+        agent_lep_profiles = lep_bindings.get("agent_lep_profiles") or []
+        workflow_lep_profiles = lep_bindings.get("workflow_lep_profiles") or []
+        if role_lep_profiles:
+            settings["env"]["BRAIN_ROLE_DEFAULT_LEP_PROFILES"] = ",".join(role_lep_profiles)
+        if agent_lep_profiles:
+            settings["env"]["BRAIN_AGENT_EXTRA_LEP_PROFILES"] = ",".join(agent_lep_profiles)
+        if workflow_lep_profiles:
+            settings["env"]["BRAIN_WORKFLOW_REQUIRED_LEP_PROFILES"] = ",".join(workflow_lep_profiles)
 
     # 3. Status line
     settings["statusLine"] = copy.deepcopy(_STATUS_LINE)
@@ -999,22 +1326,19 @@ def _generate_settings_local(
     # 8. Disable spinner tips (cleaner output for automated agents)
     settings["spinnerTipsEnabled"] = False
 
-    # 9. Hooks (only if configured in registry)
-    hooks_list = spec.get("hooks") or []
+    # 9. Hooks
+    hooks_list = [str(item).strip() for item in (spec.get("hooks") or []) if str(item).strip()]
+    if resolved_lep_profiles:
+        hooks_list = _dedupe_preserve_order([*hooks_list, "pre_tool_use", "post_tool_use"])
     if hooks_list:
         hooks_config: dict[str, Any] = {}
-        hooks_base = "/brain/infrastructure/service/agent_abilities"
 
-        # hooks_version pinning: lock agent to a specific release snapshot
-        # If set, points to releases/{version}/bin/v2 instead of bin/current
-        hooks_version = str(spec.get("hooks_version") or "").strip()
-        if hooks_version:
-            hook_bin_dir = f"{hooks_base}/releases/{hooks_version}/bin/v2"
-        else:
-            hook_bin_dir = f"{hooks_base}/bin/hooks/current"
+        # hooks 部署路径：/brain/base/hooks/ 是当前唯一有效路径
+        # hooks_version pinning 已废弃（agent_abilities 构建系统不再使用）
+        hook_bin_dir = "/brain/base/hooks"
 
         role_group = f"{role}-{group}" if role and group else role or "default"
-        scope_path = str(_GROUPS_BASE_DIR / group) if group else str(_GROUPS_BASE_DIR)
+        scope_path = str(_resolve_group_scope_path(group))
 
         # Role context env vars - passed to every hook process
         hook_env = {
@@ -1023,6 +1347,10 @@ def _generate_settings_local(
             "BRAIN_AGENT_GROUP": group or "",
             "BRAIN_SCOPE_PATH": scope_path,
         }
+        for key in _MANAGED_LEP_ENV_VARS:
+            value = settings.get("env", {}).get(key) if isinstance(settings.get("env"), dict) else None
+            if value:
+                hook_env[key] = value
 
         if "pre_tool_use" in hooks_list:
             hooks_config["PreToolUse"] = [{
@@ -1083,6 +1411,8 @@ def _generate_settings_local(
 
         if hooks_config:
             settings["hooks"] = hooks_config
+    else:
+        settings.pop("hooks", None)
 
     settings_path.write_text(
         json.dumps(settings, indent=2, ensure_ascii=False) + "\n",

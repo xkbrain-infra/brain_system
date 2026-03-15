@@ -1,0 +1,49 @@
+lep_bindings:
+  version: "1.0"
+  updated: "2026-03-14"
+  owner: "brain"
+  description: "LEP profile 绑定策略。将 LEP enforcement profile 从 agents_registry.yaml 中分离，专门描述 role/agent/workflow 对 LEP overlays 的绑定关系。"
+
+  resolution_order:
+    - "workflow.required_lep_profiles"
+    - "agent.extra_lep_profiles"
+    - "role.default_lep_profiles"
+  merge_rules:
+    dedupe: true
+    preserve_order: true
+    allow_unknown_profiles: false
+
+  roles:
+    manager:
+      default_lep_profiles:
+        - manager-governance
+
+    pmo:
+      default_lep_profiles:
+        - delivery-governance
+
+    devops:
+      default_lep_profiles:
+        - runtime-ops
+
+    dev:
+      default_lep_profiles:
+        - workspace-dev
+
+    frontdesk:
+      default_lep_profiles:
+        - frontdesk-safe
+
+  agents:
+    agent-brain_manager:
+      extra_lep_profiles:
+        - brain-manager-elevated
+
+  workflows:
+    project_delivery:
+      required_lep_profiles:
+        - delivery-governance
+      recommended_roles:
+        - manager
+        - pmo
+        - devops

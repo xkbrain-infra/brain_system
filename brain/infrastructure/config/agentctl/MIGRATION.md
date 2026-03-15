@@ -147,7 +147,7 @@ export AGENT_MANAGER_CONFIG_DIR=/path/to/custom/config
 
 ### Audit 日志路径
 **当前**: `/brain/groups/brain_system_group/projects/agentctl/memory/audit/`
-**建议**: `/brain/runtime/logs/agentctl/audit/`
+**建议**: `/xkagent_infra/runtime/logs/agentctl/audit/`
 
 **原因**: audit 日志是运行时数据，应该和其他运行时日志放在一起
 

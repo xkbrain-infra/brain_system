@@ -34,7 +34,7 @@ def default_sinks() -> AuditSinks:
             "AGENTCTL_AUDIT_GLOBAL",
             os.environ.get(
                 "AGENT_ORCHESTRATOR_AUDIT_GLOBAL",  # fallback for backward compatibility
-                f"/xkagent_infra/brain/runtime/logs/agents/global_agent_log_{date}.jsonl",
+                f"/xkagent_infra/runtime/logs/agents/global_agent_log_{date}.jsonl",
             )
         )
     )

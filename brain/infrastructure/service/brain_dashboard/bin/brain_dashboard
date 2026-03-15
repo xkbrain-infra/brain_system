@@ -13,6 +13,7 @@ PID_FILE="/var/run/brain_dashboard.pid"
 VENV_PATH="/opt/venv"
 PORT=8080
 HOST="0.0.0.0"
+export PYTHONPATH="/brain/infrastructure/service/utils/ipc/src${PYTHONPATH:+:${PYTHONPATH}}"
 
 cd "${SRC_DIR}"
 

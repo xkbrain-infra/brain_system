@@ -10,6 +10,6 @@ startretries=3
 startsecs=3
 stopasgroup=true
 killasgroup=true
-stdout_logfile=/brain/runtime/logs/task_manager_runtime.out.log
-stderr_logfile=/brain/runtime/logs/task_manager_runtime.err.log
-environment=BRAIN_AGENT_NAME="task_manager_runtime",TMR_HEALTH_PORT="8766",TMR_STATE_DIR="/brain/runtime/data/task_manager_runtime",TMR_PROJECTS_DIR="/brain/runtime/data/task_manager_runtime/projects",PYTHONPATH="/brain/infrastructure/service/task_manager_runtime/src"
+stdout_logfile=/xkagent_infra/runtime/logs/task_manager_runtime.out.log
+stderr_logfile=/xkagent_infra/runtime/logs/task_manager_runtime.err.log
+environment=BRAIN_AGENT_NAME="task_manager_runtime",TMR_HEALTH_PORT="8766",TMR_STATE_DIR="/xkagent_infra/runtime/data/task_manager_runtime",TMR_PROJECTS_DIR="/xkagent_infra/runtime/data/task_manager_runtime/projects",PYTHONPATH="/brain/infrastructure/service/task_manager_runtime/src"

@@ -99,6 +99,7 @@ model_routing:
   gpt-5.1-codex-max: copilot
   gpt-5.2-codex: copilot
   gpt-5.3-codex: copilot
+  gpt-5.4-codex: openai
   gpt-4o: copilot
   gpt-4o-mini: copilot
   claude-sonnet-4.6: copilot
