@@ -12,8 +12,8 @@ enforcement:
   priority: LOW
 
   dual_write:
-    hooks: /brain/runtime/logs/hooks_audit.jsonl
-    global: /brain/runtime/logs/agents/global_agent_log_{date}.jsonl
+    hooks: /xkagent_infra/runtime/logs/hooks_audit.jsonl
+    global: /xkagent_infra/runtime/logs/agents/global_agent_log_{date}.jsonl
     project: /brain/groups/{group}/projects/{project}/logs/{date}.jsonl
 
   log_fields:

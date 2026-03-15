@@ -1,10 +1,19 @@
 policy:
   id: "G-POLICY-DEPLOYMENT-PENDING-WORKFLOW"
   name: "Pending Update Workflow"
-  version: "1.0"
+  version: "1.1"
   description: |
-    定义通过 /brain/runtime/update_brain/pending/ 提交更新的完整工作流程。
-    适用于修改受 G-SCOP 保护的核心配置文件（/brain/base/**, /brain/INIT.yaml 等）。
+    定义通过 /xkagent_infra/runtime/update_brain/pending/ 提交更新的完整工作流程。
+    适用于修改受 G-SCOP 保护的核心配置（/brain/** 路径）。
+
+    核心架构：
+      pending/<batch>/  →  groups/brain/projects/base/  →  publish_base.sh  →  /brain/base/
+         (草稿提案)              (唯一 source，可写区)           (发布工具)           (只读产物)
+
+    pending 目录镜像 groups/brain/projects/base/ 的目录结构，不是 /brain/base/。
+    /brain/base/ 始终通过 publish_base.sh 写入，brain-manager 不直接 cp 到 /brain/base/。
+
+    纯 design/research 草稿先放 proposals/，完成分类后才进入 pending/。
   applies_to: [brain-manager, pmo, devops]
   priority: HIGH
 
@@ -12,23 +21,38 @@ policy:
 # 1. 目录结构规范
 # ============================================
 directory_structure:
-  base_path: /brain/runtime/update_brain/pending/
+  base_path: /xkagent_infra/runtime/update_brain/pending/
+  proposal_path: /xkagent_infra/runtime/update_brain/proposals/
+  source_root: /xkagent_infra/groups/brain/projects/base/
   batch_pattern: "<YYYYMMDD>_<description>"
 
-  required_subdirs:
-    - base/          # 镜像 /brain/base/ 的目录结构
-    - base/spec/
-    - base/workflow/
-    - base/knowledge/
-    # ... 根据变更内容创建对应子目录
+  layout: |
+    pending/<batch>/
+      CHANGELOG.md          # 必须
+      base/                 # 镜像 groups/brain/projects/base/ 的子目录结构
+        spec/               # 对应 source_root/spec/
+        hooks/              # 对应 source_root/hooks/
+        workflow/           # 对应 source_root/workflow/
+        knowledge/          # 对应 source_root/knowledge/
+        skill/              # 对应 source_root/skill/
+        # ... 根据变更内容创建对应子目录
 
   required_files:
     - CHANGELOG.md   # 必须包含变更说明
 
   optional_files:
+    - MANIFEST.yaml  # 需要显式 source→target 映射时使用
     - PLAN.md        # 复杂变更的执行计划
     - ROLLBACK.md    # 回滚方案（高风险变更）
     - TEST_REPORT.md # 验证结果
+    - DESIGN.md      # 提案设计说明
+    - REVIEW.md      # 审核记录
+
+  rules:
+    - pending/<batch>/ 中所有变更文件必须放在 base/ 子目录下
+    - base/ 的目录结构对应 groups/brain/projects/base/，不是 /brain/base/
+    - pending/ 根目录不得放 loose files 或空占位目录
+    - 仅含 DESIGN.md / TEST_PLAN.md / patch.diff 的草稿目录必须放 proposal_path
 
 # ============================================
 # 2. 批次命名规范
@@ -41,7 +65,7 @@ batch_naming:
     - 避免模糊词汇（如：update, fix, change）
   examples:
     good:
-      - "20260309_hooks_fix"
+      - "20260309_hooks_lep_scop_fix"
       - "20260309_registry_schema_v3"
       - "20260309_lep_critical_gates"
     bad:
@@ -63,7 +87,7 @@ changelog:
 
     - title: "变更内容"
       content: |
-        - 修改文件列表
+        - 修改文件列表（相对于 groups/brain/projects/base/）
         - 每个文件的具体变更（行号范围、操作类型）
 
     - title: "风险等级"
@@ -73,7 +97,7 @@ changelog:
       content: "变更后如何验证"
 
     - title: "回滚方案"
-      content: "出问题如何回滚"
+      content: "出问题如何回滚（git revert source 即可）"
 
   template: |
     # LEP Update Batch: {batch_name}
@@ -86,8 +110,8 @@ changelog:
 
     ## 变更内容
 
-    ### 修改文件
-    - `{file_path}`
+    ### 修改文件（相对于 groups/brain/projects/base/）
+    - `{relative_path}`
 
     ### 具体变更
     {change_details}
@@ -108,42 +132,45 @@ changelog:
     - **日期**: {date}
 
 # ============================================
-# 4. 审批流程
+# 4. 审批与发布流程
 # ============================================
 approval_workflow:
   stages:
     - name: "准备阶段"
       actor: any-agent
       actions:
-        - 创建批次目录
-        - 复制原文件到 base/ 对应路径
-        - 进行修改
+        - 在 pending/<batch>/base/ 下按 source_root 结构放置修改文件
+        - 修改内容（Edit/Write，此处在 pending/ 下不受 G-SCOP 保护）
         - 编写 CHANGELOG.md
-        -
+        - 如需显式映射关系，补 MANIFEST.yaml
+
     - name: "提交审批"
       actor: any-agent
       actions:
         - 通过 IPC 向组内 PMO 发送 APPROVAL_REQUEST
-        - 提供：diff、CHANGELOG、验证计划、回滚方案
-        -
+        - 提供：diff（与 source_root 对比）、CHANGELOG、验证计划、回滚方案
+
     - name: "PMO 审查"
       actor: pmo
       actions:
         - 审查变更内容
         - 评估风险
         - 决定是否批准或上报用户
-        -
+
     - name: "用户审批"
       actor: user
       condition: pmo_escalated
       actions:
         - 最终审批决策
-        -
+
     - name: "发布执行"
       actor: brain-manager
       condition: approved
       actions:
-        - 合并变更到 /brain/base/
+        - 将 pending/<batch>/base/** 合并到 groups/brain/projects/base/
+        - 执行 publish_base.sh --publish --domain <domain>
+        - 验证 /brain/base/ 已更新
+        - 将 batch 移到 completed/
         - 记录发布日志
 
 # ============================================
@@ -159,16 +186,13 @@ verification:
         # JSON 文件
         python3 -c "import json; json.load(open('{file}'))"
 
-    - name: "路径验证"
-      command: |
-        # 确认变更路径正确
-        ls -la /brain/runtime/update_brain/pending/{batch}/base/{path}
-
     - name: "diff 生成"
       command: |
-        diff -u /brain/base/{path} /brain/runtime/update_brain/pending/{batch}/base/{path}
+        # 对比 pending 草稿与 source
+        diff -u /xkagent_infra/groups/brain/projects/base/{path} \
+                /xkagent_infra/runtime/update_brain/pending/{batch}/base/{path}
 
-  post_merge:
+  post_publish:
     - name: "文件存在性"
       command: ls -la /brain/base/{path}
 
@@ -180,28 +204,30 @@ verification:
       description: "根据变更内容执行特定验证"
 
 # ============================================
-# 6. 发布流程
+# 6. 发布流程（brain-manager 执行）
 # ============================================
 deployment:
-  method: "atomic_copy"
+  method: "merge_then_publish"
   steps:
-    - name: "备份原文件"
+    - name: "合并到 source"
       command: |
-        cp /brain/base/{path} /brain/base/{path}.bak.{timestamp}
+        # 将 pending 文件覆盖到 source_root 对应路径
+        cp /xkagent_infra/runtime/update_brain/pending/{batch}/base/{path} \
+           /xkagent_infra/groups/brain/projects/base/{path}
 
-    - name: "执行复制"
+    - name: "执行发布"
       command: |
-        cp /brain/runtime/update_brain/pending/{batch}/base/{path} /brain/base/{path}
+        /xkagent_infra/groups/brain/projects/base/scripts/publish_base.sh \
+          --publish --domain {domain}
 
-    - name: "验证"
+    - name: "验证产物"
       command: |
-        # 根据变更类型执行验证
-        echo "验证完成"
+        ls -la /brain/base/{path}
 
-    - name: "清理批次"
+    - name: "归档批次"
       command: |
-        # 可选：保留或删除批次目录
-        # mv /brain/runtime/update_brain/pending/{batch} /brain/runtime/update_brain/completed/
+        mv /xkagent_infra/runtime/update_brain/pending/{batch} \
+           /xkagent_infra/runtime/update_brain/completed/{batch}
 
 # ============================================
 # 7. 回滚流程
@@ -213,19 +239,16 @@ rollback:
     - 用户要求撤销
 
   steps:
-    - name: "定位备份"
+    - name: "回滚 source"
       command: |
-        ls -la /brain/base/{path}.bak.* | tail -1
+        # source_root 有 git 历史，直接 revert
+        cd /xkagent_infra
+        git revert <commit> --no-edit
 
-    - name: "执行回滚"
+    - name: "重新发布"
       command: |
-        BACKUP=$(ls /brain/base/{path}.bak.* | tail -1)
-        cp "$BACKUP" /brain/base/{path}
-
-    - name: "验证回滚"
-      command: |
-        # 验证回滚后的文件
-        echo "回滚完成"
+        /xkagent_infra/groups/brain/projects/base/scripts/publish_base.sh \
+          --publish --domain {domain}
 
     - name: "通知"
       description: "通过 IPC 通知相关人员回滚完成"
@@ -236,7 +259,7 @@ rollback:
 lep_gates:
   - gate_id: G-GATE-SCOP
     description: "触发 pending 流程的主要 gate"
-    trigger: "修改 /brain/base/** 路径"
+    trigger: "尝试写入 /brain/** 路径"
 
   - gate_id: G-GATE-APPROVAL-DELEGATION
     description: "需要 PMO 审批"
@@ -251,20 +274,23 @@ lep_gates:
 # ============================================
 quick_reference:
   create_batch: |
-    mkdir -p /brain/runtime/update_brain/pending/$(date +%Y%m%d)_description/base/spec
-    cp /brain/base/spec/target.yaml $_/
-    # 编辑 $_/target.yaml
+    BATCH=/xkagent_infra/runtime/update_brain/pending/$(date +%Y%m%d)_description
+    mkdir -p "$BATCH/base/spec"
+    cp /xkagent_infra/groups/brain/projects/base/spec/target.yaml "$BATCH/base/spec/"
+    # 编辑 $BATCH/base/spec/target.yaml
 
-  generate_changelog: |
-    # 使用模板创建 CHANGELOG.md
+  diff_with_source: |
+    diff -u /xkagent_infra/groups/brain/projects/base/{path} \
+            /xkagent_infra/runtime/update_brain/pending/{batch}/base/{path}
 
   submit_approval: |
     # 通过 IPC 发送 APPROVAL_REQUEST 给 PMO
 
   deploy: |
-    # brain-manager 执行：
-    cp pending/{batch}/base/{path} /brain/base/{path}
+    # brain-manager 执行（审批后）：
+    cp pending/{batch}/base/{path} /xkagent_infra/groups/brain/projects/base/{path}
+    /xkagent_infra/groups/brain/projects/base/scripts/publish_base.sh --publish --domain {domain}
 
   rollback: |
-    BACKUP=$(ls /brain/base/{path}.bak.* | tail -1)
-    cp "$BACKUP" /brain/base/{path}
+    cd /xkagent_infra && git revert <commit> --no-edit
+    publish_base.sh --publish --domain {domain}

@@ -76,7 +76,7 @@ project_space_template:
         note: "大多数项目在 /app/domain/ 下，Brain 基础设施例外"
         exceptions:
           - "/brain/infrastructure/..."  # Brain 基础设施
-          - "/brain/runtime/..."          # Brain 运行时
+          - "/xkagent_infra/runtime/..."          # Brain 运行时
 
       typical_structure:
         src: "/app/domain/{project_name}/src"

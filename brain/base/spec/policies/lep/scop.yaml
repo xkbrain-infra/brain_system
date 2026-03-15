@@ -2,7 +2,7 @@ gate_id: G-GATE-SCOP
 name: Scope Locking
 applies_to: [write, delete, move, git]
 rule: 操作必须在允许的路径内
-protected: /brain/base/**
+protected: /brain/**
 
 enforcement:
   stage: pre_tool_use
@@ -15,19 +15,28 @@ enforcement:
     check_type: protected
 
   protected_paths:
-    - /brain/base/spec/core/
-    - /brain/base/spec/schema/
-    - /brain/INIT.yaml
+    - /brain/
+    - /xkagent_infra/brain/
 
   block_message: |
-    🚫 保护路径禁止修改 (G-SCOP)
+    🚫 /brain/ 是发布态，禁止直接修改 (G-GATE-SCOP)
     路径: {file_path}
-    保护原因: 核心配置文件
 
-    请将修改写入 /brain/runtime/update_brain/pending/<批次名>/base/... 对应路径，
-    可多次修改，最后一次性提交给 brain-manager 合并发布。
+    /brain/** 只能通过发布流程写入，不是开发工作区。
 
-    参考：/brain/base/spec/core/lep.yaml (G-GATE-SCOP)
+    根据路径选择正确流程：
+
+    ▸ 修改 skill（.claude/skills/**）：
+      source 在 groups/brain/projects/base/skill/<name>/SKILL.md
+      发布：/brain-publish skill → /brain-publish agents
+      参考：/brain/base/spec/policies/deployment/base_publish.yaml
+
+    ▸ 修改 brain/base 其他内容（spec/hooks/workflow 等）：
+      走 pending 流程：
+      1. 创建 /xkagent_infra/runtime/update_brain/pending/<YYYYMMDD_描述>/base/
+      2. 按 groups/brain/projects/base/ 目录结构放置文件 + 编写 CHANGELOG.md
+      3. 提交 PMO 审批，由 brain-manager 合并到 source 再 publish
+      参考：/brain/base/spec/policies/deployment/pending_workflow.yaml
 bindings:
   hooks:
     stage: pre_tool_use

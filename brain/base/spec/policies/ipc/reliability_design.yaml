@@ -90,14 +90,14 @@ implementation_details:
   completed_date: 2026-02-06
   implementer: agent-system_devops
   files_created:
-    - /brain/runtime/engine/src/timer/ipc_reliability.py
-    - /brain/runtime/engine/src/timer/test_reliability.py
+    - /brain/infrastructure/service/brain_timer/current/src/timer/ipc_reliability.py
+    - /brain/infrastructure/service/brain_timer/current/src/timer/test_reliability.py
   files_modified:
-    - /brain/runtime/engine/src/timer/daemon_client.py
-    - /brain/runtime/engine/src/timer/service_timer.py
+    - /brain/infrastructure/service/brain_timer/current/src/timer/daemon_client.py
+    - /brain/infrastructure/service/brain_timer/current/src/timer/service_timer.py
   storage:
     type: SQLite
-    path: /brain/runtime/data/ipc_state.db
+    path: /xkagent_infra/runtime/data/ipc_state.db
   features:
     - MessageStateStore class with SQLite backend
     - States: sent, acked, timeout, retried, failed

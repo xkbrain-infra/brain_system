@@ -11,13 +11,14 @@ owner: brain_system
 # 设计哲学
 # ============================================================
 philosophy: |
-  配置管理采用"源 + 运行时"双层架构：
+  配置管理采用"源索引 + secrets payload + 运行时渲染物"三段式架构：
 
-  - 源配置层 (/brain/secrets/)：持久化、版本控制、人工维护
-  - 运行时层 (/brain/runtime/config/)：启动时生成、会话级、自动合并
+  - 源索引层 (/brain/infrastructure/config/runtime_env/)：持久化、版本控制、定义加载范围
+  - secrets payload 层 (/brain/secrets/)：存放真实凭据与敏感文件
+  - 运行时渲染层 (/xkagent_infra/runtime/config/)：启动时生成、会话级、自动合并
 
-  启动时从源配置加载并合并到运行时配置，运行时配置可以被删除重建。
-  这种设计实现了配置的可追溯性、安全性和灵活性。
+  启动时由 loader 读取源索引，按索引从 secrets payload 取值并渲染到 runtime/config。
+  runtime/config 可以被删除重建；source registry 与 secrets 才是持久化来源。
 
 references:
   - /brain/base/spec/policies/secrets_management.yaml  # Secrets 安全规范
@@ -41,21 +42,21 @@ architecture:
       - 启动时执行
 
   source_layer:
-    path: /brain/secrets/
-    role: 持久化配置源
+    path: /brain/infrastructure/config/runtime_env/
+    role: 持久化配置源索引
     characteristics:
       - 人工维护和更新
-      - 严格权限控制（600/700）
-      - 版本控制（git 管理 index.yaml，实际密钥文件被 .gitignore）
-      - 按业务/服务分类存储
-      - 备份恢复的唯一源
+      - 版本控制（git tracked）
+      - 定义加载分类、文件、env vars、优先级
+      - 不直接保存真实密钥值
+      - secrets payload 存放于 /brain/secrets/
 
   runtime_layer:
-    path: /brain/runtime/
+    path: /xkagent_infra/runtime/
     role: 运行时临时数据层（类似 /tmp，重启后清空）
     subdirs:
       config/:
-        description: "合并后的环境变量配置"
+        description: "合并后的环境变量渲染物"
         lifecycle: "启动时生成，重启后清空"
       logs/:
         description: "运行时日志"
@@ -75,15 +76,15 @@ architecture:
 # 源配置层：/brain/secrets/
 # ============================================================
 source_layer_structure:
-  root: /brain/secrets/
+  root: /brain/infrastructure/config/runtime_env/
 
   required_files:
     - name: index.yaml
       description: Secrets 索引，记录所有配置分类和用途
       permissions: "644"
       template: |
-        # Brain Global Secrets Index
-        id: SECRETS-GLOBAL
+        # Runtime Env Source Registry
+        id: RUNTIME-ENV-SOURCE
         version: "1.0"
         last_updated: "YYYY-MM-DD"
 
@@ -157,9 +158,9 @@ source_layer_structure:
       description: 使用说明和安全警告
       permissions: "644"
       template: |
-        # Brain Global Secrets
+        # Runtime Env Source Registry
 
-        **⚠️ 安全警告**：此目录包含敏感配置，请勿提交实际密钥到 git。
+        此目录只存放配置源索引，不存放真实密钥。
 
         ## 目录结构
 
@@ -167,14 +168,14 @@ source_layer_structure:
 
         ## 添加新配置
 
-        1. 在对应分类目录下添加文件
-        2. 设置正确权限（`chmod 600` for keys, `chmod 644` for configs）
-        3. 更新 `index.yaml` 添加索引
+        1. 更新 `index.yaml` 添加索引
+        2. 在 `/brain/secrets/` 对应路径下添加真实文件
+        3. 设置正确权限（`chmod 600` for keys, `chmod 644` for configs）
         4. 重启系统或运行配置加载器：`/brain/infrastructure/launch/loader_env_vars.py`
 
         ## 配置加载
 
-        系统启动时自动从此目录加载配置到 `/brain/runtime/config/`
+        系统启动时自动读取此索引，并从 `/brain/secrets/` 渲染配置到 `/xkagent_infra/runtime/config/`
 
   subdirectories:
     pattern: ./{category}/
@@ -226,10 +227,10 @@ source_layer_structure:
         - "api_credentials.txt"
 
 # ============================================================
-# 运行时配置层：/brain/runtime/config/
+# 运行时配置渲染层：/xkagent_infra/runtime/config/
 # ============================================================
 runtime_layer_structure:
-  root: /brain/runtime/config/
+  root: /xkagent_infra/runtime/config/
 
   files:
     global_env:
@@ -237,7 +238,8 @@ runtime_layer_structure:
       description: 合并后的全局环境变量（从所有 secrets 加载）
       format: |
         # Auto-generated at: 2026-02-13 10:30:45 UTC
-        # Source: /brain/secrets/
+        # Source index: /brain/infrastructure/config/runtime_env/index.yaml
+        # Secret payload root: /brain/secrets/
         # DO NOT EDIT MANUALLY - will be overwritten on restart
 
         # === Telegram ===
@@ -310,12 +312,12 @@ initialization:
   loading_process:
     step1:
       name: "读取源配置索引"
-      action: "解析 /brain/secrets/index.yaml"
+      action: "解析 /brain/infrastructure/config/runtime_env/index.yaml"
       output: "配置分类列表"
 
     step2:
       name: "扫描所有 .env 文件"
-      action: "遍历每个分类目录，读取 *.env 文件"
+      action: "按 source index 遍历 /brain/secrets/ 下的 payload 文件，读取 *.env 文件"
       validation:
         - "检查文件权限（600/644）"
         - "验证环境变量格式"
@@ -334,7 +336,7 @@ initialization:
 
     step4:
       name: "生成运行时配置"
-      action: "写入 /brain/runtime/config/"
+      action: "写入 /xkagent_infra/runtime/config/"
       outputs:
         - .env               # 全局环境变量
         - sources.yaml       # 来源追溯
@@ -351,7 +353,7 @@ initialization:
 
     step6:
       name: "记录审计日志"
-      action: "写入 /brain/runtime/logs/config_audit.jsonl"
+      action: "写入 /xkagent_infra/runtime/logs/config_audit.jsonl"
       format: |
         {
           "timestamp": "2026-02-13T10:30:45Z",
@@ -392,7 +394,7 @@ security:
       json_configs: "600"     # .json（如果包含密钥）
       index_yaml: "644"       # 索引可读
 
-    /brain/runtime/config/:
+    /xkagent_infra/runtime/config/:
       directory: "755"        # 所有人可读
       env_files: "644"        # agents 需要读取
 
@@ -409,18 +411,18 @@ security:
         - "*.json"
         - "*.secret"
 
-    /brain/runtime/config/:
+    /xkagent_infra/runtime/config/:
       policy: "整个目录不提交到 git"
       reason: "运行时生成，可重建"
 
   access_control:
     read_access:
       /brain/secrets/: "仅系统管理员和配置加载器"
-      /brain/runtime/config/: "所有 agents 可读"
+      /xkagent_infra/runtime/config/: "所有 agents 可读"
 
     write_access:
       /brain/secrets/: "仅系统管理员"
-      /brain/runtime/config/: "仅配置加载器"
+      /xkagent_infra/runtime/config/: "仅配置加载器"
 
   logging:
     rules:
@@ -454,9 +456,9 @@ usage_guide:
     steps:
       - "在 /brain/secrets/{category}/ 下创建文件"
       - "设置正确权限：chmod 600 {file}"
-      - "更新 /brain/secrets/index.yaml 添加索引"
+      - "更新 /brain/infrastructure/config/runtime_env/index.yaml 添加索引"
       - "重新加载配置：/brain/infrastructure/launch/loader_env_vars.py --reload"
-      - "验证：cat /brain/runtime/config/.env | grep {VAR_NAME}"
+      - "验证：cat /xkagent_infra/runtime/config/.env | grep {VAR_NAME}"
 
   update_existing_secret:
     steps:
@@ -467,16 +469,17 @@ usage_guide:
   delete_secret:
     steps:
       - "从 /brain/secrets/{category}/ 删除文件"
-      - "更新 /brain/secrets/index.yaml 移除索引"
+      - "更新 /brain/infrastructure/config/runtime_env/index.yaml 移除索引"
       - "重新加载配置：/brain/infrastructure/launch/loader_env_vars.py --reload"
       - "验证环境变量已移除"
 
   debug_config:
     commands:
-      check_sources: "cat /brain/runtime/config/sources.yaml"
-      check_loaded_time: "cat /brain/runtime/config/loaded_at.txt"
-      check_env: "cat /brain/runtime/config/.env"
-      check_audit: "tail /brain/runtime/logs/config_audit.jsonl"
+      check_registry: "cat /brain/infrastructure/config/runtime_env/index.yaml"
+      check_sources: "cat /xkagent_infra/runtime/config/sources.yaml"
+      check_loaded_time: "cat /xkagent_infra/runtime/config/loaded_at.txt"
+      check_env: "cat /xkagent_infra/runtime/config/.env"
+      check_audit: "tail /xkagent_infra/runtime/logs/config_audit.jsonl"
 
 # ============================================================
 # 与现有系统集成
@@ -491,7 +494,7 @@ integration:
           subprocess.run(["/brain/infrastructure/launch/loader_env_vars.py", "--reload"])
 
           # 2. 加载运行时环境变量
-          load_dotenv("/brain/runtime/config/.env")
+          load_dotenv("/xkagent_infra/runtime/config/.env")
 
           # 3. 启动 agents
           ...
@@ -509,7 +512,7 @@ integration:
       use_runtime_env: |
         # 使用运行时配置
         docker run -d \
-          --env-file /brain/runtime/config/.env \
+          --env-file /xkagent_infra/runtime/config/.env \
           my-service
 
   with_agents:
@@ -519,7 +522,7 @@ integration:
       from dotenv import load_dotenv
 
       # Agent 启动时加载
-      load_dotenv("/brain/runtime/config/.env")
+      load_dotenv("/xkagent_infra/runtime/config/.env")
 
       # 使用环境变量
       bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -545,9 +548,9 @@ migration:
              /xkagent_infra/brain/secrets/telegram/bot_token.env
 
       3:
-        action: "创建 index.yaml"
+        action: "创建 runtime_env source registry"
         command: |
-          vim /brain/secrets/index.yaml  # 按模板填写
+          vim /brain/infrastructure/config/runtime_env/index.yaml  # 按模板填写
 
       4:
         action: "首次加载配置"
@@ -557,8 +560,8 @@ migration:
       5:
         action: "验证运行时配置"
         command: |
-          cat /brain/runtime/config/.env
-          cat /brain/runtime/config/sources.yaml
+          cat /xkagent_infra/runtime/config/.env
+          cat /xkagent_infra/runtime/config/sources.yaml
 
       6:
         action: "更新 agentctl 集成加载逻辑"
@@ -584,7 +587,7 @@ monitoring:
       check: "最后备份时间 < 7 天"
 
   audit_logging:
-    location: /brain/runtime/logs/config_audit.jsonl
+    location: /xkagent_infra/runtime/logs/config_audit.jsonl
     retention: "90 天"
     events:
       - config_loaded
@@ -600,10 +603,10 @@ faq:
   q1:
     question: "为什么不直接用 /brain/secrets/ 作为运行时配置？"
     answer: |
-      1. 安全性：secrets 应该 700 权限，但 agents 需要读取配置
-      2. 灵活性：运行时可以合并多个源、按服务拆分
-      3. 可追溯性：记录配置来源和加载时间
-      4. 解耦：源配置和运行时配置生命周期独立
+      1. 安全性：真实 secrets 应保留在 /brain/secrets/，不直接暴露给所有 agents
+      2. 可维护性：source registry 需要 git tracked，适合放在 infrastructure/config
+      3. 灵活性：运行时可以按索引合并多个源、按服务拆分
+      4. 解耦：配置源索引、secret payload、运行时渲染物生命周期独立
 
   q2:
     question: "配置更新后需要重启所有服务吗？"
@@ -614,7 +617,7 @@ faq:
       - 建议：配置更新后重启受影响的服务
 
   q3:
-    question: "/brain/runtime/config/ 被删除怎么办？"
+    question: "/xkagent_infra/runtime/config/ 被删除怎么办？"
     answer: |
       没关系，重新运行加载器即可：
       /brain/infrastructure/launch/loader_env_vars.py --reload
@@ -632,14 +635,14 @@ faq:
     answer: |
       方案 1：在 /brain/secrets/agents/{agent_name}.env 定义
       方案 2：在 Agent 的 CLAUDE.md 中引用特定环境变量
-      方案 3：生成独立的 /brain/runtime/config/{agent_name}.env
+      方案 3：生成独立的 /xkagent_infra/runtime/config/{agent_name}.env
 
 # ============================================================
 # 实施检查清单
 # ============================================================
 implementation_checklist:
   - "[ ] 创建 /brain/secrets/ 目录结构"
-  - "[ ] 创建 /brain/secrets/index.yaml"
+  - "[ ] 创建 /brain/infrastructure/config/runtime_env/index.yaml"
   - "[ ] 创建 /brain/secrets/.gitignore"
   - "[ ] 创建 /brain/secrets/README.md"
   - "[ ] 设置目录权限：chmod 700 /brain/secrets"

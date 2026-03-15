@@ -34,6 +34,7 @@ schema:
           mcp_config: string
       - mcp_servers           # 额外 MCP servers 配置
       - hooks                 # Hook 配置 list[string] 或 omit (使用默认)
+      - note                  # 说明信息（如外部 skill 绑定由 skill_bindings.yaml 提供）
       - gateway_bindings      # 绑定的 gateway 列表 list[string]
       - required              # 是否必须运行 (默认: false)
       - desired_state         # running | stopped (默认: running)
@@ -97,6 +98,22 @@ gateway_routing:
   desired_state_values: [running, stopped]
   status_values: [active, inactive]
   scope_values: [group, project]
+
+separation_of_concerns:
+  skill_binding:
+    rule: "全局 skill 绑定不放在 agents_registry.yaml 中。"
+    location: "/brain/infrastructure/config/agentctl/skill_bindings.yaml"
+    reason:
+      - "agents_registry.yaml 聚焦运行时注册信息"
+      - "skill 绑定策略需要独立演进"
+      - "避免 agent 注册表与能力编排策略耦合"
+  lep_binding:
+    rule: "全局 LEP profile 绑定不放在 agents_registry.yaml 中。"
+    location: "/brain/infrastructure/config/agentctl/lep_bindings.yaml"
+    reason:
+      - "agents_registry.yaml 聚焦运行时注册信息"
+      - "LEP enforcement 分层需要独立演进"
+      - "避免 agent 注册表与 LEP 编排策略耦合"
 
 # Group 类型定义
 group_types:
@@ -257,11 +274,11 @@ examples:
     description: "Agent Brain 专用 devops Agent"
     scope: group
     group: brain_system
-    path: "/xkagent_infra/groups/brain/agents/agent-system_devops"
+    path: "/xkagent_infra/brain/agents/agent-system_devops"
     agent_type: claude
     model: Sonnet
     tmux_session: "agent-system_devops"
-    cwd: "/xkagent_infra/groups/brain/agents/agent-system_devops"
+    cwd: "/xkagent_infra/brain/agents/agent-system_devops"
     cli_args:
       - "--dangerously-skip-permissions"
     env:

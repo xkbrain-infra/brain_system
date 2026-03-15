@@ -59,7 +59,7 @@ enforcement:
     参考文档:
     - /xkagent_infra/brain/base/workflow/operations/project_initiation.yaml
     - /xkagent_infra/brain/base/workflow/project_delivery/models/group_project_layout.yaml
-    - /xkagent_infra/brain/base/workflow/project_delivery/workflow/intake.yaml
+    - /xkagent_infra/brain/base/workflow/project_delivery/intake.yaml
 
     来源: /xkagent_infra/brain/base/spec/core/lep.yaml (G-SPEC-LOCATION)
 

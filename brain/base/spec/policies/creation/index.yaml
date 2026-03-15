@@ -216,7 +216,7 @@ path_conventions:
     typical_location: "/app/domain/{project_name}"
     exceptions:
       - "/brain/infrastructure/..."  # Brain 基础设施
-      - "/brain/runtime/..."          # Brain 运行时
+      - "/xkagent_infra/runtime/..."          # Brain 运行时
 
 # ============================================
 # 快速开始

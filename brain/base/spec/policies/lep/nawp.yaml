@@ -19,8 +19,8 @@ enforcement:
 
   exceptions:
     - "/brain/**/memory/**"
-    - "/brain/runtime/tmp/**"
-    - "/brain/runtime/logs/**"
+    - "/xkagent_infra/runtime/tmp/**"
+    - "/xkagent_infra/runtime/logs/**"
 
   config:
     check_plan_file: true

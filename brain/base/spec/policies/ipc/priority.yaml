@@ -237,7 +237,7 @@ implementation:
   date: "2026-02-04"
 
   code_changes:
-    - file: "/brain/runtime/engine/src/mcp/brain_ipc_mcp_server.py"
+    - file: "/brain/bin/mcp/mcp-brain_ipc_c"
       change: "ipc_send tool 添加 priority 和 priority_reason 参数"
 
   how_it_works: |

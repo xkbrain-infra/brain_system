@@ -10,7 +10,7 @@ rule: |
     - 适用于：已在 git 仓库中的源码、配置、spec 文件
 
   策略 B — 非 Git 管理的文件（运行时文件、外部配置等）：
-    - 先 cp 原文件到副本（/brain/runtime/tmp/drafts/ 或同目录 .bak）
+    - 先 cp 原文件到副本（/xkagent_infra/runtime/tmp/drafts/ 或同目录 .bak）
     - 在副本上修改完成
     - 经用户同意后替换原文件
     - 适用于：runtime 配置、部署文件、外部系统配置
@@ -20,8 +20,8 @@ scope: "**"
 
 exception:
   - /brain/**/memory/**
-  - /brain/runtime/tmp/**
-  - /brain/runtime/logs/**
+  - /xkagent_infra/runtime/tmp/**
+  - /xkagent_infra/runtime/logs/**
   - "**/node_modules/**"
   - "**/__pycache__/**"
   - "**/.git/**"
@@ -39,7 +39,7 @@ enforcement:
       check: "git ls-files --error-unmatch {file_path} 2>/dev/null"
       action: "确认 git status clean 或先 commit"
     non_git:
-      action: "cp {file_path} /brain/runtime/tmp/drafts/{basename}.bak"
+      action: "cp {file_path} /xkagent_infra/runtime/tmp/drafts/{basename}.bak"
 
   block_message: |
     🚫 修改文件需要回滚能力 (G-ROLLBACK-READY)
@@ -54,7 +54,7 @@ enforcement:
     3. 需要回滚时: git checkout -- {file_path}
 
     ✅ 策略 B（非 Git 文件）：
-    1. 复制: cp {file_path} /brain/runtime/tmp/drafts/{basename}.bak
+    1. 复制: cp {file_path} /xkagent_infra/runtime/tmp/drafts/{basename}.bak
     2. 修改副本，展示 diff 给用户
     3. 用户确认后替换原文件
 

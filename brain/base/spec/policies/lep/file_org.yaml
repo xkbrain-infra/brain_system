@@ -51,6 +51,8 @@ mandatory_rules:
     - 必须包含 base_dir（runtime/, groups/, base/）
     - 禁止直接在 /brain/ 顶层创建文件
     - 禁止直接在项目根目录创建文件
+    - 禁止把 live DB、offset、log 等运行态文件写入 /xkagent_infra/brain/infrastructure/data/ 或 /xkagent_infra/brain/infrastructure/logs/
+    - 历史归档与迁移快照统一进入 /xkagent_infra/brain/backup/
     - 路径深度建议 ≤ 5 层，最多不超过 10 层
   命名约定:
     - 目录名使用 snake_case（小写+下划线）
@@ -59,7 +61,7 @@ mandatory_rules:
     - 必须包含适当的文件扩展名
 
 exceptions:
-  - /brain/runtime/tmp/**
+  - /xkagent_infra/runtime/tmp/**
   - /brain/**/memory/**
   - /brain/.claude/**
   - /brain/.git/**
@@ -80,6 +82,13 @@ enforcement:
     no_project_root_files:
       pattern: "^/brain/groups/[^/]+/[^/]+/[^/]+\\.(txt|md|yaml|json|py)$"
       message: "禁止在项目根目录创建文件"
+    no_retired_infra_runtime_roots:
+      patterns:
+        - "/brain/infrastructure/data/**"
+        - "/brain/infrastructure/logs/**"
+        - "/xkagent_infra/brain/infrastructure/data/**"
+        - "/xkagent_infra/brain/infrastructure/logs/**"
+      message: "infrastructure/data 和 infrastructure/logs 已退役；live state 请改用 /xkagent_infra/runtime/{data,logs}/，历史归档请改用 /xkagent_infra/brain/backup/"
     no_meaningless_names:
       patterns:
         - "**/misc/**"
@@ -107,6 +116,8 @@ enforcement:
     2. 避免：
        - 顶层文件（/brain/file.txt）
        - 项目根目录文件（groups/org/xxx/file.pdf）
+       - retired runtime 根（brain/infrastructure/data/, brain/infrastructure/logs/）
+       - 把历史归档继续塞进 runtime/（应改放 brain/backup/）
        - 无意义命名（misc/, temp/, other/）
        - 过深路径（> 10 层）
 

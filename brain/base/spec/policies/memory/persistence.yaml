@@ -1,7 +1,7 @@
 # Memory Persistence Policy
 # Agent 会话记录持久化规范
 #
-# 核心原则：所有运行时产生的记录统一写入 /brain/runtime/memory/
+# 核心原则：所有运行时产生的记录统一写入 /xkagent_infra/runtime/memory/
 
 id: POLICY-MEMORY-PERSISTENCE
 version: "1.1"
@@ -11,14 +11,14 @@ status: active
 # ============================================================
 # 存储根目录（强制）
 # ============================================================
-root_directory: /brain/runtime/memory
+root_directory: /xkagent_infra/runtime/memory
 enforcement: MANDATORY  # 所有 agent 无例外
 
 # ============================================================
 # 目录结构
 # ============================================================
 #
-# /brain/runtime/memory/
+# /xkagent_infra/runtime/memory/
 # ├── {date}/                          # 按日期一级分类（YYYY-MM-DD）
 # │   ├── {agent_name}/               # 按 agent 二级分类
 # │   │   ├── {session_id}.log        # 完整 stdout/stderr 捕获
@@ -93,7 +93,7 @@ capture:
       的所有可见输出实时写入 memory。agent 本身无需任何改动。
     implementation:
       on_session_start: |
-        MEMORY_DIR="/brain/runtime/memory/$(date -u +%Y-%m-%d)/${agent_name}"
+        MEMORY_DIR="/xkagent_infra/runtime/memory/$(date -u +%Y-%m-%d)/${agent_name}"
         mkdir -p "$MEMORY_DIR"
         SESSION_FILE="${MEMORY_DIR}/${tmux_session}_$(date -u +%H%M%S).log"
         tmux pipe-pane -t "${tmux_session}" -o "cat >> '${SESSION_FILE}'"
@@ -101,7 +101,7 @@ capture:
       on_date_change: |
         # agentctl orchestrator_tick 检测日期变更时执行
         tmux pipe-pane -t "${tmux_session}"  # 关闭旧 pipe
-        MEMORY_DIR="/brain/runtime/memory/$(date -u +%Y-%m-%d)/${agent_name}"
+        MEMORY_DIR="/xkagent_infra/runtime/memory/$(date -u +%Y-%m-%d)/${agent_name}"
         mkdir -p "$MEMORY_DIR"
         SESSION_FILE="${MEMORY_DIR}/${tmux_session}_continued.log"
         tmux pipe-pane -t "${tmux_session}" -o "cat >> '${SESSION_FILE}'"
@@ -115,11 +115,11 @@ capture:
   audit_log:
     method: audit_logger.py
     description: |
-      agentctl 的 AuditLogger 改为写入 /brain/runtime/memory/{date}/{agent}/audit.jsonl，
+      agentctl 的 AuditLogger 改为写入 /xkagent_infra/runtime/memory/{date}/{agent}/audit.jsonl，
       不再写入项目级目录。
     migration: |
       旧路径: /xkagent_infra/groups/brain/projects/agent_orchestrator/memory/audit/
-      新路径: /xkagent_infra/brain/runtime/memory/{date}/service-agentctl/audit.jsonl
+      新路径: /xkagent_infra/runtime/memory/{date}/service-agentctl/audit.jsonl
       迁移: 修改 audit_logger.py 的 default_sinks()
 
 # ============================================================
@@ -144,7 +144,7 @@ lifecycle:
         format: gzip
         description: 超过天数的 .log 文件压缩为 .log.gz
       symlink:
-        path: /brain/runtime/memory/latest
+        path: /xkagent_infra/runtime/memory/latest
         description: 指向当天日期目录，每日自动更新
 
   commands:
@@ -179,7 +179,7 @@ implementation:
   step_1:
     description: |
       修改 audit_logger.py default_sinks()，
-      将 project_path 改为 /brain/runtime/memory/{date}/service-agentctl/audit.jsonl
+      将 project_path 改为 /xkagent_infra/runtime/memory/{date}/service-agentctl/audit.jsonl
     files:
       - /brain/infrastructure/service/service-agentctl/services/audit_logger.py
 
@@ -191,10 +191,10 @@ implementation:
 
   step_3:
     description: |
-      创建 /brain/runtime/memory/ 根目录，
+      创建 /xkagent_infra/runtime/memory/ 根目录，
       创建 memory_retention.yaml 配置文件
     files:
-      - /brain/runtime/memory/
+      - /xkagent_infra/runtime/memory/
       - /brain/infrastructure/config/agentctl/memory_retention.yaml
 
   step_4:

@@ -3,10 +3,10 @@
 # 声明在 /brain/base/spec/core/lep.yaml，实现在此目录下
 
 meta:
-  total_gates: 33
+  total_gates: 34
   source_core: 26
-  source_enhanced: 6
-  last_updated: '2026-02-21'
+  source_enhanced: 7
+  last_updated: '2026-03-15'
 
 # Category 定义
 # SECURITY    - 系统安全与访问控制
@@ -216,6 +216,12 @@ gates:
     category: GOVERNANCE
     priority: HIGH
     file: memory_persist.yaml
+
+  - id: G-GATE-SVC-ENCAP
+    name: Service Source Encapsulation
+    category: SECURITY
+    priority: HIGH
+    file: svc_encap.yaml
 
 # Validators
 validators:

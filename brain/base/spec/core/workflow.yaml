@@ -48,9 +48,9 @@ task_documentation:
     - 任务完成后向 PMO 回报结论
 
 memory_persistence:
-  rule: 所有 Agent 的会话输出必须持久化到 /brain/runtime/memory/
+  rule: 所有 Agent 的会话输出必须持久化到 /xkagent_infra/runtime/memory/
   mechanism: agentctl 启动 agent 时自动配置 tmux pipe-pane
-  structure: /brain/runtime/memory/{date}/{agent_name}/
+  structure: /xkagent_infra/runtime/memory/{date}/{agent_name}/
   detail: policies/memory/persistence.yaml
   constraints:
     - Agent 自身无需处理，由 agentctl 强制保证

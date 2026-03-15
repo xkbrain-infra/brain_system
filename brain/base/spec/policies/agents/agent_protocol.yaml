@@ -22,7 +22,7 @@ execution_rules:
   dependencies: 上游依赖就绪才能开始任务
   tool_use: 使用完成任务所需的最小权限工具
   communication: 所有更新记录到共享日志
-  audited_execution: "所有 Bash 命令建议通过 /brain/runtime/engine/brain_exec 执行，以确保 G-AUDIT 双写审计（对不支持 hooks 的 agent 尤其重要）"
+  audited_execution: "所有 Bash 命令建议通过 infrastructure/service 层的统一入口执行并保留审计；tmux 相关优先使用 /brain/infrastructure/service/utils/tmux/bin/brain_tmux_api 或 brain_tmux_send"
 
 # 通信渠道
 channels:
@@ -60,13 +60,13 @@ tmux:
   commands:
     list: tmux list-sessions | grep codex
     new: tmux new-session -d -s {name} -c /brain "codex ..."
-    send: /brain/runtime/engine/bin//brain/infrastructure/service/utils/tmux/bin/brain_tmux_send -t {pane_or_session} "{message}"
-    rpc_call: /brain/runtime/engine/bin/brain_tmux_rpc call -t {pane} "{message}"
+    send: /brain/infrastructure/service/utils/tmux/bin/brain_tmux_send -t {pane_or_session} "{message}"
+    rpc_call: /brain/infrastructure/service/utils/tmux/bin/brain_tmux_api send -t {pane} "{message}"
     capture: tmux capture-pane -t {session} -p | tail -30
   messaging:
     claude_code_tui:
       - Claude Code 运行任务时消息会排队（出现 "Press up to edit queued messages" 即已投递）
-      - 推荐发送：/brain/runtime/engine/bin//brain/infrastructure/service/utils/tmux/bin/brain_tmux_send -t {pane} "{message}"（强制带 Enter，避免“只进输入框未发送”）
+      - 推荐发送：/brain/infrastructure/service/utils/tmux/bin/brain_tmux_send -t {pane} "{message}"（强制带 Enter，避免“只进输入框未发送”）
       - 用 capture-pane 确认对方已收到/已排队；非紧急不要 Esc 中断
     brpc_request_response:
       - 请求格式：brain_tmux_rpc 会发送一行 `BRPC {json}`（包含 id/from/to/body）
