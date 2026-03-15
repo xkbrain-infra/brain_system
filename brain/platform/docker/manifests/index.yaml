@@ -1,0 +1,100 @@
+# Brain Docker 项目规范
+# 规范 ID: BRAIN-DOCKER-001
+# 源码路径: /xkagent_infra/groups/brain/projects/brain-docker/
+# 运行时路径: /xkagent_infra/groups/brain/platform/docker/
+# 发布路径: /xkagent_infra/app/brain-docker/
+
+brain_docker:
+  group_id: brain
+  version: 1.0.0
+  status: active
+  created: "2026-03-15"
+  owner: brain
+
+  # ============================================================================
+  # 核心原则
+  # ============================================================================
+  principles:
+    - name: "三域架构分离"
+      description: |
+        Source / Runtime / Published 三域分离：
+        - Source: 源码开发和版本控制
+        - Runtime: 运行时数据和状态
+        - Published: 发布态，用于部署
+
+    - name: "与 Brain 基础镜像同步"
+      description: |
+        Docker 镜像必须基于当前 Brain 版本构建，
+        确保运行环境与生产环境一致。
+
+    - name: "单一职责"
+      description: |
+        本项目仅负责 Docker 基础设施，
+        不包含业务逻辑或 Agent 代码。
+
+  # ============================================================================
+  # 目录结构
+  # ============================================================================
+  roots:
+    # Source 域 (源码开发)
+    source:
+      root: "/xkagent_infra/groups/brain/projects/brain-docker"
+      src: "/xkagent_infra/groups/brain/projects/brain-docker/src"
+      configs: "/xkagent_infra/groups/brain/projects/brain-docker/configs"
+      scripts: "/xkagent_infra/groups/brain/projects/brain-docker/scripts"
+      spec: "/xkagent_infra/groups/brain/projects/brain-docker/spec"
+
+    # Runtime 域 (运行时数据)
+    runtime:
+      root: "/xkagent_infra/groups/brain/platform/docker"
+      data: "/xkagent_infra/groups/brain/platform/docker/data"
+      logs: "/xkagent_infra/groups/brain/platform/docker/logs"
+      builds: "/xkagent_infra/groups/brain/platform/docker/builds"
+
+    # Published 域 (发布态)
+    published:
+      root: "/xkagent_infra/app/brain-docker"
+      images: "/xkagent_infra/app/brain-docker/images"
+      manifests: "/xkagent_infra/app/brain-docker/manifests"
+
+  # ============================================================================
+  # 组件清单
+  # ============================================================================
+  components:
+    base_image:
+      name: "brain/docker-base"
+      dockerfile: "src/Dockerfile"
+      base: "ubuntu:24.04"
+      description: "Brain 基础设施基础镜像"
+
+    services:
+      - name: "ssh"
+        config: "configs/sshd_config"
+        port: 8622
+        description: "SSH 服务"
+
+      - name: "supervisor"
+        config: "configs/supervisord.conf"
+        description: "进程管理"
+
+  # ============================================================================
+  # 构建配置
+  # ============================================================================
+  build:
+    default_tag: "latest"
+    registry_prefix: "brain"
+    scripts:
+      build: "scripts/build.sh"
+      start: "scripts/start.sh"
+      stop: "scripts/stop.sh"
+
+  # ============================================================================
+  # 依赖
+  # ============================================================================
+  dependencies:
+    external:
+      - "docker:24.0+"
+      - "docker-compose:2.0+"
+    internal: []
+
+  note: "Brain Docker 基础设施三域架构规范"

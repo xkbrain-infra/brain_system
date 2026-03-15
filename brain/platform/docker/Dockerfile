@@ -36,24 +36,19 @@ RUN apt-get update \
         vim \
         wget \
         zsh \
-    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/*
 
 RUN ln -sf "$(which fdfind)" /usr/local/bin/fd \
     && ln -sf "$(which batcat)" /usr/local/bin/bat
 
-ARG UV_VERSION=0.10.6
-ARG CLAUDE_CODE_VERSION=2.1.63
-ARG GEMINI_CLI_VERSION=0.29.4
-ARG CODEX_CLI_VERSION=0.106.0
-ARG GITHUB_COPILOT_VERSION=0.0.411
-
+# AI CLI 工具 - 使用 latest 版本
 RUN npm install -g \
-    "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \
-    "@google/gemini-cli@${GEMINI_CLI_VERSION}" \
-    "@openai/codex@${CODEX_CLI_VERSION}" \
-    "@github/copilot@${GITHUB_COPILOT_VERSION}"
+    @anthropic-ai/claude-code \
+    @google/gemini-cli \
+    @openai/codex \
+    @github/copilot
 
 RUN mkdir -p /run/sshd /var/log/supervisor \
     && echo "root:aigroup" | chpasswd \
@@ -65,7 +60,7 @@ COPY requirements.lock.txt /tmp/requirements.lock.txt
 RUN python3 -m venv /opt/venv \
     && /opt/venv/bin/pip install --no-cache-dir --upgrade pip \
     && /opt/venv/bin/pip install --no-cache-dir -r /tmp/requirements.lock.txt \
-    && /opt/venv/bin/pip install --no-cache-dir "uv==${UV_VERSION}" \
+    && /opt/venv/bin/pip install --no-cache-dir uv \
     && rm /tmp/requirements.lock.txt
 
 ENV PATH="/opt/venv/bin:$PATH"

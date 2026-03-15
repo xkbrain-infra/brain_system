@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 环境变量配置加载器
-从 /brain/secrets/ 加载配置并生成运行时环境变量到 /brain/runtime/config/
+从 infrastructure/config 的配置源索引解析来源，并生成运行时环境变量到 /xkagent_infra/runtime/config/
 
 用法:
     loader_env_vars.py --reload        # 重新加载所有配置
@@ -24,10 +24,12 @@ from collections import defaultdict
 # 路径定义
 # ============================================================
 SECRETS_ROOT = Path("/brain/secrets")
-RUNTIME_CONFIG_ROOT = Path("/brain/runtime/config")
-RUNTIME_LOGS = Path("/brain/runtime/logs")
+INFRA_CONFIG_ROOT = Path("/brain/infrastructure/config")
+RUNTIME_ENV_SOURCE_ROOT = INFRA_CONFIG_ROOT / "runtime_env"
+RUNTIME_CONFIG_ROOT = Path("/xkagent_infra/runtime/config")
+RUNTIME_LOGS = Path("/xkagent_infra/runtime/logs")
 
-SECRETS_INDEX = SECRETS_ROOT / "index.yaml"
+PRIMARY_SOURCE_INDEX = RUNTIME_ENV_SOURCE_ROOT / "index.yaml"
 RUNTIME_ENV_FILE = RUNTIME_CONFIG_ROOT / ".env"
 RUNTIME_SOURCES = RUNTIME_CONFIG_ROOT / "sources.yaml"
 RUNTIME_TIMESTAMP = RUNTIME_CONFIG_ROOT / "loaded_at.txt"
@@ -44,6 +46,7 @@ class EnvVarsLoader:
         self.sources: Dict[str, dict] = {}
         self.errors: List[str] = []
         self.conflicts: List[dict] = []
+        self.source_index_path: Path | None = None
 
     def log(self, message: str):
         """打印日志（如果非静默模式）"""
@@ -55,19 +58,20 @@ class EnvVarsLoader:
         self.errors.append(message)
         print(f"[ERROR] {message}", file=sys.stderr)
 
-    def load_secrets_index(self) -> dict:
-        """读取 secrets 索引文件"""
-        if not SECRETS_INDEX.exists():
-            self.error(f"Secrets index not found: {SECRETS_INDEX}")
+    def load_source_index(self) -> dict:
+        """读取配置源索引，仅接受 infrastructure/config/runtime_env/index.yaml"""
+        if not PRIMARY_SOURCE_INDEX.exists():
+            self.error(f"Config source index not found: {PRIMARY_SOURCE_INDEX}")
             return {}
 
         try:
-            with open(SECRETS_INDEX, 'r') as f:
+            with open(PRIMARY_SOURCE_INDEX, 'r') as f:
                 index = yaml.safe_load(f)
-                self.log(f"Loaded secrets index: {SECRETS_INDEX}")
+                self.source_index_path = PRIMARY_SOURCE_INDEX
+                self.log(f"Loaded config source index: {PRIMARY_SOURCE_INDEX}")
                 return index or {}
         except Exception as e:
-            self.error(f"Failed to load secrets index: {e}")
+            self.error(f"Failed to load source index {PRIMARY_SOURCE_INDEX}: {e}")
             return {}
 
     def parse_env_file(self, env_file: Path) -> Dict[str, str]:
@@ -167,10 +171,10 @@ class EnvVarsLoader:
 
     def load_all_env_vars(self):
         """加载所有环境变量"""
-        index = self.load_secrets_index()
+        index = self.load_source_index()
 
         if not index:
-            self.error("No secrets index found, cannot load configuration")
+            self.error("No config source index found, cannot load configuration")
             return
 
         categories = index.get('categories', {})
@@ -226,7 +230,8 @@ class EnvVarsLoader:
         try:
             with open(RUNTIME_ENV_FILE, 'w') as f:
                 f.write(f"# Auto-generated at: {timestamp}\n")
-                f.write(f"# Source: {SECRETS_ROOT}\n")
+                f.write(f"# Source index: {self.source_index_path or PRIMARY_SOURCE_INDEX}\n")
+                f.write(f"# Secret payload root: {SECRETS_ROOT}\n")
                 f.write("# DO NOT EDIT MANUALLY - will be overwritten on restart\n\n")
 
                 # 按分类分组写入
@@ -274,6 +279,7 @@ class EnvVarsLoader:
         audit_entry = {
             'timestamp': datetime.now(timezone.utc).isoformat(),
             'event': 'config_loaded',
+            'source_index': str(self.source_index_path or PRIMARY_SOURCE_INDEX),
             'sources_count': len(set(s['source'] for s in self.sources.values())),
             'env_vars_count': len(self.env_vars),
             'conflicts': self.conflicts,
@@ -343,7 +349,10 @@ class EnvVarsLoader:
 # ============================================================
 def main():
     parser = argparse.ArgumentParser(
-        description="环境变量配置加载器 - 从 /brain/secrets/ 加载到 /brain/runtime/config/"
+        description=(
+            "环境变量配置加载器 - 从 /brain/infrastructure/config/runtime_env/index.yaml "
+            "解析配置源并渲染到 /xkagent_infra/runtime/config/"
+        )
     )
     parser.add_argument(
         '--reload',

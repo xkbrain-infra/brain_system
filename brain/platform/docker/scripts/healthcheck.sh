@@ -31,7 +31,7 @@ check_init() {
   require_dir /xkagent_infra/brain
   require_dir /xkagent_infra/groups
   require_dir /xkagent_infra/brain/infrastructure/config/agentctl
-  require_dir /xkagent_infra/brain/runtime
+  require_dir /xkagent_infra/runtime
   require_path /xkagent_infra/brain/infrastructure/service/brain_ipc/bin/current/brain_ipc
   require_path /xkagent_infra/brain/infrastructure/service/agentctl/bin/brain-agentctl
   require_path /etc/supervisor/conf.d/supervisord.conf

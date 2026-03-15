@@ -3,6 +3,9 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ENV_FILE="${ROOT_DIR}/.env"
+CLI_INFRA_ROOT_HOST_PATH="${INFRA_ROOT_HOST_PATH-}"
+CLI_SSH_PORT="${SSH_PORT-}"
+CLI_DOCKER_DATA_ROOT_PATH="${DOCKER_DATA_ROOT_PATH-}"
 
 if [[ -f "$ENV_FILE" ]]; then
   # shellcheck source=/dev/null
@@ -12,6 +15,16 @@ fi
 : "${INFRA_ROOT_HOST_PATH:=/services/xkagent_infra}"
 : "${SSH_PORT:=8622}"
 : "${DOCKER_DATA_ROOT_PATH:=./docker-data/root}"
+
+if [[ -n "${CLI_INFRA_ROOT_HOST_PATH}" ]]; then
+  INFRA_ROOT_HOST_PATH="${CLI_INFRA_ROOT_HOST_PATH}"
+fi
+if [[ -n "${CLI_SSH_PORT}" ]]; then
+  SSH_PORT="${CLI_SSH_PORT}"
+fi
+if [[ -n "${CLI_DOCKER_DATA_ROOT_PATH}" ]]; then
+  DOCKER_DATA_ROOT_PATH="${CLI_DOCKER_DATA_ROOT_PATH}"
+fi
 
 if [[ "$DOCKER_DATA_ROOT_PATH" = /* ]]; then
   DOCKER_DATA_ROOT_ABS="$DOCKER_DATA_ROOT_PATH"
@@ -39,7 +52,7 @@ for d in \
   "$INFRA_ROOT_HOST_PATH/groups" \
   "$INFRA_ROOT_HOST_PATH/tmp" \
   "$INFRA_ROOT_HOST_PATH/brain/platform" \
-  "$INFRA_ROOT_HOST_PATH/brain/runtime" \
+  "$INFRA_ROOT_HOST_PATH/runtime" \
   "$INFRA_ROOT_HOST_PATH/brain/secrets" \
   "$INFRA_ROOT_HOST_PATH/brain/infrastructure/config/agentctl"; do
   if [[ ! -d "$d" ]]; then
@@ -48,21 +61,19 @@ for d in \
   fi
 done
 
-INPUTS_ROOT="$INFRA_ROOT_HOST_PATH/brain/inputs"
-for d in \
-  "$INPUTS_ROOT" \
-  "$INPUTS_ROOT/reference" \
-  "$INPUTS_ROOT/requirement" \
-  "$INPUTS_ROOT/tasks" \
-  "$INPUTS_ROOT/description"; do
-  if [[ ! -d "$d" ]]; then
-    echo "[ERROR] missing inputs layer dir: $d" >&2
-    exit 1
-  fi
-done
-
 if [[ ! -d "$DOCKER_DATA_ROOT_ABS" ]]; then
   echo "[ERROR] missing dir: $DOCKER_DATA_ROOT_ABS" >&2
+  exit 1
+fi
+
+RUNTIME_GUARD="$INFRA_ROOT_HOST_PATH/brain/bin/runtime_path_guard"
+if [[ ! -x "$RUNTIME_GUARD" ]]; then
+  echo "[ERROR] missing executable: $RUNTIME_GUARD" >&2
+  exit 1
+fi
+
+if ! "$RUNTIME_GUARD" --root "$INFRA_ROOT_HOST_PATH" --check-filesystem; then
+  echo "[ERROR] runtime path guard failed" >&2
   exit 1
 fi
 

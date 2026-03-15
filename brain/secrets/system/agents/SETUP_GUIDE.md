@@ -34,6 +34,10 @@ MINIMAX_MODEL=abab5.5-chat
 ### 3. 加载配置
 
 ```bash
+# 配置源索引
+cat /brain/infrastructure/config/runtime_env/index.yaml
+
+# 渲染运行时环境变量
 /brain/infrastructure/launch/loader_env_vars.py --reload
 ```
 
@@ -41,10 +45,10 @@ MINIMAX_MODEL=abab5.5-chat
 
 ```bash
 # 检查运行时配置
-grep -E 'KIMI|MINIMAX' /brain/runtime/config/.env
+grep -E 'KIMI|MINIMAX' /xkagent_infra/runtime/config/.env
 
 # 查看配置来源
-cat /brain/runtime/config/sources.yaml | grep -A 5 agents
+cat /xkagent_infra/runtime/config/sources.yaml | grep -A 5 agents
 ```
 
 ## 支持的 LLM 服务商
@@ -206,7 +210,7 @@ vim /brain/secrets/system/agents/llm_tokens.env
 
 检查加载日志：
 ```bash
-tail -20 /brain/runtime/logs/config_audit.jsonl | jq .
+tail -20 /xkagent_infra/runtime/logs/config_audit.jsonl | jq .
 ```
 
 ### 权限错误
@@ -245,5 +249,5 @@ curl -X POST https://api.minimax.chat/v1/text/chatcompletion_v2 \
 ## 参考文档
 
 - 全局 Secrets 管理: `/brain/secrets/README.md`
-- 配置索引: `/brain/secrets/index.yaml`
+- 配置源索引: `/brain/infrastructure/config/runtime_env/index.yaml`
 - 配置管理规范: `/brain/base/spec/policies/config_management.yaml`

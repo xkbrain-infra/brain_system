@@ -6,7 +6,7 @@
 
 ```
 /brain/secrets/
-├── index.yaml              # 配置索引（git tracked）
+├── index.yaml              # 历史索引（不再作为 loader 入口）
 ├── .gitignore              # 防止敏感文件提交
 ├── README.md               # 本文件
 ├── google_oauth/           # Google OAuth 凭据
@@ -20,7 +20,7 @@
 └── agents/                 # Agent 专用配置（按需创建）
 ```
 
-详见 `index.yaml` 了解所有分类定义。
+正式且唯一的 source registry 位于 `/brain/infrastructure/config/runtime_env/index.yaml`。
 
 ## 配置加载流程
 
@@ -33,9 +33,9 @@
 ```
 
 这会：
-1. 读取 `index.yaml` 索引
-2. 扫描所有分类下的 `.env` 文件
-3. 合并环境变量到 `/brain/runtime/config/.env`
+1. 读取 `/brain/infrastructure/config/runtime_env/index.yaml`
+2. 按索引扫描 `/brain/secrets/` 下的 `.env` 文件
+3. 合并环境变量到 `/xkagent_infra/runtime/config/.env`
 4. 生成配置来源追溯文件
 
 ### 手动重新加载
@@ -55,7 +55,7 @@
 mkdir -p /brain/secrets/{category}
 chmod 700 /brain/secrets/{category}
 
-# 2. 更新 index.yaml 添加分类定义
+# 2. 更新 /brain/infrastructure/config/runtime_env/index.yaml 添加分类定义
 
 # 3. 添加配置文件
 vim /brain/secrets/{category}/config.env
@@ -65,7 +65,7 @@ chmod 600 /brain/secrets/{category}/config.env
 /brain/infrastructure/launch/loader_env_vars.py --reload
 
 # 5. 验证
-cat /brain/runtime/config/.env | grep {VAR_NAME}
+cat /xkagent_infra/runtime/config/.env | grep {VAR_NAME}
 ```
 
 ### 2. 环境变量文件格式
@@ -99,14 +99,14 @@ chmod 600 /brain/secrets/{category}/*.pem
 chmod 600 /brain/secrets/{category}/*.json
 
 # 索引和文档可读
-chmod 644 /brain/secrets/index.yaml
+chmod 644 /brain/infrastructure/config/runtime_env/index.yaml
 chmod 644 /brain/secrets/README.md
 ```
 
 ### Git 管理
 
 **提交到 git**：
-- `index.yaml` - 配置索引
+- `/brain/infrastructure/config/runtime_env/index.yaml` - 配置源索引
 - `.gitignore` - 忽略规则
 - `README.md` - 使用文档
 - `**/SETUP_GUIDE.md` - 设置指南
@@ -146,16 +146,16 @@ chmod 600 /brain/secrets/*/*.{env,pem,key,json}
 
 ```bash
 # 查看生成的环境变量
-cat /brain/runtime/config/.env
+cat /xkagent_infra/runtime/config/.env
 
 # 查看配置来源
-cat /brain/runtime/config/sources.yaml
+cat /xkagent_infra/runtime/config/sources.yaml
 
 # 查看加载时间
-cat /brain/runtime/config/loaded_at.txt
+cat /xkagent_infra/runtime/config/loaded_at.txt
 
 # 查看审计日志
-tail /brain/runtime/logs/config_audit.jsonl
+tail /xkagent_infra/runtime/logs/config_audit.jsonl
 ```
 
 ### 验证配置完整性
@@ -197,7 +197,7 @@ A: 从源文件删除，重新加载配置，并重启受影响的服务。
 
 A: 检查审计日志查看错误原因：
 ```bash
-tail -1 /brain/runtime/logs/config_audit.jsonl | jq .
+tail -1 /xkagent_infra/runtime/logs/config_audit.jsonl | jq .
 ```
 
 ## 下一步

@@ -8,8 +8,8 @@ networks:
 services:
   xk-agent-infra:
     build:
-      context: ../..
-      dockerfile: brain/platform/docker/Dockerfile
+      context: .
+      dockerfile: Dockerfile
     image: xk-agent-infra:local
     container_name: XKAgentInfra
     hostname: XKAgentInfra
