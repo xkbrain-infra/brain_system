@@ -23,7 +23,7 @@ org = FileOrganizer()
 # 场景 1: 创建日志文件
 log_path = org.log_path("agent-system_pmo", "audit")
 ensure_path(log_path)  # 创建所需目录
-# 结果: /brain/runtime/logs/2026/02/13/agent-system_pmo_audit_2026-02-13.jsonl
+# 结果: /xkagent_infra/runtime/logs/2026/02/13/agent-system_pmo_audit_2026-02-13.jsonl
 
 # 场景 2: 创建项目报告
 report_path = org.project_path(
@@ -35,7 +35,7 @@ ensure_path(report_path)
 # 场景 3: 创建配置文件
 config_path = org.config_path("mcp", "agent_frontdesk.mcp.json")
 ensure_path(config_path)
-# 结果: /brain/runtime/config/mcp/agent_frontdesk.mcp.json
+# 结果: /xkagent_infra/runtime/config/mcp/agent_frontdesk.mcp.json
 ```
 
 ### 直接构造路径（不使用 Helper）
@@ -46,13 +46,13 @@ from datetime import datetime
 
 # Time-Based 模式
 now = datetime.now()
-log_path = Path(f"/brain/runtime/logs/{now.year:04d}/{now.month:02d}/{now.day:02d}/agent.log")
+log_path = Path(f"/xkagent_infra/runtime/logs/{now.year:04d}/{now.month:02d}/{now.day:02d}/agent.log")
 
 # Business-Based 模式
 report_path = Path("/brain/groups/org/xkquant/projects/newsalpha/reports/incident.md")
 
 # Type-Based 模式
-config_path = Path("/brain/runtime/config/agents/agent_frontdesk.mcp.json")
+config_path = Path("/xkagent_infra/runtime/config/agents/agent_frontdesk.mcp.json")
 ```
 
 ---
@@ -128,7 +128,7 @@ with open(deployment_log, "a") as f:
     f.write(f"[{datetime.now()}] Starting deployment...\n")
 ```
 
-**结果路径**: `/brain/runtime/logs/deployments/2026/02/13/cxx_service_v3.1_deploy.log`
+**结果路径**: `/xkagent_infra/runtime/logs/deployments/2026/02/13/cxx_service_v3.1_deploy.log`
 
 ---
 
@@ -169,7 +169,7 @@ with open(config_path, "w") as f:
     json.dump(config, f, indent=2)
 ```
 
-**结果路径**: `/brain/runtime/config/mcp/agent-system_frontdesk.mcp.json`
+**结果路径**: `/xkagent_infra/runtime/config/mcp/agent-system_frontdesk.mcp.json`
 
 ---
 
@@ -318,7 +318,7 @@ organizer.time_based_path("runtime/tmp", "temp.log")
 
 ```python
 # 错误
-Path("/brain/runtime/misc/output.txt")
+Path("/xkagent_infra/runtime/misc/output.txt")
 Path("/brain/groups/org/xkquant/other/file.md")
 Path("/brain/temp/test.log")
 
@@ -345,8 +345,8 @@ organizer.hybrid_project_time_path(
 
 ```python
 # 错误
-Path("/brain/runtime/logs/2026-2-13/agent.log")  # 月日没补零
-Path("/brain/runtime/logs/26/02/13/agent.log")  # 年份只有两位
+Path("/xkagent_infra/runtime/logs/2026-2-13/agent.log")  # 月日没补零
+Path("/xkagent_infra/runtime/logs/26/02/13/agent.log")  # 年份只有两位
 
 # 正确
 organizer.time_based_path("runtime/logs", "agent.log")  # 自动格式化为 2026/02/13
@@ -360,7 +360,7 @@ Path("/tmp/agent_output.txt")  # 系统临时目录，重启后丢失
 
 # 正确
 organizer.time_based_path("runtime/tmp", "agent_output.txt", template="compact")
-# 结果: /brain/runtime/tmp/2026-02-13/agent_output.txt
+# 结果: /xkagent_infra/runtime/tmp/2026-02-13/agent_output.txt
 ```
 
 ---
@@ -373,7 +373,7 @@ organizer.time_based_path("runtime/tmp", "agent_output.txt", template="compact")
 from file_organization_helper import organizer
 
 # 验证路径是否符合规范
-path = Path("/brain/runtime/logs/2026/02/13/agent.log")
+path = Path("/xkagent_infra/runtime/logs/2026/02/13/agent.log")
 valid, message = organizer.validate_path(path)
 
 if not valid:

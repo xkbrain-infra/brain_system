@@ -37,7 +37,7 @@ directory_layout:
 
     data/:
       description: "运行时持久化数据（symlink 到外部数据目录）"
-      external_path: "/brain/runtime/data/{service_name}/"
+      external_path: "/xkagent_infra/runtime/data/{service_name}/"
       convention: "服务目录内的 data/ 为 symlink 或空目录，实际数据存放在外部路径"
       persistence: "JSON 文件使用 atomic write（.tmp + rename）保证崩溃安全"
 
@@ -140,7 +140,7 @@ config_data_separation:
 
   data:
     internal: "{service_root}/data/"
-    external: "/brain/runtime/data/{service_name}/"
+    external: "/xkagent_infra/runtime/data/{service_name}/"
     content: "运行时持久化数据（JSON 状态文件、SQLite 数据库等）"
     write_pattern: |
       使用 atomic write 保证崩溃安全：
@@ -235,13 +235,13 @@ example:
     |   +-- nlohmann/
     |       +-- json.hpp
     +-- config/  -> /brain/infrastructure/config/brain_task_manager/
-    +-- data/    -> /brain/runtime/data/brain_task_manager/
+    +-- data/    -> /xkagent_infra/runtime/data/brain_task_manager/
     +-- tests/
     +-- scripts/
     +-- releases/
 
   config_path: "/brain/infrastructure/config/brain_task_manager/"
-  data_path: "/brain/runtime/data/brain_task_manager/"
+  data_path: "/xkagent_infra/runtime/data/brain_task_manager/"
   data_files:
     - "tasks.json"
     - "specs.json"

@@ -124,14 +124,14 @@ external_paths:
       - "示例：brain_task_manager.json, settings.yaml"
 
   data:
-    path: "/brain/runtime/data/{service_name}/"
+    path: "/xkagent_infra/runtime/data/{service_name}/"
     description: "运行时持久化数据（数据库文件、状态文件）"
     rules:
       - "服务代码通过配置文件引用此路径"
       - "示例：tasks.json, specs.json"
 
   logs:
-    path: "/brain/runtime/logs/"
+    path: "/xkagent_infra/runtime/logs/"
     description: "运行时日志"
     rules:
       - "日志文件名包含服务名：{service_name}.log"
@@ -141,7 +141,7 @@ external_paths:
     description: "项目内可保留 config/ 和 data/ 作为 symlink 指向外部路径（便于开发）"
     example: |
       config/ -> /brain/infrastructure/config/brain_task_manager/
-      data/   -> /brain/runtime/data/brain_task_manager/
+      data/   -> /xkagent_infra/runtime/data/brain_task_manager/
 
 # ============================================================================
 # README.md 模板
@@ -200,7 +200,7 @@ readme_template: |
   ## 配置
 
   - 配置文件：`/brain/infrastructure/config/{service_name}/`
-  - 运行时数据：`/brain/runtime/data/{service_name}/`
+  - 运行时数据：`/xkagent_infra/runtime/data/{service_name}/`
 
   ## 相关项目
 
@@ -270,7 +270,7 @@ compliance_checklist:
     - "src/ 按模块分层（≥ 2 个子目录）"
     - "构建入口存在（Makefile / build.sh / pyproject.toml）"
     - "config 在 /brain/infrastructure/config/{service_name}/"
-    - "data 在 /brain/runtime/data/{service_name}/"
+    - "data 在 /xkagent_infra/runtime/data/{service_name}/"
     - "编译 0 warning（C/C++ 项目）"
 
   recommended:
