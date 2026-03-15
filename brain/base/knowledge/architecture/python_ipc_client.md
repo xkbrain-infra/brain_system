@@ -231,8 +231,8 @@ autorestart=true
 startsecs=3
 stopasgroup=true
 killasgroup=true
-stdout_logfile=/brain/runtime/logs/my_service.out.log
-stderr_logfile=/brain/runtime/logs/my_service.err.log
+stdout_logfile=/xkagent_infra/runtime/logs/my_service.out.log
+stderr_logfile=/xkagent_infra/runtime/logs/my_service.err.log
 stdout_logfile_maxbytes=10MB
 stderr_logfile_maxbytes=10MB
 ```

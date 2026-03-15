@@ -120,12 +120,12 @@
 
 ● 让我查一下 dev1 的日志，看它是怎么写这个文件的。
 
-● Bash(ls -la /brain/runtime/logs/agents/agent_system_dev1* 2>/dev/null | sort)
-  ⎿  (eval):1: no matches found: /brain/runtime/logs/agents/agent_system_dev1*
+● Bash(ls -la /xkagent_infra/runtime/logs/agents/agent_system_dev1* 2>/dev/null | sort)
+  ⎿  (eval):1: no matches found: /xkagent_infra/runtime/logs/agents/agent_system_dev1*
 
 ● Read 1 file (ctrl+o to expand)
 
-● Bash(ls /brain/runtime/logs/agents/ 2>/dev/null | sort)
+● Bash(ls /xkagent_infra/runtime/logs/agents/ 2>/dev/null | sort)
   ⎿  agent-core_139160_2026-02-05.txt
      agent-core_139160_2026-02-05.txt.lock
      agent-core_139162_2026-02-05.txt

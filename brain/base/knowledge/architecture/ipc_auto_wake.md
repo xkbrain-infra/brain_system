@@ -109,7 +109,7 @@ Agent 完成任务 → Stop hook 触发
 | `brain/infrastructure/service/brain_ipc/src/brain_ipc.c` | **修改** | 添加 `ipc_peek` action：只查询队列消息数量，不出队不改变状态 |
 | `brain/infrastructure/service/agent_abilities/src/base/mcp/brain_ipc_c/main.c` | **可选修改** | 添加 `ipc_peek` MCP tool（非必需，stop_guard 可直接 socket 查询） |
 | `groups/**/agents/**/.claude/settings.local.json` | **修改** | 所有 agent 的 settings 添加 Stop hook 配置 |
-| `brain/infrastructure/service/agentctl/config/config_generator.py` | **修改** | settings 生成模板添加 Stop hook |
+| agentctl apply-config（内部由 config_generator 处理） | **通过 CLI** | settings 生成模板添加 Stop hook，不直接修改源码 |
 
 **优点**:
 - **零额外 token 消耗**: hook 是外部 Python 脚本，不消耗 LLM token

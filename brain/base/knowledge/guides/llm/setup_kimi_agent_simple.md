@@ -68,7 +68,7 @@ claude --dangerously-skip-permissions
 set -e
 
 # 加载 KIMI API 配置
-source /brain/runtime/config/.env
+source /xkagent_infra/runtime/config/.env
 
 # 启动 Claude Code with KIMI API
 cd /brain/groups/org/brain_system/agents/agent_kimi_demo
@@ -161,7 +161,7 @@ scope: brain_system
 
 ```bash
 # 加载环境变量
-source /brain/runtime/config/.env
+source /xkagent_infra/runtime/config/.env
 
 # 测试 KIMI API
 curl -s https://api.moonshot.cn/anthropic/v1/messages \
@@ -279,7 +279,7 @@ echo $ANTHROPIC_API_KEY
 echo $ANTHROPIC_BASE_URL
 
 # 重新加载配置
-source /brain/runtime/config/.env
+source /xkagent_infra/runtime/config/.env
 ```
 
 ### Agent 无法启动

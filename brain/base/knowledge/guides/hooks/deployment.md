@@ -310,7 +310,7 @@ bash scripts/snapshot_release.sh v2.2.0 --activate
 
 - 角色规则: `hooks/rules/roles/*/gates.yaml`
 - LEP Gates 定义: `/brain/base/spec/core/lep.yaml`
-- Config 生成器: `/brain/infrastructure/service/agent-ctl/services/config_generator.py`
+- Config 生成器: 由 `agentctl apply-config` 管理（源码不对 Agent 开放，见 G-GATE-SVC-ENCAP）
 - Agent 注册表: `/brain/infrastructure/config/agentctl/agents_registry.yaml`
 
 ---

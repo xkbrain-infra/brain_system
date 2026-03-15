@@ -114,7 +114,7 @@
 | G-GATE-FILE-ORG        | 所有新文件创建必须遵循文件组织规范，避免文件直接堆积在顶级或项目根目录。                             |           | policies/lep/file_org.yaml        |
 | G-GATE-IPC-TARGET      | 发送 IPC 消息前必须确认目标 agent 存在：                                       | ✓         | policies/lep/ipc_target.yaml      |
 | G-GATE-KVCACHE-FIRST   | 必须优先使用索引系统（registry.yaml）查找文档，禁止盲目搜索。                            | ✓         | policies/lep/kvcache_first.yaml   |
-| G-GATE-MEMORY-PERSIST  | agentctl 启动 agent 后必须配置 tmux pipe-pane 写入 /brain/runtime/memory/ |           | policies/lep/memory_persist.yaml  |
+| G-GATE-MEMORY-PERSIST  | agentctl 启动 agent 后必须配置 tmux pipe-pane 写入 /xkagent_infra/runtime/memory/ |           | policies/lep/memory_persist.yaml  |
 | G-GATE-MEMORY-TIMELINE | timeline.md 只追加，永不覆盖                                             |           | policies/lep/memory_timeline.yaml |
 | G-GATE-PATH-DISCIPLINE | 文件必须归属正确层级，文件名必须体现所属模块                                           | ✓         | policies/lep/path_discipline.yaml |
 | G-GATE-PROJECT-REF     | 子项目必须有 parent ref                                                |           | policies/lep/project_ref.yaml     |

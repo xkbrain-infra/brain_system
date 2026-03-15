@@ -206,7 +206,7 @@ mkdir -p /brain/groups/org/brain_system/agents/agent_kimi_docs/.claude
 
 ```bash
 # 加载环境变量
-source /brain/runtime/config/.env
+source /xkagent_infra/runtime/config/.env
 
 # 测试 KIMI Coding API
 curl -s https://api.kimi.com/coding/v1/messages \

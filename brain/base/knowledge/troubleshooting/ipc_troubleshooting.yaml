@@ -76,7 +76,7 @@ quick_diagnosis:
 
     - step: 5
       check: "tmux_notify 是否启用"
-      command: "grep 'tmux_notify_enabled' /brain/runtime/logs/daemon.log | tail -1"
+      command: "grep 'tmux_notify_enabled' /xkagent_infra/runtime/logs/daemon.log | tail -1"
       expect: "tmux_notify_enabled=1"
       if_fail: "跳转 IPC-003"
 
@@ -114,7 +114,7 @@ problems:
           - "rm -f /tmp/brain_ipc.pid"
           - "/brain/infrastructure/service/brain_ipc/bin/current/brain_ipc &"
           - "sleep 1 && ps aux | grep brain_ipc | grep -v grep"
-          - "检查日志: tail -5 /brain/runtime/logs/daemon.log"
+          - "检查日志: tail -5 /xkagent_infra/runtime/logs/daemon.log"
         verify:
           - "daemon 进程存在"
           - "socket 文件存在: ls /tmp/brain_ipc.sock"
@@ -168,7 +168,7 @@ problems:
         risk_level: "low"
         reversible: true
         steps:
-          - "检查当前状态: grep 'tmux_notify_enabled' /brain/runtime/logs/daemon.log | tail -1"
+          - "检查当前状态: grep 'tmux_notify_enabled' /xkagent_infra/runtime/logs/daemon.log | tail -1"
           - "如果 =0，检查源码默认值: grep 'g_tmux_notify_enabled' /brain/infrastructure/service/brain_ipc/src/brain_ipc.c"
           - "确保默认值为 1（已在 2026-02-09 修复）"
           - "重启 daemon 使修改生效"
@@ -220,7 +220,7 @@ problems:
         risk_level: "low"
         reversible: false
         steps:
-          - "查看 daemon 启动时间: grep 'tmux_notify_enabled' /brain/runtime/logs/daemon.log | tail -1 取时间戳"
+          - "查看 daemon 启动时间: grep 'tmux_notify_enabled' /xkagent_infra/runtime/logs/daemon.log | tail -1 取时间戳"
           - "对比消息发送时间：如果消息在 daemon 启动之前发送，则已丢失"
           - "通知发送方重发消息"
         note: "daemon 消息队列为纯内存，重启即清空。目前无持久化方案。"
@@ -272,8 +272,8 @@ problems:
         risk_level: "low"
         reversible: true
         steps:
-          - "检查二进制是否存在: ls -la /brain/runtime/engine/src/mcp/brain_ipc_c/brain_ipc_c_mcp_server"
-          - "检查是否可执行: file /brain/runtime/engine/src/mcp/brain_ipc_c/brain_ipc_c_mcp_server"
+          - "检查二进制是否存在: ls -la /brain/infrastructure/service/brain_google_api/mcp/brain_ipc_c/releases/v1.0.0/bin/brain_ipc_c_mcp_server"
+          - "检查是否可执行: file /brain/infrastructure/service/brain_google_api/mcp/brain_ipc_c/releases/v1.0.0/bin/brain_ipc_c_mcp_server"
           - "检查 .mcp.json 配置: cat /brain/groups/org/{group}/agents/{agent_name}/.mcp.json"
           - "确认 BRAIN_AGENT_NAME 环境变量值正确"
         verify:
@@ -373,7 +373,7 @@ diagnostic_commands:
 
   tmux_notify_check:
     description: "检查 tmux_notify 是否启用"
-    command: "grep 'tmux_notify_enabled' /brain/runtime/logs/daemon.log | tail -1"
+    command: "grep 'tmux_notify_enabled' /xkagent_infra/runtime/logs/daemon.log | tail -1"
 
   wake_agent:
     description: "手动唤醒 agent 处理消息"
@@ -385,7 +385,7 @@ diagnostic_commands:
 
   daemon_log:
     description: "查看 daemon 最新日志"
-    command: "tail -30 /brain/runtime/logs/daemon.log"
+    command: "tail -30 /xkagent_infra/runtime/logs/daemon.log"
 
 # ============================================================
 # 关键架构说明（帮助理解根因）
@@ -413,7 +413,7 @@ architecture_notes:
     daemon_source: "/brain/infrastructure/service/brain_ipc/src/brain_ipc.c"
     mcp_server: "/brain/bin/mcp/mcp-brain_ipc_c"
     daemon_socket: "/tmp/brain_ipc.sock"
-    daemon_log: "/brain/runtime/logs/daemon.log"
+    daemon_log: "/xkagent_infra/runtime/logs/daemon.log"
 
 # ============================================================
 # IPC-007: settings.local.json BRAIN_AGENT_NAME 格式不一致

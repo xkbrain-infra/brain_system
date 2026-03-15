@@ -54,7 +54,7 @@ KIMI_MODEL=moonshot-v1-32k
 /brain/infrastructure/launch/loader_env_vars.py --reload
 
 # 验证
-grep KIMI /brain/runtime/config/.env
+grep KIMI /xkagent_infra/runtime/config/.env
 ```
 
 ## 步骤 2: 安装 LiteLLM
@@ -128,7 +128,7 @@ router_settings:
 set -e
 
 # 加载环境变量
-source /brain/runtime/config/.env
+source /xkagent_infra/runtime/config/.env
 
 # 启动 LiteLLM proxy
 litellm --config /brain/infrastructure/service/litellm-proxy/config.yaml \
@@ -155,7 +155,7 @@ Type=simple
 User=root
 WorkingDirectory=/brain/infrastructure/service/litellm-proxy
 Environment="PATH=/usr/local/bin:/usr/bin:/bin"
-EnvironmentFile=/brain/runtime/config/.env
+EnvironmentFile=/xkagent_infra/runtime/config/.env
 ExecStart=/brain/infrastructure/service/litellm-proxy/start_litellm.sh
 Restart=always
 RestartSec=10
@@ -374,7 +374,7 @@ init_sequence:
 # 如果使用 tmux
 tmux new-session -d -s litellm-proxy
 tmux send-keys -t litellm-proxy "cd /brain/infrastructure/service/litellm-proxy" C-m
-tmux send-keys -t litellm-proxy "source /brain/runtime/config/.env" C-m
+tmux send-keys -t litellm-proxy "source /xkagent_infra/runtime/config/.env" C-m
 tmux send-keys -t litellm-proxy "./start_litellm.sh" C-m
 
 # 检查状态
@@ -423,7 +423,7 @@ tmux attach -t litellm-proxy
 tmux attach -t agent_kimi_demo
 
 # 全局日志
-tail -f /brain/runtime/logs/agents/global_agent_log_$(date +%Y-%m-%d).jsonl | jq .
+tail -f /xkagent_infra/runtime/logs/agents/global_agent_log_$(date +%Y-%m-%d).jsonl | jq .
 ```
 
 ### 5.3 检查 API 使用情况
@@ -462,7 +462,7 @@ systemctl restart litellm-proxy
 **解决**:
 ```bash
 # 验证 API key
-grep KIMI_API_KEY /brain/runtime/config/.env
+grep KIMI_API_KEY /xkagent_infra/runtime/config/.env
 
 # 重新加载配置
 /brain/infrastructure/launch/loader_env_vars.py --reload

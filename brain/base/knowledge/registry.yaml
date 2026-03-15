@@ -3,7 +3,7 @@ registry:
     domain: knlg
     version: '1.0'
     last_updated: '2026-02-22'
-    total_documents: 24
+    total_documents: 25
   documents:
     G-KNLG-ARCHITECTURE-PROCESS-MANAGEMENT:
       id: G-KNLG-ARCHITECTURE-PROCESS-MANAGEMENT
@@ -216,6 +216,24 @@ registry:
       - hooks_release
       - hooks_role
       - lep_deployment
+    G-KNLG-GUIDE-BRAIN-BASE-PUBLISH:
+      id: G-KNLG-GUIDE-BRAIN-BASE-PUBLISH
+      scope: G
+      title: Brain Base 发布指南
+      path: /brain/base/knowledge/guides/publish/base_publish.md
+      category: GUIDE
+      tags:
+      - publish
+      - release
+      - base
+      - deployment
+      last_modified: '2026-03-14'
+      description: Brain Base 开发源、发布态、运行时刷新边界和标准发布流程
+      load_triggers:
+      - brain_publish
+      - base_publish
+      - publish_base
+      - release_flow
     G-KNLG-GUIDE-SPEC-BUILD:
       id: G-KNLG-GUIDE-SPEC-BUILD
       scope: G

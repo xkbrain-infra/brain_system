@@ -171,7 +171,7 @@ scope:
 
 **错误路径** (旧版本):
 ```
-/brain/runtime/engine/src/mcp/brain_ipc_c/brain_ipc_c_mcp_server  # ❌
+/brain/infrastructure/service/brain_google_api/mcp/brain_ipc_c/releases/v1.0.0/bin/brain_ipc_c_mcp_server  # ❌ 不建议直接引用版本化二进制
 ```
 
 ## 实际案例
@@ -255,9 +255,9 @@ MINIMAX_API_BASE=https://api.minimax.chat/v1
 MINIMAX_MODEL=abab5.5-chat
 ```
 
-### Secrets 索引
+### Runtime Env Source Registry
 
-更新 `/brain/secrets/index.yaml`:
+更新 `/brain/infrastructure/config/runtime_env/index.yaml`:
 
 ```yaml
 categories:
@@ -346,7 +346,7 @@ claude --dangerously-skip-permissions
 2. **禁止使用旧版 MCP 路径**
    ```
    # ❌ 错误
-   /brain/runtime/engine/src/mcp/brain_ipc_c/brain_ipc_c_mcp_server
+   /brain/infrastructure/service/brain_google_api/mcp/brain_ipc_c/releases/v1.0.0/bin/brain_ipc_c_mcp_server
 
    # ✅ 正确
    /brain/bin/mcp/mcp-brain_ipc_c
