@@ -1,2 +1,0 @@
-2026-02-10T05:14:40Z	user=root	tty=not a tty
-unknown	action=start_orchestrator	detail=tmux_session=service-agent-orchestrator	cmd=/brain/runtime/agent_orchestrator/bin/start_manager.sh orchestrator
