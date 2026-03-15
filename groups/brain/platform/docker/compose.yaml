@@ -1,0 +1,59 @@
+name: ${COMPOSE_PROJECT_NAME}
+
+networks:
+  brain-network:
+    name: ${NETWORK_NAME}
+    driver: bridge
+
+services:
+  xk-brain-infra:
+    build:
+      context: ${BUILD_CONTEXT}
+      dockerfile: ${DOCKERFILE_PATH}
+    image: ${IMAGE_NAME}:${IMAGE_TAG}
+    container_name: ${CONTAINER_NAME}
+    hostname: ${HOSTNAME}
+    working_dir: /xkagent_infra/brain
+    command:
+      - /bin/bash
+      - -lc
+      - |
+        if [ -x /xkagent_infra/brain/platform/docker/scripts/container_bootstrap.sh ]; then
+          /xkagent_infra/brain/platform/docker/scripts/container_bootstrap.sh
+        else
+          echo '[bootstrap] script not found, skip'
+        fi
+        exec /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf
+    networks:
+      - brain-network
+    volumes:
+      - data-volume:/xkagent_infra
+      - root-volume:/root
+    ports:
+      - "${HOST_SSH_PORT}:22"
+      - "${HOST_APP_PORT}:${CONTAINER_APP_PORT}"
+      - "${HOST_DEBUG_PORT}:${CONTAINER_DEBUG_PORT}"
+    environment:
+      BRAIN_PATH: /xkagent_infra/brain
+      BRAIN_IPC_SOCKET: /tmp/brain_ipc.sock
+      ENVIRONMENT: ${ENVIRONMENT}
+      TZ: ${TZ}
+      INSTANCE_ID: ${INSTANCE_ID}
+    healthcheck:
+      test: ["CMD-SHELL", "/xkagent_infra/brain/platform/docker/scripts/healthcheck.sh runtime"]
+      interval: 30s
+      timeout: 15s
+      retries: 5
+      start_period: 90s
+    restart: ${RESTART_POLICY}
+    deploy:
+      resources:
+        limits:
+          cpus: '${CPU_LIMIT}'
+          memory: ${MEMORY_LIMIT}
+
+volumes:
+  data-volume:
+    name: ${VOLUME_DATA}
+  root-volume:
+    name: ${VOLUME_ROOT}

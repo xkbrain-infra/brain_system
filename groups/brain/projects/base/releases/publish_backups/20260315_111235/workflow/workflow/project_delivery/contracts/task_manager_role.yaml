@@ -1,0 +1,87 @@
+task_manager_role:
+  id: "MWF-TM-001"
+  version: "0.1"
+  intent: "定义 multicore 架构中 task manager 的职责、边界与输入输出"
+
+positioning:
+  role: "state_service"
+  description: "task manager 是全局状态记录与查询服务，不是项目编排决策者"
+
+responsibilities:
+  - "持久化 project/task/assignment/status snapshot"
+  - "记录 task participants、todo_list、dependencies、review chain"
+  - "记录 task 状态变更历史和事件索引"
+  - "记录 task progress 摘要与最近日志引用"
+  - "记录 orchestrator 上报的 project snapshot"
+  - "记录 agent/orchestrator heartbeat 与最后更新时间"
+  - "为 manager board、watchdog、audit 提供查询面"
+
+must_not:
+  - "不负责拆 task graph"
+  - "不负责决定 reassign/replan/escalate"
+  - "不直接替代 orchestrator 向 worker 分配任务"
+
+write_owners:
+  orchestrator:
+    writes:
+      - "CREATE_PROJECT"
+      - "TASK_CREATE"
+      - "TASK_UPDATE"
+      - "ASSIGNMENT_UPDATE"
+      - "PROJECT_SNAPSHOT"
+      - "TASK_EVENT_APPEND"
+  agents:
+    writes_via_orchestrator: true
+    note: "agent 原则上通过 orchestrator 回报，不直接写全局 task manager"
+
+readers:
+  - "project orchestrator"
+  - "manager / PMO"
+  - "release manager"
+  - "audit orchestrator"
+  - "watchdog jobs"
+
+task_record_contract:
+  required_fields:
+    - task_id
+    - project_id
+    - title
+    - owner
+    - participants
+    - todo_list
+    - depends_on
+    - status
+    - trigger_policy
+    - deadline
+    - updated_at
+  optional_fields:
+    - review_by
+    - artifact_refs
+    - next_check_at
+    - escalation_policy
+    - last_log_ref
+
+assignment_model:
+  principle: "assignment is decided by orchestrator, then persisted in task manager"
+  flow:
+    - "orchestrator prepares task and participant alignment"
+    - "orchestrator writes assignment record to task manager"
+    - "orchestrator emits TASK_ASSIGN to worker"
+    - "worker accepts and reports back to orchestrator"
+    - "orchestrator updates task manager with assignment and state change"
+
+event_history:
+  required_events:
+    - task.created
+    - task.assigned
+    - task.accepted
+    - task.active
+    - task.blocked
+    - task.review_requested
+    - task.verified
+    - task.done
+    - task.failed
+    - task.cancelled
+
+closure_role:
+  description: "audit findings materialized 为 follow-up task/project 后，必须回写 task manager 以重新进入执行链"

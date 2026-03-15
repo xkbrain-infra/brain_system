@@ -1,0 +1,17 @@
+FROM ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    bash \
+    build-essential \
+    ca-certificates \
+    libjansson-dev \
+    python3 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /brain/infrastructure/service/task-manager
+
+COPY . /brain/infrastructure/service/task-manager
+
+CMD ["bash", "tests/compose_test_runner.sh"]

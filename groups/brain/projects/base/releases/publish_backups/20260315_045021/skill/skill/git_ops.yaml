@@ -1,0 +1,29 @@
+skill:
+  id: "SKILL-GIT-OPS"
+  name: "Git Operations"
+  version: "1.0"
+  description: "Git version control capabilities."
+
+actions:
+  - name: "git_status"
+    description: "Check working tree status."
+    parameters:
+      type: "object"
+      required: []
+      properties: {}
+
+  - name: "git_commit"
+    description: "Commit staged changes."
+    parameters:
+      type: "object"
+      required: ["message"]
+      properties:
+        message: { type: "string" }
+
+  - name: "git_log"
+    description: "Show commit logs."
+    parameters:
+      type: "object"
+      required: ["n"]
+      properties:
+        n: { type: "integer" }

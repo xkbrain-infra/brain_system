@@ -1,0 +1,21 @@
+expr_v0:
+  primitives:
+    - exists(path) -> boolean
+    - append(path) -> side_effect
+    - mode(name) -> boolean
+
+  derived:
+    - target_path_within_scope -> boolean
+
+  plan_contract:
+    # 你可以把“Plan 也做成 DSL”，否则这里就只能人工判断
+    - plan.atomic_steps -> boolean
+    - plan.no_vague_verbs -> boolean
+    - plan.every_step_has_target_file -> boolean
+    - plan.every_step_has_line_range -> boolean
+    - plan.every_step_has_exact_action -> boolean
+
+  events:
+    - on_decision
+    - on_state_change
+    - on_plan_update

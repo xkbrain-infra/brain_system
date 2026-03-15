@@ -1,0 +1,10 @@
+# Role: brain-manager - 系统基础设施部署管理者
+scope:
+  allowed_write:
+    - /xkagent_infra/brain/infrastructure/service/agent_abilities/**
+    - /xkagent_infra/brain/base/hooks/**
+    - /xkagent_infra/groups/{group}/**
+  denied_write:
+    - /xkagent_infra/brain/base/spec/core/**
+    - /xkagent_infra/brain/base/workflow/**
+    - /xkagent_infra/brain/INIT.yaml

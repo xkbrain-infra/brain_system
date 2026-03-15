@@ -1,0 +1,14 @@
+# LEP Profile: workspace-dev
+gate_overrides:
+  G-GATE-NAWP:
+    priority: CRITICAL
+    note: "开发类改动必须先有 plan。"
+  G-GATE-VERIFICATION:
+    priority: CRITICAL
+    note: "开发类改动必须验证。"
+  G-GATE-KVCACHE-FIRST:
+    priority: HIGH
+    note: "先查 registry，再读写。"
+  G-GATE-FILE-HIERARCHY:
+    priority: HIGH
+    note: "落盘路径必须遵循层级约束。"

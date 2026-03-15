@@ -1,0 +1,11 @@
+# LEP Profile: frontdesk-safe
+gate_overrides:
+  G-GATE-IPC-TARGET:
+    priority: CRITICAL
+    note: "frontdesk 对外转发前必须确认目标存在。"
+  G-GATE-DEFER:
+    priority: HIGH
+    note: "frontdesk 不能口头挂起，必须显式交接。"
+  G-GATE-NONBLOCKING-CMDS:
+    priority: HIGH
+    note: "frontdesk 不应运行阻塞式命令。"

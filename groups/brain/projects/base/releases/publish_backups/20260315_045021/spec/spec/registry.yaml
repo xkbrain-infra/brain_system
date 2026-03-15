@@ -1,0 +1,1274 @@
+registry:
+  meta:
+    domain: spec
+    version: '2.0'
+    last_updated: '2026-03-15'
+    total_documents: 74
+  documents:
+    G-SPEC-CORE-LEP:
+      id: G-SPEC-CORE-LEP
+      scope: G
+      title: LEP - Linear Expression Protocol
+      path: /brain/base/spec/core/lep.yaml
+      category: CORE
+      tags:
+      - lep
+      - gates
+      last_modified: '2026-02-14'
+      description: LEP 门控索引 - universal_gates(13) + domain_gates 引用
+      load_triggers:
+      - lep
+      - gates
+    G-SPEC-CORE-LAYERS:
+      id: G-SPEC-CORE-LAYERS
+      scope: G
+      title: Brain 架构层级定义
+      path: /brain/base/spec/core/layers.yaml
+      category: CORE
+      tags:
+      - architecture
+      - layers
+      last_modified: '2026-02-14'
+      description: 四层架构定义（base/groups/infrastructure/runtime）- 全员必读
+      load_triggers:
+      - architecture
+      - layers
+    G-SPEC-CORE-WORKFLOW:
+      id: G-SPEC-CORE-WORKFLOW
+      scope: G
+      title: Core Workflow - 全员任务执行规范
+      path: /brain/base/spec/core/workflow.yaml
+      category: CORE
+      tags:
+      - workflow
+      last_modified: '2026-02-14'
+      description: 全员任务执行规范 - TaskID/Plan/验证/记录
+      load_triggers:
+      - workflow
+    G-SPEC-POLICY-IPC-MESSAGE-FORMAT:
+      id: G-SPEC-POLICY-IPC-MESSAGE-FORMAT
+      scope: G
+      title: IPC Message Format Policy
+      path: /brain/base/spec/policies/ipc/message_format.yaml
+      category: POLICY
+      tags:
+      - ipc
+      last_modified: '2026-02-11'
+      description: IPC 消息格式规范 - 前缀/结构/Telegram 同步
+      load_triggers:
+      - ipc_message_format
+    G-SPEC-POLICY-IPC-RELIABILITY-DESIGN:
+      id: G-SPEC-POLICY-IPC-RELIABILITY-DESIGN
+      scope: G
+      title: IPC Reliability Design
+      path: /brain/base/spec/policies/ipc/reliability_design.yaml
+      category: POLICY
+      tags:
+      - ipc
+      last_modified: '2026-02-11'
+      description: IPC 可靠性设计
+      load_triggers:
+      - ipc_reliability_design
+    G-SPEC-POLICY-IPC-PRIORITY:
+      id: G-SPEC-POLICY-IPC-PRIORITY
+      scope: G
+      title: IPC Message Priority Policy
+      path: /brain/base/spec/policies/ipc/priority.yaml
+      category: POLICY
+      tags:
+      - ipc
+      last_modified: '2026-02-11'
+      description: IPC 消息优先级规范
+      load_triggers:
+      - ipc_priority
+    G-SPEC-POLICY-CONFIG-MANAGEMENT:
+      id: G-SPEC-POLICY-CONFIG-MANAGEMENT
+      scope: G
+      title: Config Management Policy
+      path: /brain/base/spec/policies/config/config_management.yaml
+      category: POLICY
+      tags:
+      - config
+      last_modified: '2026-02-13'
+      description: 双层配置管理规范
+      load_triggers:
+      - config_management
+    G-SPEC-POLICY-SECRETS-MANAGEMENT:
+      id: G-SPEC-POLICY-SECRETS-MANAGEMENT
+      scope: G
+      title: Secrets Management Policy
+      path: /brain/base/spec/policies/secrets/secrets_management.yaml
+      category: POLICY
+      tags:
+      - secrets
+      last_modified: '2026-02-11'
+      description: 敏感数据管理规范
+      load_triggers:
+      - secrets_management
+    G-SPEC-POLICY-AGENTS-REGISTRY-SPEC:
+      id: G-SPEC-POLICY-AGENTS-REGISTRY-SPEC
+      scope: G
+      title: Agents Registry Specification
+      path: /brain/base/spec/policies/agents/agents_registry_spec.yaml
+      category: POLICY
+      tags:
+      - agent
+      last_modified: '2026-02-13'
+      description: agents_registry.yaml 结构规范
+      load_triggers:
+      - agents_registry_spec
+    G-SPEC-POLICY-SKILL-BINDINGS-SPEC:
+      id: G-SPEC-POLICY-SKILL-BINDINGS-SPEC
+      scope: G
+      title: Skill Bindings Specification
+      path: /brain/base/spec/policies/agents/skill_bindings_spec.yaml
+      category: POLICY
+      tags:
+      - agent
+      - skill
+      last_modified: '2026-03-14'
+      description: skill_bindings.yaml 结构规范与绑定优先级
+      load_triggers:
+      - skill_bindings
+      - skill_bindings_spec
+    G-SPEC-POLICY-LEP-BINDINGS-SPEC:
+      id: G-SPEC-POLICY-LEP-BINDINGS-SPEC
+      scope: G
+      title: LEP Bindings Specification
+      path: /brain/base/spec/policies/agents/lep_bindings_spec.yaml
+      category: POLICY
+      tags:
+      - agent
+      - lep
+      last_modified: '2026-03-14'
+      description: lep_bindings.yaml 结构规范与绑定优先级
+      load_triggers:
+      - lep_bindings
+      - lep_bindings_spec
+    G-SPEC-POLICY-AGENT-PROTOCOL:
+      id: G-SPEC-POLICY-AGENT-PROTOCOL
+      scope: G
+      title: Agent Protocol
+      path: /brain/base/spec/policies/agents/agent_protocol.yaml
+      category: POLICY
+      tags:
+      - agent
+      last_modified: '2026-02-14'
+      description: Agent 协作协议
+      load_triggers:
+      - agent_protocol
+    G-SPEC-POLICY-LEP-INDEX:
+      id: G-SPEC-POLICY-LEP-INDEX
+      scope: G
+      title: LEP Gates Index
+      path: /brain/base/spec/policies/lep/index.yaml
+      category: POLICY
+      tags:
+      - lep
+      - gates
+      last_modified: '2026-02-14'
+      description: LEP Gates 实现文件索引
+      load_triggers:
+      - lep_gates
+      - gates_index
+    G-SPEC-POLICY-VALIDATORS:
+      id: G-SPEC-POLICY-VALIDATORS
+      scope: G
+      title: Validators
+      path: /brain/base/spec/policies/lep/validators.yaml
+      category: POLICY
+      tags:
+      - lep
+      last_modified: '2026-02-14'
+      description: LEP Validators 定义
+      load_triggers:
+      - validators
+    G-SPEC-POLICY-BRAIN-BASE-PUBLISH:
+      id: G-SPEC-POLICY-BRAIN-BASE-PUBLISH
+      scope: G
+      title: Brain Base Publish Policy
+      path: /brain/base/spec/policies/deployment/base_publish.yaml
+      category: POLICY
+      tags:
+      - publish
+      - deployment
+      - base
+      last_modified: '2026-03-14'
+      description: Brain Base 开发源、发布目标、运行时刷新边界和标准发布流程
+      load_triggers:
+      - brain_publish_policy
+      - base_publish_policy
+      - publish_base
+    G-SPEC-POLICY-PROJECT-CREATION:
+      id: G-SPEC-POLICY-PROJECT-CREATION
+      scope: G
+      title: Project Creation Quick Reference
+      path: /brain/base/spec/policies/creation/project_creation.yaml
+      category: POLICY
+      tags:
+      - creation
+      - project
+      last_modified: '2026-02-13'
+      description: 项目创建快速参考
+      load_triggers:
+      - project_creation
+    G-SPEC-POLICY-GROUP:
+      id: G-SPEC-POLICY-GROUP
+      scope: G
+      title: Group Space Creation Specification
+      path: /brain/base/spec/policies/creation/group.yaml
+      category: POLICY
+      tags:
+      - creation
+      - group
+      last_modified: '2026-02-12'
+      description: Group 空间创建规范
+      load_triggers:
+      - group
+    G-SPEC-POLICY-PROJECT:
+      id: G-SPEC-POLICY-PROJECT
+      scope: G
+      title: Project Space Creation Specification
+      path: /brain/base/spec/policies/creation/project.yaml
+      category: POLICY
+      tags:
+      - creation
+      - project
+      last_modified: '2026-02-11'
+      description: Project 空间创建规范
+      load_triggers:
+      - project
+    G-SPEC-POLICY-MEMORY-PERSISTENCE:
+      id: G-SPEC-POLICY-MEMORY-PERSISTENCE
+      scope: G
+      title: Memory Persistence Policy
+      path: /brain/base/spec/policies/memory/persistence.yaml
+      category: POLICY
+      tags:
+      - memory
+      last_modified: '2026-02-14'
+      description: Agent 会话记录持久化规范 - pipe-pane 捕获 stdout
+      load_triggers:
+      - memory_persistence
+      - memory
+    G-SPEC-POLICY-ESTIMATION-TEMPLATE:
+      id: G-SPEC-POLICY-ESTIMATION-TEMPLATE
+      scope: G
+      title: Time Estimation Template
+      path: /brain/base/spec/policies/estimation/time_estimation_template.yaml
+      category: POLICY
+      tags:
+      - estimation
+      last_modified: '2026-02-14'
+      description: 时间估算模板
+      load_triggers:
+      - time_estimation_template
+      - estimation
+    G-SPEC-STANDARD-FILE-ORGANIZATION:
+      id: G-SPEC-STANDARD-FILE-ORGANIZATION
+      scope: G
+      title: File Organization
+      path: /brain/base/spec/standards/organization/file_organization.yaml
+      category: STANDARD
+      tags:
+      - organization
+      last_modified: '2026-02-13'
+      description: 文件组织规范
+      load_triggers:
+      - file_organization
+    G-SPEC-STANDARD-FILE-ORGANIZATION-EXAMPLES:
+      id: G-SPEC-STANDARD-FILE-ORGANIZATION-EXAMPLES
+      scope: G
+      title: 文件组织规范使用示例
+      path: /brain/base/spec/standards/organization/file_organization_examples.md
+      category: STANDARD
+      tags:
+      - organization
+      last_modified: '2026-02-14'
+      description: 文件组织规范使用示例
+      load_triggers:
+      - file_organization_examples
+    G-SPEC-STANDARD-CPP:
+      id: G-SPEC-STANDARD-CPP
+      scope: G
+      title: C++ Coding Standards
+      path: /brain/base/spec/standards/coding/cpp.yaml
+      category: STANDARD
+      tags:
+      - coding
+      - cpp
+      last_modified: '2026-02-11'
+      description: C++ 编码标准
+      load_triggers:
+      - cpp
+    G-SPEC-STANDARD-TIME-ESTIMATION:
+      id: G-SPEC-STANDARD-TIME-ESTIMATION
+      scope: G
+      title: Agent 工作时间估算指南
+      path: /brain/base/spec/standards/workflow/time_estimation.yaml
+      category: STANDARD
+      tags:
+      - workflow
+      - estimation
+      last_modified: '2026-02-14'
+      description: Agent 工作时间估算标准（从 core 移入）
+      load_triggers:
+      - time_estimation
+    G-SPEC-STANDARD-PROBLEM-SOLVING:
+      id: G-SPEC-STANDARD-PROBLEM-SOLVING
+      scope: G
+      title: Problem Solving Workflow
+      path: /brain/base/spec/standards/workflow/problem_solving.yaml
+      category: STANDARD
+      tags:
+      - workflow
+      last_modified: '2026-02-11'
+      description: 问题解决工作流
+      load_triggers:
+      - problem_solving
+    G-SPEC-STANDARD-VERSION-UPGRADE:
+      id: G-SPEC-STANDARD-VERSION-UPGRADE
+      scope: G
+      title: 版本化升级规范
+      path: /brain/base/spec/standards/workflow/version_upgrade.yaml
+      category: STANDARD
+      tags:
+      - workflow
+      last_modified: '2026-02-11'
+      description: 版本化升级规范
+      load_triggers:
+      - version_upgrade
+    G-SPEC-STANDARD-VERIFICATION:
+      id: G-SPEC-STANDARD-VERIFICATION
+      scope: G
+      title: Code Verification Standard
+      path: /brain/base/spec/standards/workflow/verification.yaml
+      category: STANDARD
+      tags:
+      - workflow
+      last_modified: '2026-02-11'
+      description: 代码验证标准
+      load_triggers:
+      - verification
+    G-SPEC-STANDARD-OPERATION:
+      id: G-SPEC-STANDARD-OPERATION
+      scope: G
+      title: Database Operations Policy
+      path: /brain/base/spec/standards/infra/database/operation.yaml
+      category: STANDARD
+      tags:
+      - infra
+      - database
+      last_modified: '2026-02-11'
+      description: 数据库操作规范
+      load_triggers:
+      - operation
+      - database
+    G-SPEC-STANDARD-DEPLOYMENT:
+      id: G-SPEC-STANDARD-DEPLOYMENT
+      scope: G
+      title: Deployment
+      path: /brain/base/spec/standards/infra/docker/deployment.yaml
+      category: STANDARD
+      tags:
+      - infra
+      - docker
+      last_modified: '2026-02-11'
+      description: 部署规范
+      load_triggers:
+      - deployment
+    G-SPEC-STANDARD-DOCKER:
+      id: G-SPEC-STANDARD-DOCKER
+      scope: G
+      title: Docker
+      path: /brain/base/spec/standards/infra/docker/docker.yaml
+      category: STANDARD
+      tags:
+      - infra
+      - docker
+      last_modified: '2026-02-11'
+      description: Docker 规范
+      load_triggers:
+      - docker
+    G-SPEC-TEMPLATE-SPEC-DSL:
+      id: G-SPEC-TEMPLATE-SPEC-DSL
+      scope: G
+      title: Spec DSL Templates
+      path: /brain/base/spec/templates/spec/spec_dsl.yaml
+      category: TEMPLATE
+      tags:
+      - template
+      - spec
+      last_modified: '2026-02-11'
+      description: Spec 流程 DSL 模板
+      load_triggers:
+      - spec_dsl
+    G-SPEC-TEMPLATE-BASE-TEMPLATE:
+      id: G-SPEC-TEMPLATE-BASE-TEMPLATE
+      scope: G
+      title: Base Template
+      path: /brain/base/spec/templates/agent/base_template.md
+      category: TEMPLATE
+      tags:
+      - template
+      - agent
+      last_modified: '2026-02-13'
+      description: Agent CLAUDE.md 基础模板
+      load_triggers:
+      - base_template
+    G-SPEC-TEMPLATE-DEVELOPER:
+      id: G-SPEC-TEMPLATE-DEVELOPER
+      scope: G
+      title: Developer 角色模板
+      path: /brain/base/spec/templates/agent/roles/developer.md
+      category: TEMPLATE
+      tags:
+      - template
+      - role
+      last_modified: '2026-02-07'
+      description: Developer 角色模板
+      load_triggers:
+      - developer
+    G-SPEC-TEMPLATE-QA:
+      id: G-SPEC-TEMPLATE-QA
+      scope: G
+      title: QA 角色模板
+      path: /brain/base/spec/templates/agent/roles/qa.md
+      category: TEMPLATE
+      tags:
+      - template
+      - role
+      last_modified: '2026-02-07'
+      description: QA 角色模板
+      load_triggers:
+      - qa
+    G-SPEC-TEMPLATE-PMO:
+      id: G-SPEC-TEMPLATE-PMO
+      scope: G
+      title: PMO 角色模板
+      path: /brain/base/spec/templates/agent/roles/pmo.md
+      category: TEMPLATE
+      tags:
+      - template
+      - role
+      last_modified: '2026-02-08'
+      description: PMO 角色模板
+      load_triggers:
+      - pmo
+    G-SPEC-TEMPLATE-FRONTDESK:
+      id: G-SPEC-TEMPLATE-FRONTDESK
+      scope: G
+      title: Frontdesk 角色模板
+      path: /brain/base/spec/templates/agent/roles/frontdesk.md
+      category: TEMPLATE
+      tags:
+      - template
+      - role
+      last_modified: '2026-02-08'
+      description: Frontdesk 角色模板
+      load_triggers:
+      - frontdesk
+    G-SPEC-TEMPLATE-ARCHITECT:
+      id: G-SPEC-TEMPLATE-ARCHITECT
+      scope: G
+      title: Architect 角色模板
+      path: /brain/base/spec/templates/agent/roles/architect.md
+      category: TEMPLATE
+      tags:
+      - template
+      - role
+      - architecture
+      last_modified: '2026-02-07'
+      description: Architect 角色模板
+      load_triggers:
+      - architect
+    G-SPEC-TEMPLATE-DEVOPS:
+      id: G-SPEC-TEMPLATE-DEVOPS
+      scope: G
+      title: DevOps 角色模板
+      path: /brain/base/spec/templates/agent/roles/devops.md
+      category: TEMPLATE
+      tags:
+      - template
+      - role
+      last_modified: '2026-02-07'
+      description: DevOps 角色模板
+      load_triggers:
+      - devops
+    G-SPEC-TEMPLATE-RESEARCHER:
+      id: G-SPEC-TEMPLATE-RESEARCHER
+      scope: G
+      title: Researcher 角色模板
+      path: /brain/base/spec/templates/agent/roles/researcher.md
+      category: TEMPLATE
+      tags:
+      - template
+      - role
+      - architecture
+      last_modified: '2026-02-07'
+      description: Researcher 角色模板
+      load_triggers:
+      - researcher
+    G-SPEC-TEMPLATE-UI-DESIGNER:
+      id: G-SPEC-TEMPLATE-UI-DESIGNER
+      scope: G
+      title: UI Designer 角色模板
+      path: /brain/base/spec/templates/agent/roles/ui-designer.md
+      category: TEMPLATE
+      tags:
+      - template
+      - role
+      last_modified: '2026-02-14'
+      description: UI Designer 角色模板
+      load_triggers:
+      - ui_designer
+      - ui
+    G-SPEC-POLICY-LEP-NAWP:
+      id: G-SPEC-POLICY-LEP-NAWP
+      scope: G
+      title: No Action Without Plan (G-GATE-NAWP)
+      path: /brain/base/spec/policies/lep/nawp.yaml
+      category: POLICY
+      tags:
+      - lep
+      - gate
+      last_modified: '2026-02-15'
+      description: 'LEP Gate: No Action Without Plan - priority CRITICAL'
+      load_triggers:
+      - g_gate_nawp
+    G-SPEC-POLICY-LEP-ATOMIC:
+      id: G-SPEC-POLICY-LEP-ATOMIC
+      scope: G
+      title: Atomic Plan (G-GATE-ATOMIC)
+      path: /brain/base/spec/policies/lep/atomic.yaml
+      category: POLICY
+      tags:
+      - lep
+      - gate
+      last_modified: '2026-02-15'
+      description: 'LEP Gate: Atomic Plan - priority HIGH'
+      load_triggers:
+      - g_gate_atomic
+    G-SPEC-POLICY-LEP-SCOP:
+      id: G-SPEC-POLICY-LEP-SCOP
+      scope: G
+      title: Scope Locking (G-GATE-SCOP)
+      path: /brain/base/spec/policies/lep/scop.yaml
+      category: POLICY
+      tags:
+      - lep
+      - gate
+      - organization
+      last_modified: '2026-02-15'
+      description: 'LEP Gate: Scope Locking - priority CRITICAL'
+      load_triggers:
+      - g_gate_scop
+    G-SPEC-POLICY-LEP-DELETE-BACKUP:
+      id: G-SPEC-POLICY-LEP-DELETE-BACKUP
+      scope: G
+      title: Delete with Backup (G-GATE-DELETE-BACKUP)
+      path: /brain/base/spec/policies/lep/delete_backup.yaml
+      category: POLICY
+      tags:
+      - lep
+      - gate
+      last_modified: '2026-02-15'
+      description: 'LEP Gate: Delete with Backup - priority MEDIUM'
+      load_triggers:
+      - g_gate_delete_backup
+    G-SPEC-POLICY-LEP-DB-MIGRATION:
+      id: G-SPEC-POLICY-LEP-DB-MIGRATION
+      scope: G
+      title: Database Migration Parallel (G-GATE-DB-MIGRATION)
+      path: /brain/base/spec/policies/lep/db_migration.yaml
+      category: POLICY
+      tags:
+      - lep
+      - gate
+      - database
+      last_modified: '2026-02-15'
+      description: 'LEP Gate: Database Migration Parallel - priority HIGH'
+      load_triggers:
+      - g_gate_db_migration
+    G-SPEC-POLICY-LEP-DB-BACKUP:
+      id: G-SPEC-POLICY-LEP-DB-BACKUP
+      scope: G
+      title: Database Backup First (G-GATE-DB-BACKUP)
+      path: /brain/base/spec/policies/lep/db_backup.yaml
+      category: POLICY
+      tags:
+      - lep
+      - gate
+      - database
+      last_modified: '2026-02-15'
+      description: 'LEP Gate: Database Backup First - priority CRITICAL'
+      load_triggers:
+      - g_gate_db_backup
+    G-SPEC-POLICY-LEP-VERIFICATION:
+      id: G-SPEC-POLICY-LEP-VERIFICATION
+      scope: G
+      title: Code Verification (G-GATE-VERIFICATION)
+      path: /brain/base/spec/policies/lep/verification.yaml
+      category: POLICY
+      tags:
+      - lep
+      - gate
+      last_modified: '2026-02-15'
+      description: 'LEP Gate: Code Verification - priority HIGH'
+      load_triggers:
+      - g_gate_verification
+    G-SPEC-POLICY-LEP-CODE-STYLE:
+      id: G-SPEC-POLICY-LEP-CODE-STYLE
+      scope: G
+      title: Code Style (G-GATE-CODE-STYLE)
+      path: /brain/base/spec/policies/lep/code_style.yaml
+      category: POLICY
+      tags:
+      - lep
+      - gate
+      last_modified: '2026-02-15'
+      description: 'LEP Gate: Code Style - priority LOW'
+      load_triggers:
+      - g_gate_code_style
+    G-SPEC-POLICY-LEP-KVCACHE-FIRST:
+      id: G-SPEC-POLICY-LEP-KVCACHE-FIRST
+      scope: G
+      title: Query Registry Before Read/Write (G-GATE-KVCACHE-FIRST)
+      path: /brain/base/spec/policies/lep/kvcache_first.yaml
+      category: POLICY
+      tags:
+      - lep
+      - gate
+      last_modified: '2026-02-15'
+      description: 'LEP Gate: Query Registry Before Read/Write - priority HIGH'
+      load_triggers:
+      - g_gate_kvcache_first
+    G-SPEC-POLICY-LEP-PROJECT-REF:
+      id: G-SPEC-POLICY-LEP-PROJECT-REF
+      scope: G
+      title: Project Dual Reference (G-GATE-PROJECT-REF)
+      path: /brain/base/spec/policies/lep/project_ref.yaml
+      category: POLICY
+      tags:
+      - lep
+      - gate
+      last_modified: '2026-02-15'
+      description: 'LEP Gate: Project Dual Reference - priority LOW'
+      load_triggers:
+      - g_gate_project_ref
+    G-SPEC-POLICY-LEP-MEMORY-TIMELINE:
+      id: G-SPEC-POLICY-LEP-MEMORY-TIMELINE
+      scope: G
+      title: Timeline Integrity (G-GATE-MEMORY-TIMELINE)
+      path: /brain/base/spec/policies/lep/memory_timeline.yaml
+      category: POLICY
+      tags:
+      - lep
+      - gate
+      last_modified: '2026-02-15'
+      description: 'LEP Gate: Timeline Integrity - priority HIGH'
+      load_triggers:
+      - g_gate_memory_timeline
+    G-SPEC-POLICY-LEP-USERSPACE:
+      id: G-SPEC-POLICY-LEP-USERSPACE
+      scope: G
+      title: Userspace Separation (G-GATE-USERSPACE)
+      path: /brain/base/spec/policies/lep/userspace.yaml
+      category: POLICY
+      tags:
+      - lep
+      - gate
+      last_modified: '2026-02-15'
+      description: 'LEP Gate: Userspace Separation - priority LOW'
+      load_triggers:
+      - g_gate_userspace
+    G-SPEC-POLICY-LEP-NONBLOCKING-CMDS:
+      id: G-SPEC-POLICY-LEP-NONBLOCKING-CMDS
+      scope: G
+      title: Non-blocking Runtime Commands (G-GATE-NONBLOCKING-CMDS)
+      path: /brain/base/spec/policies/lep/nonblocking_cmds.yaml
+      category: POLICY
+      tags:
+      - lep
+      - gate
+      last_modified: '2026-02-15'
+      description: 'LEP Gate: Non-blocking Runtime Commands - priority HIGH'
+      load_triggers:
+      - g_gate_nonblocking_cmds
+    G-SPEC-POLICY-LEP-TOOL-CONVENTIONS:
+      id: G-SPEC-POLICY-LEP-TOOL-CONVENTIONS
+      scope: G
+      title: Tool & Command Usage Conventions (G-GATE-TOOL-CONVENTIONS)
+      path: /brain/base/spec/policies/lep/tool_conventions.yaml
+      category: POLICY
+      tags:
+      - lep
+      - gate
+      last_modified: '2026-02-15'
+      description: 'LEP Gate: Tool & Command Usage Conventions - priority CRITICAL'
+      load_triggers:
+      - g_gate_tool_conventions
+    G-SPEC-POLICY-LEP-IPC-TARGET:
+      id: G-SPEC-POLICY-LEP-IPC-TARGET
+      scope: G
+      title: IPC Target Validation (G-GATE-IPC-TARGET)
+      path: /brain/base/spec/policies/lep/ipc_target.yaml
+      category: POLICY
+      tags:
+      - lep
+      - gate
+      - ipc
+      last_modified: '2026-02-15'
+      description: 'LEP Gate: IPC Target Validation - priority CRITICAL'
+      load_triggers:
+      - g_gate_ipc_target
+    G-SPEC-POLICY-LEP-VERSION-UPGRADE:
+      id: G-SPEC-POLICY-LEP-VERSION-UPGRADE
+      scope: G
+      title: Version Upgrade Protocol (G-GATE-VERSION-UPGRADE)
+      path: /brain/base/spec/policies/lep/version_upgrade.yaml
+      category: POLICY
+      tags:
+      - lep
+      - gate
+      last_modified: '2026-02-15'
+      description: 'LEP Gate: Version Upgrade Protocol - priority HIGH'
+      load_triggers:
+      - g_gate_version_upgrade
+    G-SPEC-POLICY-LEP-SPEC-SYNC:
+      id: G-SPEC-POLICY-LEP-SPEC-SYNC
+      scope: G
+      title: Spec Synchronization (G-GATE-SPEC-SYNC)
+      path: /brain/base/spec/policies/lep/spec_sync.yaml
+      category: POLICY
+      tags:
+      - lep
+      - gate
+      - spec
+      last_modified: '2026-02-15'
+      description: 'LEP Gate: Spec Synchronization - priority MEDIUM'
+      load_triggers:
+      - g_gate_spec_sync
+    G-SPEC-POLICY-LEP-AUDIT:
+      id: G-SPEC-POLICY-LEP-AUDIT
+      scope: G
+      title: Audit Trail (G-GATE-AUDIT)
+      path: /brain/base/spec/policies/lep/audit.yaml
+      category: POLICY
+      tags:
+      - lep
+      - gate
+      last_modified: '2026-02-15'
+      description: 'LEP Gate: Audit Trail - priority LOW'
+      load_triggers:
+      - g_gate_audit
+    G-SPEC-POLICY-LEP-DEFER:
+      id: G-SPEC-POLICY-LEP-DEFER
+      scope: G
+      title: Deferred Task Handoff (G-GATE-DEFER)
+      path: /brain/base/spec/policies/lep/defer.yaml
+      category: POLICY
+      tags:
+      - lep
+      - gate
+      last_modified: '2026-02-15'
+      description: 'LEP Gate: Deferred Task Handoff - priority MEDIUM'
+      load_triggers:
+      - g_gate_defer
+    G-SPEC-POLICY-LEP-PATH-DISCIPLINE:
+      id: G-SPEC-POLICY-LEP-PATH-DISCIPLINE
+      scope: G
+      title: Structured Path and Naming (G-GATE-PATH-DISCIPLINE)
+      path: /brain/base/spec/policies/lep/path_discipline.yaml
+      category: POLICY
+      tags:
+      - lep
+      - gate
+      - organization
+      last_modified: '2026-02-15'
+      description: 'LEP Gate: Structured Path and Naming - priority MEDIUM'
+      load_triggers:
+      - g_gate_path_discipline
+    G-SPEC-POLICY-LEP-FILE-HIERARCHY:
+      id: G-SPEC-POLICY-LEP-FILE-HIERARCHY
+      scope: G
+      title: Global File Hierarchy Enforcement (G-GATE-FILE-HIERARCHY)
+      path: /brain/base/spec/policies/lep/file_hierarchy.yaml
+      category: POLICY
+      tags:
+      - lep
+      - gate
+      - organization
+      last_modified: '2026-02-21'
+      description: 'LEP Gate: Global File Hierarchy Enforcement - priority HIGH'
+      load_triggers:
+      - g_gate_file_hierarchy
+    G-SPEC-POLICY-LEP-SPEC-LOCATION:
+      id: G-SPEC-POLICY-LEP-SPEC-LOCATION
+      scope: G
+      title: SPEC Location Enforcement (G-GATE-SPEC-LOCATION)
+      path: /brain/base/spec/policies/lep/spec_location.yaml
+      category: POLICY
+      tags:
+      - lep
+      - gate
+      - spec
+      last_modified: '2026-02-15'
+      description: 'LEP Gate: SPEC Location Enforcement - priority CRITICAL'
+      load_triggers:
+      - g_gate_spec_location
+    G-SPEC-POLICY-LEP-FILE-ORG:
+      id: G-SPEC-POLICY-LEP-FILE-ORG
+      scope: G
+      title: File Organization Standard (G-GATE-FILE-ORG)
+      path: /brain/base/spec/policies/lep/file_org.yaml
+      category: POLICY
+      tags:
+      - lep
+      - gate
+      - organization
+      last_modified: '2026-02-15'
+      description: 'LEP Gate: File Organization Standard - priority MEDIUM'
+      load_triggers:
+      - g_gate_file_org
+    G-SPEC-POLICY-LEP-APPROVAL-DELEGATION:
+      id: G-SPEC-POLICY-LEP-APPROVAL-DELEGATION
+      scope: G
+      title: Approval Delegation to PMO (G-GATE-APPROVAL-DELEGATION)
+      path: /brain/base/spec/policies/lep/approval_delegation.yaml
+      category: POLICY
+      tags:
+      - lep
+      - gate
+      last_modified: '2026-02-15'
+      description: 'LEP Gate: Approval Delegation to PMO - priority MEDIUM'
+      load_triggers:
+      - g_gate_approval_delegation
+    G-SPEC-POLICY-LEP-AGENT-LIFECYCLE:
+      id: G-SPEC-POLICY-LEP-AGENT-LIFECYCLE
+      scope: G
+      title: Agent Lifecycle via Orchestrator Only (G-GATE-AGENT-LIFECYCLE)
+      path: /brain/base/spec/policies/lep/agent_lifecycle.yaml
+      category: POLICY
+      tags:
+      - lep
+      - gate
+      - agent
+      last_modified: '2026-02-15'
+      description: 'LEP Gate: Agent Lifecycle via Orchestrator Only - priority CRITICAL'
+      load_triggers:
+      - g_gate_agent_lifecycle
+    G-SPEC-POLICY-LEP-ROLLBACK-READY:
+      id: G-SPEC-POLICY-LEP-ROLLBACK-READY
+      scope: G
+      title: Rollback-Ready Modification (G-GATE-ROLLBACK-READY)
+      path: /brain/base/spec/policies/lep/rollback_ready.yaml
+      category: POLICY
+      tags:
+      - lep
+      - gate
+      last_modified: '2026-02-15'
+      description: 'LEP Gate: Rollback-Ready Modification - priority CRITICAL'
+      load_triggers:
+      - g_gate_rollback_ready
+    G-SPEC-POLICY-LEP-TECH-STACK:
+      id: G-SPEC-POLICY-LEP-TECH-STACK
+      scope: G
+      title: Technology Stack Enforcement (G-GATE-TECH-STACK)
+      path: /brain/base/spec/policies/lep/tech_stack.yaml
+      category: POLICY
+      tags:
+      - lep
+      - gate
+      last_modified: '2026-02-15'
+      description: 'LEP Gate: Technology Stack Enforcement - priority MEDIUM'
+      load_triggers:
+      - g_gate_tech_stack
+    G-SPEC-POLICY-LEP-DOCKER-STD:
+      id: G-SPEC-POLICY-LEP-DOCKER-STD
+      scope: G
+      title: Docker Standard Compliance (G-GATE-DOCKER-STD)
+      path: /brain/base/spec/policies/lep/docker_std.yaml
+      category: POLICY
+      tags:
+      - lep
+      - gate
+      - docker
+      last_modified: '2026-02-15'
+      description: 'LEP Gate: Docker Standard Compliance - priority MEDIUM'
+      load_triggers:
+      - g_gate_docker_std
+    G-SPEC-POLICY-LEP-SCOPE-DEVIATION:
+      id: G-SPEC-POLICY-LEP-SCOPE-DEVIATION
+      scope: G
+      title: No Silent Scope Reduction (G-GATE-SCOPE-DEVIATION)
+      path: /brain/base/spec/policies/lep/scope_deviation.yaml
+      category: POLICY
+      tags:
+      - lep
+      - gate
+      - organization
+      last_modified: '2026-02-15'
+      description: 'LEP Gate: No Silent Scope Reduction - priority HIGH'
+      load_triggers:
+      - g_gate_scope_deviation
+    G-SPEC-POLICY-LEP-BATCH-PARTIAL:
+      id: G-SPEC-POLICY-LEP-BATCH-PARTIAL
+      scope: G
+      title: Batch Partial Failure (G-GATE-BATCH-PARTIAL)
+      path: /brain/base/spec/policies/lep/batch_partial.yaml
+      category: POLICY
+      tags:
+      - lep
+      - gate
+      last_modified: '2026-02-15'
+      description: 'LEP Gate: Batch Partial Failure - priority MEDIUM'
+      load_triggers:
+      - g_gate_batch_partial
+    G-SPEC-POLICY-LEP-UNRECOVERABLE:
+      id: G-SPEC-POLICY-LEP-UNRECOVERABLE
+      scope: G
+      title: Halt on Unrecoverable Error (G-GATE-UNRECOVERABLE)
+      path: /brain/base/spec/policies/lep/unrecoverable.yaml
+      category: POLICY
+      tags:
+      - lep
+      - gate
+      last_modified: '2026-02-15'
+      description: 'LEP Gate: Halt on Unrecoverable Error - priority CRITICAL'
+      load_triggers:
+      - g_gate_unrecoverable
+    G-SPEC-POLICY-LEP-MEMORY-PERSIST:
+      id: G-SPEC-POLICY-LEP-MEMORY-PERSIST
+      scope: G
+      title: Memory Persistence on Agent Start (G-GATE-MEMORY-PERSIST)
+      path: /brain/base/spec/policies/lep/memory_persist.yaml
+      category: POLICY
+      tags:
+      - lep
+      - gate
+      - agent
+      - memory
+      last_modified: '2026-02-15'
+      description: 'LEP Gate: Memory Persistence on Agent Start - priority HIGH'
+      load_triggers:
+      - g_gate_memory_persist
+  categories:
+    CORE:
+      count: 3
+      documents:
+      - G-SPEC-CORE-LEP
+      - G-SPEC-CORE-LAYERS
+      - G-SPEC-CORE-WORKFLOW
+    POLICY:
+      count: 49
+      documents:
+      - G-SPEC-POLICY-AGENT-PROTOCOL
+      - G-SPEC-POLICY-AGENTS-REGISTRY-SPEC
+      - G-SPEC-POLICY-BRAIN-BASE-PUBLISH
+      - G-SPEC-POLICY-CONFIG-MANAGEMENT
+      - G-SPEC-POLICY-ESTIMATION-TEMPLATE
+      - G-SPEC-POLICY-GROUP
+      - G-SPEC-POLICY-IPC-MESSAGE-FORMAT
+      - G-SPEC-POLICY-IPC-PRIORITY
+      - G-SPEC-POLICY-IPC-RELIABILITY-DESIGN
+      - G-SPEC-POLICY-LEP-BINDINGS-SPEC
+      - G-SPEC-POLICY-LEP-AGENT-LIFECYCLE
+      - G-SPEC-POLICY-LEP-APPROVAL-DELEGATION
+      - G-SPEC-POLICY-LEP-ATOMIC
+      - G-SPEC-POLICY-LEP-AUDIT
+      - G-SPEC-POLICY-LEP-BATCH-PARTIAL
+      - G-SPEC-POLICY-LEP-CODE-STYLE
+      - G-SPEC-POLICY-LEP-DB-BACKUP
+      - G-SPEC-POLICY-LEP-DB-MIGRATION
+      - G-SPEC-POLICY-LEP-DEFER
+      - G-SPEC-POLICY-LEP-DELETE-BACKUP
+      - G-SPEC-POLICY-LEP-DOCKER-STD
+      - G-SPEC-POLICY-LEP-FILE-ORG
+      - G-SPEC-POLICY-LEP-INDEX
+      - G-SPEC-POLICY-LEP-IPC-TARGET
+      - G-SPEC-POLICY-LEP-KVCACHE-FIRST
+      - G-SPEC-POLICY-LEP-MEMORY-PERSIST
+      - G-SPEC-POLICY-LEP-MEMORY-TIMELINE
+      - G-SPEC-POLICY-LEP-NAWP
+      - G-SPEC-POLICY-LEP-NONBLOCKING-CMDS
+      - G-SPEC-POLICY-LEP-FILE-HIERARCHY
+      - G-SPEC-POLICY-LEP-PATH-DISCIPLINE
+      - G-SPEC-POLICY-LEP-PROJECT-REF
+      - G-SPEC-POLICY-LEP-ROLLBACK-READY
+      - G-SPEC-POLICY-LEP-SCOP
+      - G-SPEC-POLICY-LEP-SCOPE-DEVIATION
+      - G-SPEC-POLICY-LEP-SPEC-LOCATION
+      - G-SPEC-POLICY-LEP-SPEC-SYNC
+      - G-SPEC-POLICY-LEP-TECH-STACK
+      - G-SPEC-POLICY-LEP-TOOL-CONVENTIONS
+      - G-SPEC-POLICY-LEP-UNRECOVERABLE
+      - G-SPEC-POLICY-LEP-USERSPACE
+      - G-SPEC-POLICY-LEP-VERIFICATION
+      - G-SPEC-POLICY-LEP-VERSION-UPGRADE
+      - G-SPEC-POLICY-MEMORY-PERSISTENCE
+      - G-SPEC-POLICY-PROJECT
+      - G-SPEC-POLICY-PROJECT-CREATION
+      - G-SPEC-POLICY-SECRETS-MANAGEMENT
+      - G-SPEC-POLICY-SKILL-BINDINGS-SPEC
+      - G-SPEC-POLICY-VALIDATORS
+    STANDARD:
+      count: 11
+      documents:
+      - G-SPEC-STANDARD-FILE-ORGANIZATION
+      - G-SPEC-STANDARD-FILE-ORGANIZATION-EXAMPLES
+      - G-SPEC-STANDARD-CPP
+      - G-SPEC-STANDARD-TIME-ESTIMATION
+      - G-SPEC-STANDARD-PROBLEM-SOLVING
+      - G-SPEC-STANDARD-VERSION-UPGRADE
+      - G-SPEC-STANDARD-VERIFICATION
+      - G-SPEC-STANDARD-OPERATION
+      - G-SPEC-STANDARD-DEPLOYMENT
+      - G-SPEC-STANDARD-DOCKER
+    TEMPLATE:
+      count: 10
+      documents:
+      - G-SPEC-TEMPLATE-SPEC-DSL
+      - G-SPEC-TEMPLATE-BASE-TEMPLATE
+      - G-SPEC-TEMPLATE-DEVELOPER
+      - G-SPEC-TEMPLATE-QA
+      - G-SPEC-TEMPLATE-PMO
+      - G-SPEC-TEMPLATE-FRONTDESK
+      - G-SPEC-TEMPLATE-ARCHITECT
+      - G-SPEC-TEMPLATE-DEVOPS
+      - G-SPEC-TEMPLATE-RESEARCHER
+      - G-SPEC-TEMPLATE-UI-DESIGNER
+  quick_lookup:
+    lep:
+    - G-SPEC-CORE-LEP
+    - G-SPEC-POLICY-LEP-AGENT-LIFECYCLE
+    - G-SPEC-POLICY-LEP-APPROVAL-DELEGATION
+    - G-SPEC-POLICY-LEP-ATOMIC
+    - G-SPEC-POLICY-LEP-AUDIT
+    - G-SPEC-POLICY-LEP-BATCH-PARTIAL
+    - G-SPEC-POLICY-LEP-CODE-STYLE
+    - G-SPEC-POLICY-LEP-DB-BACKUP
+    - G-SPEC-POLICY-LEP-DB-MIGRATION
+    - G-SPEC-POLICY-LEP-DEFER
+    - G-SPEC-POLICY-LEP-DELETE-BACKUP
+    - G-SPEC-POLICY-LEP-DOCKER-STD
+    - G-SPEC-POLICY-LEP-FILE-HIERARCHY
+    - G-SPEC-POLICY-LEP-FILE-ORG
+    - G-SPEC-POLICY-LEP-INDEX
+    - G-SPEC-POLICY-LEP-IPC-TARGET
+    - G-SPEC-POLICY-LEP-KVCACHE-FIRST
+    - G-SPEC-POLICY-LEP-MEMORY-PERSIST
+    - G-SPEC-POLICY-LEP-MEMORY-TIMELINE
+    - G-SPEC-POLICY-LEP-NAWP
+    - G-SPEC-POLICY-LEP-NONBLOCKING-CMDS
+    - G-SPEC-POLICY-LEP-PATH-DISCIPLINE
+    - G-SPEC-POLICY-LEP-PROJECT-REF
+    - G-SPEC-POLICY-LEP-ROLLBACK-READY
+    - G-SPEC-POLICY-LEP-SCOP
+    - G-SPEC-POLICY-LEP-SCOPE-DEVIATION
+    - G-SPEC-POLICY-LEP-SPEC-LOCATION
+    - G-SPEC-POLICY-LEP-SPEC-SYNC
+    - G-SPEC-POLICY-LEP-TECH-STACK
+    - G-SPEC-POLICY-LEP-TOOL-CONVENTIONS
+    - G-SPEC-POLICY-LEP-UNRECOVERABLE
+    - G-SPEC-POLICY-LEP-USERSPACE
+    - G-SPEC-POLICY-LEP-VERIFICATION
+    - G-SPEC-POLICY-LEP-VERSION-UPGRADE
+    - G-SPEC-POLICY-VALIDATORS
+    gates:
+    - G-SPEC-CORE-LEP
+    - G-SPEC-POLICY-LEP-INDEX
+    architecture:
+    - G-SPEC-CORE-LAYERS
+    - G-SPEC-TEMPLATE-ARCHITECT
+    - G-SPEC-TEMPLATE-RESEARCHER
+    layers:
+    - G-SPEC-CORE-LAYERS
+    workflow:
+    - G-SPEC-CORE-WORKFLOW
+    - G-SPEC-STANDARD-PROBLEM-SOLVING
+    - G-SPEC-STANDARD-VERSION-UPGRADE
+    - G-SPEC-STANDARD-VERIFICATION
+    - G-SPEC-STANDARD-TIME-ESTIMATION
+    ipc:
+    - G-SPEC-POLICY-IPC-MESSAGE-FORMAT
+    - G-SPEC-POLICY-IPC-RELIABILITY-DESIGN
+    - G-SPEC-POLICY-IPC-PRIORITY
+    agent:
+    - G-SPEC-POLICY-AGENTS-REGISTRY-SPEC
+    - G-SPEC-POLICY-AGENT-PROTOCOL
+    config:
+    - G-SPEC-POLICY-CONFIG-MANAGEMENT
+    secrets:
+    - G-SPEC-POLICY-SECRETS-MANAGEMENT
+    creation:
+    - G-SPEC-POLICY-PROJECT-CREATION
+    - G-SPEC-POLICY-GROUP
+    - G-SPEC-POLICY-PROJECT
+    project:
+    - G-SPEC-POLICY-PROJECT-CREATION
+    - G-SPEC-POLICY-PROJECT
+    group:
+    - G-SPEC-POLICY-GROUP
+    memory:
+    - G-SPEC-POLICY-MEMORY-PERSISTENCE
+    memory_persistence:
+    - G-SPEC-POLICY-MEMORY-PERSISTENCE
+    estimation:
+    - G-SPEC-POLICY-ESTIMATION-TEMPLATE
+    - G-SPEC-STANDARD-TIME-ESTIMATION
+    time_estimation:
+    - G-SPEC-STANDARD-TIME-ESTIMATION
+    - G-SPEC-POLICY-ESTIMATION-TEMPLATE
+    organization:
+    - G-SPEC-STANDARD-FILE-ORGANIZATION
+    - G-SPEC-STANDARD-FILE-ORGANIZATION-EXAMPLES
+    file:
+    - G-SPEC-STANDARD-FILE-ORGANIZATION
+    - G-SPEC-STANDARD-FILE-ORGANIZATION-EXAMPLES
+    docker:
+    - G-SPEC-STANDARD-DOCKER
+    - G-SPEC-STANDARD-DEPLOYMENT
+    database:
+    - G-SPEC-STANDARD-OPERATION
+    cpp:
+    - G-SPEC-STANDARD-CPP
+    verification:
+    - G-SPEC-STANDARD-VERIFICATION
+    deployment:
+    - G-SPEC-STANDARD-DEPLOYMENT
+    template:
+    - G-SPEC-TEMPLATE-BASE-TEMPLATE
+    - G-SPEC-TEMPLATE-SPEC-DSL
+    - G-SPEC-TEMPLATE-DEVELOPER
+    - G-SPEC-TEMPLATE-QA
+    - G-SPEC-TEMPLATE-PMO
+    - G-SPEC-TEMPLATE-FRONTDESK
+    - G-SPEC-TEMPLATE-ARCHITECT
+    - G-SPEC-TEMPLATE-DEVOPS
+    - G-SPEC-TEMPLATE-RESEARCHER
+    - G-SPEC-TEMPLATE-UI-DESIGNER
+    pmo:
+    - G-SPEC-TEMPLATE-PMO
+    architect:
+    - G-SPEC-TEMPLATE-ARCHITECT
+    developer:
+    - G-SPEC-TEMPLATE-DEVELOPER
+    devops:
+    - G-SPEC-TEMPLATE-DEVOPS
+    qa:
+    - G-SPEC-TEMPLATE-QA
+    frontdesk:
+    - G-SPEC-TEMPLATE-FRONTDESK
+    researcher:
+    - G-SPEC-TEMPLATE-RESEARCHER
+    ui_designer:
+    - G-SPEC-TEMPLATE-UI-DESIGNER
+    ui:
+    - G-SPEC-TEMPLATE-UI-DESIGNER
+    spec_dsl:
+    - G-SPEC-TEMPLATE-SPEC-DSL
+    validators:
+    - G-SPEC-POLICY-VALIDATORS
+    gate:
+    - G-SPEC-POLICY-LEP-AGENT-LIFECYCLE
+    - G-SPEC-POLICY-LEP-APPROVAL-DELEGATION
+    - G-SPEC-POLICY-LEP-ATOMIC
+    - G-SPEC-POLICY-LEP-AUDIT
+    - G-SPEC-POLICY-LEP-BATCH-PARTIAL
+    - G-SPEC-POLICY-LEP-CODE-STYLE
+    - G-SPEC-POLICY-LEP-DB-BACKUP
+    - G-SPEC-POLICY-LEP-DB-MIGRATION
+    - G-SPEC-POLICY-LEP-DEFER
+    - G-SPEC-POLICY-LEP-DELETE-BACKUP
+    - G-SPEC-POLICY-LEP-DOCKER-STD
+    - G-SPEC-POLICY-LEP-FILE-HIERARCHY
+    - G-SPEC-POLICY-LEP-FILE-ORG
+    - G-SPEC-POLICY-LEP-IPC-TARGET
+    - G-SPEC-POLICY-LEP-KVCACHE-FIRST
+    - G-SPEC-POLICY-LEP-MEMORY-PERSIST
+    - G-SPEC-POLICY-LEP-MEMORY-TIMELINE
+    - G-SPEC-POLICY-LEP-NAWP
+    - G-SPEC-POLICY-LEP-NONBLOCKING-CMDS
+    - G-SPEC-POLICY-LEP-PATH-DISCIPLINE
+    - G-SPEC-POLICY-LEP-PROJECT-REF
+    - G-SPEC-POLICY-LEP-ROLLBACK-READY
+    - G-SPEC-POLICY-LEP-SCOP
+    - G-SPEC-POLICY-LEP-SCOPE-DEVIATION
+    - G-SPEC-POLICY-LEP-SPEC-LOCATION
+    - G-SPEC-POLICY-LEP-SPEC-SYNC
+    - G-SPEC-POLICY-LEP-TECH-STACK
+    - G-SPEC-POLICY-LEP-TOOL-CONVENTIONS
+    - G-SPEC-POLICY-LEP-UNRECOVERABLE
+    - G-SPEC-POLICY-LEP-USERSPACE
+    - G-SPEC-POLICY-LEP-VERIFICATION
+    - G-SPEC-POLICY-LEP-VERSION-UPGRADE
+    lep_critical:
+    - G-SPEC-POLICY-LEP-NAWP
+    - G-SPEC-POLICY-LEP-SCOP
+    - G-SPEC-POLICY-LEP-DB-BACKUP
+    - G-SPEC-POLICY-LEP-TOOL-CONVENTIONS
+    - G-SPEC-POLICY-LEP-IPC-TARGET
+    - G-SPEC-POLICY-LEP-SPEC-LOCATION
+    - G-SPEC-POLICY-LEP-AGENT-LIFECYCLE
+    - G-SPEC-POLICY-LEP-ROLLBACK-READY
+    - G-SPEC-POLICY-LEP-UNRECOVERABLE
+    lep_high:
+    - G-SPEC-POLICY-LEP-ATOMIC
+    - G-SPEC-POLICY-LEP-DB-MIGRATION
+    - G-SPEC-POLICY-LEP-VERIFICATION
+    - G-SPEC-POLICY-LEP-KVCACHE-FIRST
+    - G-SPEC-POLICY-LEP-MEMORY-TIMELINE
+    - G-SPEC-POLICY-LEP-NONBLOCKING-CMDS
+    - G-SPEC-POLICY-LEP-FILE-HIERARCHY
+    - G-SPEC-POLICY-LEP-VERSION-UPGRADE
+    - G-SPEC-POLICY-LEP-SCOPE-DEVIATION
+    - G-SPEC-POLICY-LEP-MEMORY-PERSIST
+    lep_medium:
+    - G-SPEC-POLICY-LEP-DELETE-BACKUP
+    - G-SPEC-POLICY-LEP-SPEC-SYNC
+    - G-SPEC-POLICY-LEP-DEFER
+    - G-SPEC-POLICY-LEP-PATH-DISCIPLINE
+    - G-SPEC-POLICY-LEP-FILE-ORG
+    - G-SPEC-POLICY-LEP-APPROVAL-DELEGATION
+    - G-SPEC-POLICY-LEP-TECH-STACK
+    - G-SPEC-POLICY-LEP-DOCKER-STD
+    - G-SPEC-POLICY-LEP-BATCH-PARTIAL
+    lep_low:
+    - G-SPEC-POLICY-LEP-CODE-STYLE
+    - G-SPEC-POLICY-LEP-PROJECT-REF
+    - G-SPEC-POLICY-LEP-USERSPACE
+    - G-SPEC-POLICY-LEP-AUDIT
+
+    G-STD-SKILL-SPEC-PATTERN:
+      id: G-STD-SKILL-SPEC-PATTERN
+      scope: G
+      title: Spec → Skill 渐进式披露模式
+      path: /brain/base/spec/standards/skill/spec_skill_pattern.yaml
+      category: STANDARD
+      tags:
+        - skill
+        - spec
+        - progressive-disclosure
+        - pattern
+      last_modified: '2026-03-15'
+      description: 定义何时将 spec 包装为 skill，以及渐进式披露的层级结构（L0-L3）和 skill 文件标准结构
+      load_triggers:
+        - skill pattern
+        - spec to skill
+        - progressive disclosure
+
+    G-TMPL-SKILL-SPEC:
+      id: G-TMPL-SKILL-SPEC
+      scope: G
+      title: Spec-backed Skill 文件模板
+      path: /brain/base/spec/templates/skill/spec_skill_template.md
+      category: TEMPLATE
+      tags:
+        - skill
+        - template
+      last_modified: '2026-03-15'
+      description: 基于 spec 构建渐进式披露 skill 的标准模板文件
+      load_triggers:
+        - skill template
+        - new skill

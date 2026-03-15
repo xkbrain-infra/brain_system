@@ -1,0 +1,64 @@
+timer_trigger_model:
+  id: "MWF-TIMER-001"
+  version: "0.1"
+  intent: "定义 timer service 与 orchestrator/task manager 的配合模型"
+
+positioning:
+  role: "trigger_service"
+  description: "timer service 负责按注册计划主动发 IPC，不负责业务判断"
+
+core_rule:
+  - "orchestrator 注册定时或事件触发条件"
+  - "timer service 到点主动发 IPC"
+  - "收到触发后由 orchestrator 查询 task manager 并做决策"
+
+registration_flow:
+  - "orchestrator 创建 task / project / release gate"
+  - "orchestrator 将 trigger_policy 写入 task manager"
+  - "orchestrator 向 timer service 注册触发器"
+  - "timer service 在 trigger_at 或 interval 到达时发 IPC"
+  - "orchestrator 处理并回写 task manager"
+
+trigger_targets:
+  orchestrator:
+    examples:
+      - PROJECT_STATUS_CHECK
+      - TASK_STALE_CHECK
+      - TASK_DEPENDENCY_RECHECK
+      - RELEASE_GATE_CHECK
+  agents:
+    examples:
+      - TASK_RESUME_REMINDER
+      - REVIEW_DUE
+      - TEST_WINDOW_OPEN
+    constraint: "仅在 orchestrator 明确注册时允许"
+
+task_trigger_contract:
+  fields:
+    - trigger_mode
+    - trigger_at
+    - trigger_on_event
+    - check_interval_s
+    - timeout_policy
+    - escalation_policy
+  trigger_modes:
+    - manual
+    - dependency
+    - timer
+    - event
+
+ipc_rules:
+  timer_to_orchestrator:
+    action: "send IPC tick/event"
+    examples:
+      - "PROJECT_STATUS_CHECK"
+      - "TASK_TIMEOUT_CHECK"
+      - "REVIEW_TIMEOUT_CHECK"
+  timer_to_agent:
+    action: "send reminder/activation IPC"
+    rule: "必须基于 orchestrator 注册的 task trigger"
+
+non_goals:
+  - "timer service 不直接修改 task status"
+  - "timer service 不直接决定 escalation"
+  - "timer service 不直接更新 manager board"

@@ -1,0 +1,102 @@
+logging_schema_and_storage:
+  id: "MWF-LOG-002"
+  version: "0.1"
+  intent: "定义日志记录结构、分类目录与本地持久化布局"
+
+log_record:
+  required_fields:
+    - log_id
+    - ts
+    - level
+    - log_class
+    - group_id
+    - project_id
+    - sandbox_id
+    - source_service
+    - source_role
+    - message
+    - event_type
+    - workflow_stage
+    - correlation_id
+  optional_fields:
+    - task_id
+    - agent_id
+    - orchestrator_id
+    - milestone_id
+    - candidate_id
+    - audit_id
+    - progress_pct
+    - status_before
+    - status_after
+    - artifact_refs
+    - payload_ref
+
+task_progress_log:
+  required_fields:
+    - log_id
+    - project_id
+    - task_id
+    - owner_agent_id
+    - status
+    - progress_pct
+    - updated_at
+    - summary
+  optional_fields:
+    - blocker_reason
+    - next_action
+    - review_by
+    - due_at
+
+timeline_log:
+  required_fields:
+    - log_id
+    - project_id
+    - ts
+    - moment
+    - level
+    - summary
+  optional_fields:
+    - milestone_id
+    - candidate_id
+    - related_task_ids
+
+storage_layout:
+  sandbox_local:
+    root_pattern: "/workspace/runtime/logs/{group_id}/{project_id}"
+    files:
+      - "timeline/current.jsonl"
+      - "workflow/current.jsonl"
+      - "tasks/{task_id}.jsonl"
+      - "agents/{agent_id}.jsonl"
+      - "services/{service_name}.jsonl"
+      - "release/current.jsonl"
+      - "audit/current.jsonl"
+      - "index/latest_snapshot.json"
+  brain_global:
+    root_pattern: "/brain/state/logs/{group_id}/{project_id}"
+    files:
+      - "timeline/summary.jsonl"
+      - "workflow/summary.jsonl"
+      - "tasks/summary.jsonl"
+      - "alerts/current.jsonl"
+      - "release/summary.jsonl"
+      - "audit/summary.jsonl"
+      - "indexes/by_project.json"
+      - "indexes/by_group.json"
+
+retention_and_rollup:
+  sandbox_local:
+    debug_retention_days: 7
+    info_retention_days: 30
+    warning_or_higher_retention_days: 180
+    rollup: "每小时生成 category summary"
+  brain_global:
+    summary_retention_days: 365
+    audit_and_release_retention_days: 730
+    rollup: "每日生成 project/group summary"
+
+persistence_rules:
+  - "所有 WARNING 以上日志必须在本地落盘成功后才算 write success"
+  - "task.done/release.completed/audit.completed 前必须刷新对应 category log"
+  - "delivery_report、release_report、audit_report 必须包含 log bundle refs"
+  - "项目归档前必须完成 log rollup 与 summary 封存"

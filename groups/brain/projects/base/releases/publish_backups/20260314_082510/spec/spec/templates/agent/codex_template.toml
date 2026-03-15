@@ -1,0 +1,28 @@
+model = "gpt-5.2-codex"
+model_reasoning_effort = "medium"
+profile = "yolo"
+suppress_unstable_features_warning = true
+
+[projects."{{path}}"]
+trust_level = "trusted"
+
+[profiles.yolo]
+approval_policy = "never"
+sandbox_mode = "danger-full-access"
+model = "gpt-5.3-codex"
+model_reasoning_effort = "medium"
+
+[features]
+unified_exec = true
+shell_snapshot = true
+steer = true
+multi_agent = true
+apps = true
+
+[mcp_servers.mcp-brain_ipc_c]
+command = "/brain/bin/mcp/mcp-brain_ipc_c"
+args = []
+env = { BRAIN_AGENT_NAME = "{{agent_name}}", BRAIN_TMUX_SESSION = "{{agent_name}}", BRAIN_DAEMON_AUTOSTART = "0" }
+
+[notice.model_migrations]
+"gpt-5.2-codex" = "gpt-5.3-codex"

@@ -1,0 +1,164 @@
+# Upgrade Proposal: Sandbox Lite Mode
+# ID: UP-BRAIN-001
+# Status: DEFERRED
+# Created: 2026-03-15
+
+upgrade_proposal:
+  id: "UP-BRAIN-001"
+  title: "Sandbox Lite - 轻量级容器隔离方案"
+  category: "capability_extension"
+  priority: "medium"
+  status: "DEFERRED"
+
+  summary: |
+    为 macOS 等无法运行 Docker Desktop 的环境提供轻量级 sandbox 方案，
+    作为 full_sandbox (Docker) 的降级替代，保持隔离性同时降低部署门槛。
+
+  current_state:
+    problem: |
+      当前 full_sandbox 模式依赖 Docker 容器化技术，但在以下场景存在部署障碍：
+      1. macOS 系统上 Docker Desktop 许可限制（企业版收费、资源占用高）
+      2. 某些 Linux 发行版（如 WSL1、轻量级云主机）不支持 Docker
+      3. 安全敏感环境禁止运行容器守护进程
+      4. 资源受限设备无法承载 Docker 开销
+
+    current_workaround: |
+      目前只能退回到 worktree_sandbox (Level 2)，但 worktree 无法提供：
+      - 系统级环境隔离
+      - 特定 runtime 版本管理
+      - 网络隔离能力
+      - 敏感数据处理隔离
+
+    impact_scope: |
+      - 影响所有需要 full_sandbox 但在受限环境部署的场景
+      - 迫使部分项目降低隔离级别，增加污染风险
+
+  proposed_change:
+    concept: |
+      引入 Level 1.5: sandbox_lite - 介于 worktree_sandbox 和 full_sandbox 之间的新模式
+
+    technical_options:
+      - option: "chroot + namespace"
+        description: "使用 Linux chroot + namespace 进行轻量级隔离"
+        pros:
+          - "无需 Docker daemon"
+          - "原生 Linux 支持"
+          - "资源开销低"
+        cons:
+          - "仅 Linux，macOS 不支持"
+          - "隔离强度弱于容器"
+
+      - option: "lima/vm wrapper"
+        description: "使用 Lima (macOS) 或轻量 VM 运行 Linux 环境"
+        pros:
+          - "macOS 原生支持"
+          - "完整 Linux 环境"
+          - "可以运行 Docker"
+        cons:
+          - "VM 开销"
+          - "依赖 lima/colima 工具"
+
+      - option: "podman/rootless container"
+        description: "使用 Podman 替代 Docker，支持 rootless 模式"
+        pros:
+          - "Daemon-less"
+          - "Rootless 安全"
+          - "兼容 Docker CLI"
+        cons:
+          - "macOS 仍需 VM"
+          - "部分功能受限"
+
+      - option: "nix-shell/environment"
+        description: "使用 Nix 进行可复现环境管理"
+        pros:
+          - "纯软件方案"
+          - "跨平台支持"
+          - "精确的依赖版本"
+        cons:
+          - "无真正的隔离"
+          - "学习曲线陡峭"
+
+    recommended_approach: |
+      多策略组合：
+      - Linux: chroot/namespace + podman (fallback)
+      - macOS: lima/colima 轻量 VM
+      - 通用: nix-shell 作为最后 fallback
+
+    spec_changes:
+      - file: "/brain/base/spec/core/layers.yaml"
+        change: "添加 Level 1.5 sandbox_lite 定义"
+      - file: "/brain/base/workflow/project_delivery/workflow/sandbox_evaluation.yaml"
+        change: "更新评估矩阵，增加 sandbox_lite 分支"
+      - file: "/brain/base/skill/preset/SKILL.md"
+        change: "添加 sandbox_lite 初始化流程"
+      - file: "/brain/base/sandbox/providers/"
+        change: "新增 lite.yaml provider 配置"
+
+  expected_impact:
+    performance: |
+      - sandbox_lite 启动速度预计比 Docker 快 50-80%
+      - 内存开销降低 30-50%
+    quality: |
+      - 降低因环境问题降级到 L2 导致的污染事故
+      - 保持一致的开发体验
+    efficiency: |
+      - 扩展 Brain 系统的部署场景
+      - 降低新用户接入门槛
+    cost: |
+      - 无额外商业许可成本（vs Docker Desktop）
+
+  cost_assessment:
+    implementation_effort: "2-3 周"
+    affected_modules:
+      - "preset skill"
+      - "sandbox service"
+      - "sandbox evaluation workflow"
+      - "provider configs"
+    testing_requirement: "需要在 macOS/Linux/Windows(WSL) 多平台验证"
+
+  risk_assessment:
+    technical_risks:
+      - risk: "隔离强度弱于 Docker"
+        mitigation: "明确文档说明限制，敏感场景仍强制使用 full_sandbox"
+      - risk: "多平台行为不一致"
+        mitigation: "平台检测 + 自动选择最佳后端"
+      - risk: "lima/podman 可用性"
+        mitigation: "提供自动安装脚本，fallback 到 worktree_sandbox"
+    operational_risks:
+      - risk: "增加维护复杂度（3种隔离模式）"
+        mitigation: "清晰的升级/降级路径，自动升级建议"
+
+  alternatives:
+    - name: "维持现状"
+      reason_rejected: "限制 Brain 系统在 macOS 环境的部署，不利于推广"
+    - name: "强制要求 Docker"
+      reason_rejected: "与某些企业环境的安全策略冲突"
+
+  deferral_reason: |
+    当前 full_sandbox 在 Linux 生产环境运行良好，
+    macOS 支持需求暂不紧急，待以下触发条件满足后重启评估：
+    - 有明确的 macOS 用户/团队需求
+    - 或 Docker Desktop 许可政策重大变化
+    - 或 lima/colima 方案在内部验证稳定
+
+  trigger_conditions_for_reactivation:
+    - "收到 >= 3 个 macOS 用户明确需求"
+    - "Docker Desktop 企业版政策收紧"
+    - "Brain 系统对外开放给外部贡献者"
+    - "2026-06-30 后的定期 evolution 评审"
+
+  assessors:
+    - role: "architect"
+      name: "user"
+      assessment: "技术可行，多方案可选，需根据实际场景选择"
+    - role: "pmo"
+      name: "brain_manager"
+      assessment: "有价值但非紧急，建议 defer 到需求明确时"
+
+  created_at: "2026-03-15T13:00:00Z"
+  updated_at: "2026-03-15T13:00:00Z"
+  deferred_at: "2026-03-15T13:00:00Z"
+
+  notes: |
+    此提案源于用户关于"macOS 部署 Docker 可能不行"的反馈。
+    虽然当前无立即实现计划，但记录以供未来参考。

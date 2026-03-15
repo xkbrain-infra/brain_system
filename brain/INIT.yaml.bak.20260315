@@ -1,0 +1,85 @@
+# /brain/INIT.yaml
+# Agent Brain 启动入口
+
+init:
+  id: INIT-AGENT-BRAIN
+  location: /brain
+  role: DSL 执行引擎
+
+bootloader:
+  priority: PRIORITY_ZERO
+  rule: 任何响应前先执行初始化序列
+  entrypoint: /brain/INIT.yaml
+
+# 核心引用
+core_refs:
+  base_index: /brain/base/index.yaml
+  lep: /brain/base/spec/core/lep.yaml
+  layers: /brain/base/spec/core/layers.yaml
+  workflow: /brain/base/spec/core/workflow.yaml
+  agent_protocol: /brain/base/spec/policies/agents/agent_protocol.yaml
+  groups_index: /brain/groups/spec/index.yaml
+  projects_index: /brain/groups/spec/projects_index.yaml
+
+  # Document Registry (快速查找索引)
+  spec_registry: /brain/base/spec/registry.yaml
+  workflow_registry: /brain/base/workflow/registry.yaml
+  knowledge_registry: /brain/base/knowledge/registry.yaml
+  evolution_registry: /brain/base/evolution/registry.yaml
+
+# 启动序列
+activation_sequence:
+  1: {load: /brain/base/index.yaml, purpose: Base 层索引}
+  2: {load: /brain/base/spec/core/lep.yaml, purpose: 门控规则}
+  3: {load: /brain/base/spec/core/layers.yaml, purpose: 架构层级定义}
+  4: {load: /brain/base/spec/core/workflow.yaml, purpose: 全员执行规范}
+  5: {load: /brain/groups/spec/projects_index.yaml, purpose: 项目索引}
+
+# 按需加载策略
+auto_load:
+  # Registry 索引已预加载到 CLAUDE.md (推荐)
+  registry_lookup:
+    enabled: true
+    preloaded: true
+    location: /brain/CLAUDE.md (预加载索引部分)
+    method: "直接在 memory 中查找 quick_lookup[keyword] → 找到文档 ID → 推断路径 → 读取文档"
+    registries:
+      - /brain/base/spec/registry.yaml (38 文档) ✓ 已预加载
+      - /brain/base/workflow/registry.yaml (4 文档) ✓ 已预加载
+      - /brain/base/knowledge/registry.yaml (15 文档) ✓ 已预加载
+      - /brain/base/evolution/registry.yaml (2 文档) ✓ 已预加载
+
+  workflow_steps:
+    S1: groups_index
+    S4: architecture
+    S5: architecture
+  keywords:
+    architecture: [架构, 设计模式, 技术选型]
+    troubleshooting: [错误, error, 故障, timeout]
+    agent: [agent通信, tmux, 多agent, 协作]
+    docker: [Dockerfile, compose, 容器, 部署]
+    database: [数据库, migration, pg_dump, backup]
+
+# LEP 核心门控 (G-GATE-* 格式：G 代表 Gate)
+lep_gates:
+  G-GATE-NAWP: 修改操作需 Plan + PMO 批准
+  G-GATE-ATOMIC: Plan 必须原子化 (文件/行号/动作)
+  G-GATE-SCOP: 操作必须在允许路径内
+  G-GATE-DELETE-BACKUP: 删除前必须备份
+  G-GATE-SPEC-LOCATION: SPEC 必须在正确路径 (通过 Hook 强制)
+  G-GATE-KVCACHE-FIRST: 必须优先使用 registry.yaml 索引系统 (HIGH)
+  G-GATE-AGENT-LIFECYCLE: Agent 生命周期操作必须通过 agentctl
+
+# Spec 编译系统
+spec_build:
+  service: /brain/infrastructure/service/agent_abilities/spec
+  source: /brain/infrastructure/service/agent_abilities/spec/src
+  target: /brain/base/spec
+  commands:
+    validate: scripts/build.sh validate
+    test: scripts/build.sh test
+    publish: scripts/build.sh publish
+    rollback: scripts/build.sh rollback
+
+# 启动确认
+startup_confirmation: "✅ Agent Brain 已激活 | LEP 已加载"

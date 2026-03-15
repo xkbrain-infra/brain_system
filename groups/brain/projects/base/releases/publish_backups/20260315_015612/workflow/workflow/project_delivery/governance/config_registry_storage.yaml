@@ -1,0 +1,62 @@
+config_registry_storage:
+  id: "MWF-CONFIG-STORAGE-001"
+  version: "0.1"
+  intent: "为 config registry 指定底层存储、恢复和冲突处理模型"
+
+backend:
+  selected: "sqlite"
+  rationale:
+    - "runtime-first deployment prefers single-node deterministic storage"
+    - "fits current brain-infra control-plane topology"
+    - "low operational complexity for proposal phase"
+  location: "/brain/state/config_registry/config_registry.db"
+
+data_buckets:
+  - "config_versions"
+  - "service_registrations"
+  - "endpoint_registrations"
+  - "port_allocations"
+  - "supervisor_registrations"
+  - "change_audit_log"
+
+persistence_model:
+  write_mode: "transactional"
+  journaling: "WAL"
+  snapshot_backup:
+    enabled: true
+    interval_minutes: 15
+    target_dir: "/brain/state/config_registry/backups"
+
+conflict_policy:
+  config_versions:
+    strategy: "compare_version_then_reject_on_conflict"
+    rules:
+      - "same object id + same version -> idempotent success"
+      - "same object id + lower incoming version -> reject"
+      - "same object id + equal version but different content -> conflict"
+  port_allocations:
+    strategy: "single_writer_lock"
+  service_registrations:
+    strategy: "last_heartbeat_wins for liveness, explicit version for definition"
+
+recovery:
+  startup_recovery:
+    - "replay WAL"
+    - "validate allocation tables"
+    - "rebuild in-memory indexes"
+  corruption_response:
+    - "switch service to read-only safe mode"
+    - "restore from latest valid backup"
+    - "emit critical audit event"
+
+audit:
+  required_fields:
+    - "object_type"
+    - "object_id"
+    - "old_version"
+    - "new_version"
+    - "changed_by"
+    - "changed_at"
+    - "change_reason"
+  retention_days: 730
+

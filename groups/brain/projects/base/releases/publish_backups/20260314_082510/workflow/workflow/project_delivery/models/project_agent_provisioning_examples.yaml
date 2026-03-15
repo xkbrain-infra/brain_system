@@ -1,0 +1,225 @@
+project_agent_provisioning_examples:
+  id: "MWF-AGENT-PROVISION-EXAMPLE-001"
+  version: "0.1"
+  intent: "提供完整交付项目的 project-scoped agent provisioning 示例"
+
+brain_dashboard_20260311:
+  group_id: "brain"
+  project_id: "brain_dashboard_20260311"
+  project_root: "/xkagent_infra/groups/brain/projects/brain_dashboard_20260311"
+  sandbox_id: "sandbox_brain_dashboard_20260311_01"
+  requested_roles:
+    - role_key: "pmo"
+      count: 1
+      required: true
+    - role_key: "orchestrator"
+      count: 1
+      required: true
+    - role_key: "researcher"
+      count: 1
+      required: true
+    - role_key: "architect"
+      count: 1
+      required: true
+    - role_key: "dev_ui"
+      count: 1
+      required: true
+    - role_key: "dev_api"
+      count: 1
+      required: true
+    - role_key: "qa"
+      count: 1
+      required: true
+    - role_key: "devops"
+      count: 1
+      required: true
+    - role_key: "auditor"
+      count: 1
+      required: true
+
+  template_resolution_map:
+    pmo:
+      template_source_ref: "/xkagent_infra/groups/brain/agents/agent-brain_pmo"
+      provider:
+        agent_type: "claude"
+        model: "claude-sonnet-4-6"
+    orchestrator:
+      template_source_ref: "/xkagent_infra/groups/brain/agents/agent-brain_orchestrator"
+      provider:
+        agent_type: "claude"
+        model: "claude-sonnet-4-6"
+    researcher:
+      template_source_ref: "/xkagent_infra/groups/brain/agents/agent-brain_researcher"
+      provider:
+        agent_type: "codex"
+        model: "gpt-5.3-codex"
+    architect:
+      template_source_ref: "/xkagent_infra/groups/brain/agents/agent-brain_architect"
+      provider:
+        agent_type: "codex"
+        model: "gpt-5.3-codex"
+    dev_ui:
+      template_source_ref: "/xkagent_infra/groups/brain/agents/agent-brain_dev_ui"
+      provider:
+        agent_type: "claude"
+        model: "sonnet"
+    dev_api:
+      template_source_ref: "/xkagent_infra/groups/brain/agents/agent-brain_dev_api"
+      provider:
+        agent_type: "codex"
+        model: "gpt-5.3-codex"
+    qa:
+      template_source_ref: "/xkagent_infra/groups/brain/agents/agent-brain_qa"
+      provider:
+        agent_type: "codex"
+        model: "gpt-5.3-codex"
+    devops:
+      template_source_ref: "/xkagent_infra/groups/brain/agents/agent-brain_devops"
+      provider:
+        agent_type: "claude"
+        model: "sonnet"
+    auditor:
+      template_source_ref: "/xkagent_infra/groups/brain/agents/agent-brain_auditor"
+      provider:
+        agent_type: "claude"
+        model: "claude-sonnet-4-6"
+
+  project_agent_roster:
+    - agent_id: "agent_brain_brain_dashboard_20260311_pmo_01"
+      role_key: "pmo"
+      slot: "01"
+      agent_scope: "project"
+      template_source_ref: "/xkagent_infra/groups/brain/agents/agent-brain_pmo"
+      template_bundle_ref: "/workspace/runtime/template_bundles/agents/agent_brain_brain_dashboard_20260311_pmo_01"
+      runtime_home: "/workspace/runtime/agents/agent_brain_brain_dashboard_20260311_pmo_01"
+      runtime_created_in_sandbox: true
+      orchestrator_id: "agent_brain_brain_dashboard_20260311_orchestrator_01"
+      provider:
+        agent_type: "claude"
+        model: "claude-sonnet-4-6"
+    - agent_id: "agent_brain_brain_dashboard_20260311_orchestrator_01"
+      role_key: "orchestrator"
+      slot: "01"
+      agent_scope: "project"
+      template_source_ref: "/xkagent_infra/groups/brain/agents/agent-brain_orchestrator"
+      template_bundle_ref: "/workspace/runtime/template_bundles/agents/agent_brain_brain_dashboard_20260311_orchestrator_01"
+      runtime_home: "/workspace/runtime/agents/agent_brain_brain_dashboard_20260311_orchestrator_01"
+      runtime_created_in_sandbox: true
+      orchestrator_id: "agent_brain_brain_dashboard_20260311_orchestrator_01"
+      provider:
+        agent_type: "claude"
+        model: "claude-sonnet-4-6"
+    - agent_id: "agent_brain_brain_dashboard_20260311_researcher_01"
+      role_key: "researcher"
+      slot: "01"
+      agent_scope: "project"
+      template_source_ref: "/xkagent_infra/groups/brain/agents/agent-brain_researcher"
+      template_bundle_ref: "/workspace/runtime/template_bundles/agents/agent_brain_brain_dashboard_20260311_researcher_01"
+      runtime_home: "/workspace/runtime/agents/agent_brain_brain_dashboard_20260311_researcher_01"
+      runtime_created_in_sandbox: true
+      orchestrator_id: "agent_brain_brain_dashboard_20260311_orchestrator_01"
+      provider:
+        agent_type: "codex"
+        model: "gpt-5.3-codex"
+    - agent_id: "agent_brain_brain_dashboard_20260311_architect_01"
+      role_key: "architect"
+      slot: "01"
+      agent_scope: "project"
+      template_source_ref: "/xkagent_infra/groups/brain/agents/agent-brain_architect"
+      template_bundle_ref: "/workspace/runtime/template_bundles/agents/agent_brain_brain_dashboard_20260311_architect_01"
+      runtime_home: "/workspace/runtime/agents/agent_brain_brain_dashboard_20260311_architect_01"
+      runtime_created_in_sandbox: true
+      orchestrator_id: "agent_brain_brain_dashboard_20260311_orchestrator_01"
+      provider:
+        agent_type: "codex"
+        model: "gpt-5.3-codex"
+    - agent_id: "agent_brain_brain_dashboard_20260311_dev_ui_01"
+      role_key: "dev_ui"
+      slot: "01"
+      agent_scope: "project"
+      template_source_ref: "/xkagent_infra/groups/brain/agents/agent-brain_dev_ui"
+      template_bundle_ref: "/workspace/runtime/template_bundles/agents/agent_brain_brain_dashboard_20260311_dev_ui_01"
+      runtime_home: "/workspace/runtime/agents/agent_brain_brain_dashboard_20260311_dev_ui_01"
+      runtime_created_in_sandbox: true
+      orchestrator_id: "agent_brain_brain_dashboard_20260311_orchestrator_01"
+      provider:
+        agent_type: "claude"
+        model: "sonnet"
+    - agent_id: "agent_brain_brain_dashboard_20260311_dev_api_01"
+      role_key: "dev_api"
+      slot: "01"
+      agent_scope: "project"
+      template_source_ref: "/xkagent_infra/groups/brain/agents/agent-brain_dev_api"
+      template_bundle_ref: "/workspace/runtime/template_bundles/agents/agent_brain_brain_dashboard_20260311_dev_api_01"
+      runtime_home: "/workspace/runtime/agents/agent_brain_brain_dashboard_20260311_dev_api_01"
+      runtime_created_in_sandbox: true
+      orchestrator_id: "agent_brain_brain_dashboard_20260311_orchestrator_01"
+      provider:
+        agent_type: "codex"
+        model: "gpt-5.3-codex"
+    - agent_id: "agent_brain_brain_dashboard_20260311_qa_01"
+      role_key: "qa"
+      slot: "01"
+      agent_scope: "project"
+      template_source_ref: "/xkagent_infra/groups/brain/agents/agent-brain_qa"
+      template_bundle_ref: "/workspace/runtime/template_bundles/agents/agent_brain_brain_dashboard_20260311_qa_01"
+      runtime_home: "/workspace/runtime/agents/agent_brain_brain_dashboard_20260311_qa_01"
+      runtime_created_in_sandbox: true
+      orchestrator_id: "agent_brain_brain_dashboard_20260311_orchestrator_01"
+      provider:
+        agent_type: "codex"
+        model: "gpt-5.3-codex"
+    - agent_id: "agent_brain_brain_dashboard_20260311_devops_01"
+      role_key: "devops"
+      slot: "01"
+      agent_scope: "project"
+      template_source_ref: "/xkagent_infra/groups/brain/agents/agent-brain_devops"
+      template_bundle_ref: "/workspace/runtime/template_bundles/agents/agent_brain_brain_dashboard_20260311_devops_01"
+      runtime_home: "/workspace/runtime/agents/agent_brain_brain_dashboard_20260311_devops_01"
+      runtime_created_in_sandbox: true
+      orchestrator_id: "agent_brain_brain_dashboard_20260311_orchestrator_01"
+      provider:
+        agent_type: "claude"
+        model: "sonnet"
+    - agent_id: "agent_brain_brain_dashboard_20260311_auditor_01"
+      role_key: "auditor"
+      slot: "01"
+      agent_scope: "project"
+      template_source_ref: "/xkagent_infra/groups/brain/agents/agent-brain_auditor"
+      template_bundle_ref: "/workspace/runtime/template_bundles/agents/agent_brain_brain_dashboard_20260311_auditor_01"
+      runtime_home: "/workspace/runtime/agents/agent_brain_brain_dashboard_20260311_auditor_01"
+      runtime_created_in_sandbox: true
+      orchestrator_id: "agent_brain_brain_dashboard_20260311_orchestrator_01"
+      provider:
+        agent_type: "claude"
+        model: "claude-sonnet-4-6"
+
+  provision_plan:
+    manifest_root: "/xkagent_infra/groups/brain/projects/brain_dashboard_20260311/config/agents"
+    template_bundle_root: "/workspace/runtime/template_bundles/agents"
+    agent_runtime_root: "/workspace/runtime/agents"
+    creation_sequence:
+      - "create sandbox and start orchestrator runtime"
+      - "package template_source_ref assets into per-agent template bundles"
+      - "import template bundles into /workspace/runtime/template_bundles/agents"
+      - "mkdir runtime_home for each agent under /workspace/runtime/agents"
+      - "render provider-specific config: .claude/settings.local.json or .codex/config.toml"
+      - "write .mcp.json, AGENTS.md, runtime_meta.yaml"
+      - "launch agents under orchestrator/supervisor"
+      - "register live roster to orchestrator and IPC"
+    provider_rules:
+      claude:
+        required_files:
+          - ".claude/settings.local.json"
+          - ".mcp.json"
+          - "AGENTS.md"
+      codex:
+        required_files:
+          - ".codex/config.toml"
+          - ".mcp.json"
+          - "AGENTS.md"
+    forbidden:
+      - "run with cwd=/xkagent_infra/groups/brain/agents/*"
+      - "reuse agent-system_* as project runtime id"
+      - "skip orchestrator role"
+      - "skip researcher or auditor for complete delivery"

@@ -1,0 +1,23 @@
+# Self Media Industry Template
+
+industry: self_media
+version: "1.0"
+
+goals:
+  - "围绕个人 IP 持续生产内容"
+  - "形成选题、发布、复盘一体化运营"
+
+primary_roles:
+  - writer
+  - researcher
+  - publisher
+
+common_deliverables:
+  - content_series_plan
+  - platform_post
+  - engagement_review
+
+overlays:
+  writer: /brain/base/spec/templates/industries/self_media/writer.overlay.md
+  researcher: /brain/base/spec/templates/industries/self_media/researcher.overlay.md
+  publisher: /brain/base/spec/templates/industries/self_media/publisher.overlay.md

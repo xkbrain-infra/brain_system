@@ -1,0 +1,75 @@
+# Brain 架构原则
+
+layers:
+  base:
+    path: /brain/base
+    role: 规范层 — 只读，定义规则、结构、约束（无代码）
+    domains:
+      - spec/: 规范定义 (YAML)
+      - workflow/: 流程 DSL
+      - knowledge/: 知识库
+      - evolution/: 演进引擎
+      - skills/: Agent 能力定义
+
+  infrastructure:
+    path: /brain/infrastructure
+    role: 基础设施实现层 — 共享服务、守护进程、构建产物、全局配置（代码在此）
+    components:
+      - service/: 共享服务实现（agentctl, brain_ipc, dashboard, gateway, telegram_api 等）
+      - config/: 全局配置与注册表
+      - bin/: 全局脚本与可执行入口
+
+  backup:
+    path: /brain/backup
+    role: 归档层 — 历史快照、迁移备份、legacy runtime 归档（非 live runtime）
+    components:
+      - infrastructure/: retired infrastructure backups
+      - runtime/: migrated runtime legacy archives
+
+  runtime:
+    path: /xkagent_infra/runtime
+    role: 运行态层 — 已启动系统产生的状态、运行目录与临时产物（不承载源码）
+    components:
+      - agents/: agent runtime homes
+      - data/: 运行时数据库与状态文件
+      - logs/: 运行时日志
+      - memory/: 会话与审计沉淀
+      - tmp/: 临时文件、回滚副本
+      - update_brain/: 待发布变更 staging 区
+
+  groups:
+    path: /brain/groups/{group}/
+    role: 项目层 — 设计文档、Agent 配置、项目规范
+
+  app:
+    path: /app/groups/{group}/{workbench}/
+    role: 业务代码层 — 实际业务代码
+
+paths:
+  brain_project: /brain/groups/{group}/projects/{project}/
+  app_codebase: /app/groups/{group}/{workbench}/domain/{project}/
+  infra_service: /brain/infrastructure/service/{service_name}/
+  runtime_data: /xkagent_infra/runtime/data/{service_name}/
+  runtime_agent_home: /xkagent_infra/runtime/agents/{agent_name}/
+
+rules:
+  - Brain 描述现实，不是理想
+  - base/ 不包含代码（无 src/, *.py）
+  - 共享系统代码放在 infrastructure/service/，不放在 runtime/
+  - runtime/ 只放运行态状态、数据、日志、agent home、临时产物
+  - infrastructure/data/ 与 infrastructure/logs/ 已退役，不再承载 live runtime
+  - 历史快照、迁移备份、legacy 归档统一进入 backup/
+  - Brain 与 App 不一致时，优先修正 Brain
+  - 路径映射必须准确
+
+anti_patterns:
+  - pattern: /brain/base/.../src/
+    error: base 层不放代码，代码属于 infrastructure/service/
+  - pattern: /brain/infrastructure/data/**
+    error: infrastructure/data 已退役；live state 请放到 /xkagent_infra/runtime/data/，历史归档请放到 /brain/backup/
+  - pattern: /brain/infrastructure/logs/**
+    error: infrastructure/logs 已退役；live logs 请放到 /xkagent_infra/runtime/logs/
+  - pattern: /xkagent_infra/runtime/**/{src,*.py,*.c,*.cpp}
+    error: runtime 层不承载共享源码；请放到 infrastructure/service/
+  - pattern: Brain spec ≠ 实际代码
+    error: 认知脱节，优先修正 Brain

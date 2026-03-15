@@ -1,0 +1,136 @@
+# Brain Base Publish Policy
+
+policy:
+  id: "POLICY-BRAIN-BASE-PUBLISH"
+  version: "1.2"
+  status: "Active"
+  owner: "brain"
+
+intent:
+  summary: "定义 Brain Base 的开发源、发布目标、运行时刷新边界和标准发布流程。"
+  source_root: "/xkagent_infra/groups/brain/projects/base"
+  publish_target: "/xkagent_infra/brain/base"
+  runtime_config_root: "/xkagent_infra/brain/infrastructure/config/agentctl"
+
+principles:
+  - "project 源负责开发，brain/base 负责发布态"
+  - "root files 与各 domain 一样属于正式发布物"
+  - "base 发布与 runtime 配置刷新分离"
+  - "发布前必须 dry-run"
+  - "影响 agent 运行态的变更发布后必须 apply-config + restart"
+  - "发布 mcp 域时必须同步 /brain/bin/mcp 运行入口"
+
+base_publish:
+  script: "/xkagent_infra/groups/brain/projects/base/scripts/publish_base.sh"
+  supported_domains:
+    - root
+    - evolution
+    - hooks
+    - knowledge
+    - mcp
+    - scripts
+    - skill
+    - spec
+    - workflow
+    - agents
+  domain_notes:
+    root: |
+      发布根文件 index.yaml、INIT.md.new、README.md、PUBLISH_MANIFEST.yaml。
+      这些文件必须与 source 保持一致，不再允许作为 source-only meta 漂移。
+    mcp: |
+      先将 projects/base/mcp/ 镜像到 brain/base/mcp/，
+      再通过 publish_base.sh 内部执行 build_bin.sh build/install mcp，
+      刷新 /brain/bin/brain_ipc_c_mcp_server
+      与 /brain/bin/mcp/mcp-brain_ipc_c。
+    scripts: |
+      将 projects/base/scripts/ 镜像到 brain/base/scripts/。
+      同一份脚本需同时兼容 source / live / release 三种入口，
+      不允许再靠手工保留额外副本差异。
+    skill: "将 projects/base/skill/ 镜像到 brain/base/skill/"
+    agents: |
+      读取 skill_bindings.yaml + agents_registry.yaml，
+      按 role.default_skills + agent.extra_skills 计算每个 agent 的有效 skill 集合，
+      从 brain/base/skill/<name>/ 复制到 <agent_path>/.claude/skills/<name>/，
+      同时清除不再属于该 agent 的 stale skills。
+  backup_root: "/xkagent_infra/groups/brain/projects/base/releases/publish_backups"
+
+root_publish_flow:
+  description: "新增或修改 projects/base 根文件后的完整发布流程"
+  steps:
+    1_source: "在 groups/brain/projects/base/ 修改 index.yaml / INIT.md.new / README.md / PUBLISH_MANIFEST.yaml"
+    2_dry_run_root: "publish_base.sh --dry-run --domain root"
+    3_publish_root: "publish_base.sh --publish --domain root"
+  constraints:
+    - "README.md 与 PUBLISH_MANIFEST.yaml 变更后必须走 root 发布，不能再手工同步 live/release"
+    - "root 发布不覆盖 project.yaml 与 releases/"
+
+skill_publish_flow:
+  description: "新增或修改 skill 的完整发布流程"
+  steps:
+    1_source: "在 groups/brain/projects/base/skill/<name>/SKILL.md 编写 skill"
+    2_bind: "在 skill_bindings.yaml 的对应 role 或 agent 下注册"
+    3_dry_run_skill: "publish_base.sh --dry-run --domain skill"
+    4_publish_skill: "publish_base.sh --publish --domain skill"
+    5_dry_run_agents: "publish_base.sh --dry-run --domain agents"
+    6_publish_agents: "publish_base.sh --publish --domain agents"
+  constraints:
+    - "必须先发布 skill 域，再发布 agents 域"
+    - "agents 域读取 brain/base/skill/（发布态），不读 projects/base/skill/（开发态）"
+    - "发布前必须 dry-run 确认受影响 agent 和 stale skill 清单"
+
+mcp_publish_flow:
+  description: "新增或修改 projects/base/mcp/ 后的完整发布流程"
+  steps:
+    1_source: "在 groups/brain/projects/base/mcp/<name>/ 修改源码"
+    2_dry_run_mcp: "publish_base.sh --dry-run --domain mcp"
+    3_publish_mcp: "publish_base.sh --publish --domain mcp"
+    4_verify_runtime: "验证 /brain/bin/brain_ipc_c_mcp_server 与 /brain/bin/mcp/mcp-brain_ipc_c 可执行且指向正确"
+  constraints:
+    - "mcp 域发布不能只停留在 brain/base/mcp，必须刷新 /brain/bin/mcp 入口"
+    - "agent 配置、模板、知识文档统一引用 /brain/bin/mcp/<server>"
+
+scripts_publish_flow:
+  description: "新增或修改 projects/base/scripts/ 后的完整发布流程"
+  steps:
+    1_source: "在 groups/brain/projects/base/scripts/ 修改脚本"
+    2_dry_run_scripts: "publish_base.sh --dry-run --domain scripts"
+    3_publish_scripts: "publish_base.sh --publish --domain scripts"
+  constraints:
+    - "scripts 域发布后，brain/base/scripts/ 必须与 source 保持一致"
+    - "若脚本会从 /brain/base/scripts 调用，必须自动回退到 canonical source_root"
+
+runtime_configs:
+  root: "/xkagent_infra/brain/infrastructure/config/agentctl"
+  examples:
+    - "agents_registry.yaml"
+    - "skill_bindings.yaml"
+    - "lep_bindings.yaml"
+  activation:
+    - "agentctl apply-config <agents...> --apply"
+    - "agentctl restart <agents...> --apply"
+
+roles:
+  manager:
+    responsibilities:
+      - "确认本次变更属于 base 发布还是 runtime 配置刷新"
+      - "审查发布域和受影响 agent 范围"
+      - "决定是否进入正式发布"
+  devops:
+    responsibilities:
+      - "执行 dry-run 和正式发布"
+      - "执行 apply-config / restart"
+      - "验证 hooks、settings.local.json、runtime manifest、生效状态"
+
+validation:
+  required_checks:
+    - "publish 目标文件存在且可读"
+    - "root files 与 source 保持一致"
+    - "受影响 MCP 在 /brain/bin/mcp/ 下存在稳定入口"
+    - "受影响 registry/spec/guide 路径一致"
+    - "受影响 agent 的 settings.local.json 已刷新"
+    - "受影响 agent 的 agent_runtime.json 已刷新"
+    - "受影响 agent 重启后在线"
+
+non_goals:
+  - "不允许直接把 brain/base 当开发源"
+  - "不允许用 publish_base.sh 覆盖 runtime config 目录"

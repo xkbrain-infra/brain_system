@@ -1,0 +1,72 @@
+gate_id: G-GATE-SPEC-LOCATION
+name: SPEC Location Enforcement
+applies_to: [write]
+rule: SPEC 文件必须在 group spec 根或 project_root/spec/ 下，避免 project_delivery 被旧目录模型误导
+
+enforcement:
+  stage: pre_tool_use
+  method: python_checker
+  checker: path_checker
+  priority: CRITICAL
+
+  triggers:
+    tools: [Write, Edit]
+
+  patterns:
+    forbidden:
+      - "**/.claude/plans/**"
+      - "**/tmp/**"
+      - "/tmp/**"
+      - "/root/**"
+      - "**/.local/**"
+      - "/home/**"
+      - "**/.cache/**"
+      - "/xkagent_infra/groups/**/spec/projects/**"
+    allowed:
+      - "/xkagent_infra/groups/*/spec/**"
+      - "/xkagent_infra/groups/*/projects/*/spec/**"
+      - "/xkagent_infra/brain/base/spec/**"
+      - "/xkagent_infra/brain/base/spec/templates/**"
+
+  content_triggers:
+    - "spec_id:"
+    - "alignment:"
+    - "requirements:"
+    - "## Context"
+    - "实施计划："
+    - "## 实施步骤"
+    - "Phase 1:"
+    - "Phase 2:"
+
+  config:
+    enable_content_check: true
+    block_on_warning: false
+
+  block_message: |
+    🚫 SPEC 路径违规 (G-SPEC-LOCATION)
+
+    文件路径: {file_path}
+    违规原因: {reason}
+
+    ❌ 当前路径不属于合法 SPEC 存放位置
+    ✅ 合法路径族:
+      - group 级 spec: /xkagent_infra/groups/{group}/spec/{spec_id}/
+      - project 级 spec: /xkagent_infra/groups/{group}/projects/{project_id}/spec/
+
+    project_delivery 项目必须先创建 project_root，再在 project_root/spec/ 下写 intake/research/planning/task 文档。
+    禁止把 project spec 临时塞回 /xkagent_infra/groups/**/spec/projects/** 规避 hook。
+
+    参考文档:
+    - /xkagent_infra/brain/base/workflow/operations/project_initiation.yaml
+    - /xkagent_infra/brain/base/workflow/project_delivery/models/group_project_layout.yaml
+    - /xkagent_infra/brain/base/workflow/project_delivery/intake.yaml
+
+    来源: /xkagent_infra/brain/base/spec/core/lep.yaml (G-SPEC-LOCATION)
+
+bindings:
+  hooks:
+    stage: pre_tool_use
+    trigger_tools: [Write]
+    patterns: [spec_outside_group]
+  mcp_tools: []
+  related_skills: []

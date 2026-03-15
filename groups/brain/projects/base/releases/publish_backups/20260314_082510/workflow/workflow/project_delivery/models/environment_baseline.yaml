@@ -1,0 +1,170 @@
+environment_baseline:
+  id: "MWF-ENV-001"
+  version: "0.1"
+  intent: "定义 brain infra、sandbox contract、provider profile、test、production 的环境基线"
+
+sandbox_contract:
+  definition: "sandbox 是项目隔离执行环境的设计模式，不绑定单一实现技术"
+  required_capabilities:
+    - "isolated code baseline or project worktree"
+    - "isolated dependency/runtime boundary"
+    - "isolated agent runtime"
+    - "isolated logs/artifacts/memory"
+    - "destroy/recreate/archive semantics"
+    - "host brain non-pollution guarantee"
+  current_approved_providers:
+    - "docker_container"
+
+sandbox_provider_profiles:
+  docker_container:
+    status: "approved_default"
+    role: "current default sandbox provider"
+    detailed_contract_ref: "/brain/base/workflow/project_delivery/models/docker_sandbox_template.yaml"
+    built_in_template:
+      base_dockerfile: "/brain/platform/docker/Dockerfile"
+      compose_template: "/brain/platform/docker/compose.yaml"
+      bootstrap_scripts:
+        - "/brain/platform/docker/scripts/container_bootstrap.sh"
+        - "/brain/platform/docker/scripts/healthcheck.sh"
+      adaptation_required:
+        - "project-specific compose/env"
+        - "project-specific supervisor profile"
+        - "project-specific agent roster"
+        - "project-specific toolchain extension if needed"
+    workspace_model:
+      baseline_seed_root: "/xkagent_infra/brain"
+      writable_brain_root: "/workspace/brain"
+      writable_groups_root: "/workspace/groups"
+      writable_project_root: "/workspace/groups/{group_id}/projects/{project_id}"
+      runtime_root: "/workspace/runtime"
+      agent_runtime_root: "/workspace/runtime/agents"
+      agent_template_bundle_root: "/workspace/runtime/template_bundles/agents"
+      artifacts_root: "/workspace/artifacts"
+      logs_root: "/workspace/logs"
+      memory_root: "/workspace/memory"
+    provider_evidence:
+      - "container_name"
+      - "container_id"
+      - "image_tag"
+      - "baseline_source_revision"
+      - "workspace_root"
+
+environments:
+  groups_layer:
+    purpose: "项目归属与规范主目录层"
+    requirements:
+      - "group_root exists"
+      - "group_root/projects exists"
+      - "group_root/tasks exists or can be created"
+      - "project_root resides under group_root/projects"
+      - "group workflow/spec references resolvable"
+
+  dev:
+    purpose: "sandbox 内开发与本地验证环境"
+    requirements:
+      - "project local execution workspace"
+      - "developer test entrypoints"
+      - "local mock/stub capability where applicable"
+
+  stage:
+    purpose: "集成验证、联调、回归与预发布环境"
+    requirements:
+      - "environment lock policy"
+      - "integration connectivity"
+      - "regression/smoke entrypoints"
+      - "deployment slot or namespace rule"
+
+  brain_infra:
+    purpose: "control plane"
+    requirements:
+      - "single authoritative runtime"
+      - "config registry service"
+      - "global task manager"
+      - "control IPC router"
+      - "release manager"
+      - "audit orchestrator"
+      - "registry and governance storage"
+
+  sandbox_base:
+    purpose: "project execution baseline"
+    requirements:
+      - "declared sandbox strategy and provider"
+      - "built-in provider template"
+      - "pinned baseline image or baseline source version"
+      - "workspace layout"
+      - "local task runtime path"
+      - "artifact output path"
+      - "runtime toolchain versions"
+      - "secrets injection contract"
+      - "config registry connectivity"
+      - "service registration capability"
+      - "network and permission boundaries"
+
+  test_staging:
+    purpose: "pre-production verification"
+    requirements:
+      - "environment lock policy"
+      - "test data policy"
+      - "deployment slot or namespace rule"
+      - "smoke and regression entrypoints"
+
+  production_target:
+    purpose: "release destination"
+    requirements:
+      - "approval gate"
+      - "rollback path"
+      - "post-release smoke checks"
+      - "audit trace retention"
+
+runtime_layout:
+  sandbox:
+    required_paths:
+      - "/workspace"
+      - "/workspace/brain"
+      - "/workspace/groups"
+      - "/workspace/groups/{group_id}/projects/{project_id}"
+      - "/workspace/runtime"
+      - "/workspace/runtime/agents"
+      - "/workspace/runtime/template_bundles/agents"
+      - "/workspace/artifacts"
+      - "/workspace/logs"
+      - "/workspace/memory"
+  brain_infra:
+    required_paths:
+      - "/brain/base"
+      - "/brain/infrastructure"
+      - "/brain/runtime/architecture"
+      - "/brain/runtime/state"
+
+project_task_storage:
+  required_paths:
+    - "spec/06_tasks/plan.yaml"
+    - "spec/06_tasks/backlog.yaml"
+    - "spec/06_tasks/task_manager.yaml"
+    - "spec/06_tasks/assigned/"
+    - "spec/06_tasks/review/"
+    - "spec/06_tasks/done/"
+    - "spec/06_tasks/events/"
+    - "spec/06_tasks/dispatch/"
+  note: "project task list、dispatch evidence 与状态机配置必须落盘到 project_root 或 sandbox writable project workspace"
+
+rules:
+  - "sandbox 是抽象 contract；provider 只是实现方式"
+  - "当前默认 provider 为 docker_container，但不得把它写成 sandbox 的定义"
+  - "group ownership and project_root creation must complete before sandbox bootstrap"
+  - "project_root 必须位于 group_root/projects/ 下，不能位于 sandbox/"
+  - "brain runtime image 必须具有版本控制，至少包含 git/source/image 三类追溯字段"
+  - "project_root 必须在 bootstrap 前被打包为 payload package，并记录 version/hash/manifest"
+  - "sandbox 内必须同时维护 brain workspace 与 group project workspace，二者不得混为一个可写根"
+  - "project_root 必须维护 spec/06_tasks/ 目录与 task_manager.yaml，不能只依赖 chat 上下文或 manager board"
+  - "task manager 必须同时具备 state machine、task list、forward 与 dispatch ack double-check 策略"
+  - "project agent manifests 必须位于 group project root 下；runtime agent homes 必须位于 sandbox runtime 下"
+  - "project agent template source 可来自 host group agents，但 bundle 导入后才能在 sandbox 内消费"
+  - "每个 project sandbox 必须声明所用 sandbox strategy、provider、template profile 和 runtime version"
+  - "provider 必须从内置模板实例化，再做项目适配"
+  - "docker_container provider 的详细固定资产与适配边界见 docker_sandbox_template.yaml"
+  - "项目工作副本必须来源于完整 brain baseline，而不是临时空目录"
+  - "每个 project 必须显式声明 dev/stage/prod 三层环境策略"
+  - "release workflow 必须显式区分 test/staging 与 production target"
+  - "没有环境基线的 project 不得进入 BOOTSTRAPPING"
+  - "正式 service 的 env/config/port/supervisor 绑定必须由 config registry service 管理"

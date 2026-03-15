@@ -1,0 +1,73 @@
+control_ipc:
+  id: "MWF-CTL-IPC-001"
+  version: "0.1"
+  intent: "定义 brain infra 与 sandbox 之间的控制面协议"
+
+message_contract:
+  required_fields:
+    - msg_id
+    - type
+    - from
+    - to
+    - group_id
+    - project_id
+    - ts
+  optional_fields:
+    - sandbox_id
+    - service_name
+    - config_version_ref
+
+message_types:
+  PROJECT_CREATE:
+    purpose: "请求创建新 sandbox 和项目记录"
+  PROJECT_BOOTSTRAPPED:
+    purpose: "sandbox 与 orchestrator 初始化完成"
+  PROJECT_SNAPSHOT:
+    purpose: "上报项目整体状态"
+  PROJECT_EVENT:
+    purpose: "上报关键项目事件"
+  ESCALATION_REQUEST:
+    purpose: "请求 manager/PMO 决策"
+  ESCALATION_RESPONSE:
+    purpose: "返回治理决策"
+  RELEASE_REQUEST:
+    purpose: "提交 release candidate"
+  RELEASE_DECISION:
+    purpose: "返回 release gate 决策"
+  AUDIT_SUBMIT:
+    purpose: "提交项目审计材料"
+  AUDIT_RESULT:
+    purpose: "返回 audit finding 和 action"
+  GET_CONFIG:
+    purpose: "读取指定 scope/environment/version 的配置"
+  PUT_CONFIG_VERSION:
+    purpose: "提交新的配置版本或 override"
+  RESERVE_SERVICE_NAME:
+    purpose: "为新 service 保留唯一 service_name"
+  ALLOCATE_PORT:
+    purpose: "为正式 service 申请监听端口"
+  REGISTER_SERVICE:
+    purpose: "登记 service 的正式存在和依赖关系"
+  REGISTER_ENDPOINT:
+    purpose: "登记 service 启动后的可达 endpoint"
+  REGISTER_SUPERVISOR:
+    purpose: "登记长期运行进程的 supervisor 托管配置"
+  RESOLVE_SERVICE:
+    purpose: "解析当前活跃 service endpoint"
+  GET_ENV_BASELINE:
+    purpose: "读取环境基线和 profile 对应的默认配置"
+  SANDBOX_STOP:
+    purpose: "停止 sandbox"
+  SANDBOX_ARCHIVE:
+    purpose: "归档 sandbox"
+
+ownership_rules:
+  - "brain infra owns PROJECT_CREATE and sandbox lifecycle messages"
+  - "project orchestrator owns PROJECT_SNAPSHOT and PROJECT_EVENT"
+  - "release manager owns RELEASE_DECISION"
+  - "audit orchestrator owns AUDIT_RESULT"
+  - "config registry service owns GET_CONFIG/PUT_CONFIG_VERSION/RESERVE_SERVICE_NAME/ALLOCATE_PORT/REGISTER_SERVICE/REGISTER_ENDPOINT/REGISTER_SUPERVISOR/RESOLVE_SERVICE/GET_ENV_BASELINE"
+
+routing_rules:
+  - "config and registration messages must terminate at config registry service"
+  - "PROJECT_* lifecycle messages remain under brain infra orchestration"

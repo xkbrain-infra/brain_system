@@ -1,0 +1,608 @@
+#!/usr/bin/env python3
+"""Agent Supervisor - tmux 守护进程
+
+监控所有 tmux agent 的存活状态，挂掉自动重启。
+支持指数退避、最大重启次数限制、冷却窗口。
+"""
+
+import json
+import os
+import socket
+import subprocess
+import time
+from dataclasses import dataclass, field
+from datetime import datetime
+from pathlib import Path
+from typing import Any
+
+from agent_manager.config.loader import DEFAULT_CONFIG_DIR, YAMLConfigLoader
+
+# 配置
+DAEMON_SOCKET = "/tmp/brain_daemon.sock"
+CHECK_INTERVAL_SECONDS = 10
+MAX_RESTART_ATTEMPTS = 10
+RESTART_WINDOW_SECONDS = 600  # 10 分钟窗口
+COOLDOWN_SECONDS = 30
+BACKOFF_BASE_SECONDS = 2
+BACKOFF_MAX_SECONDS = 60
+
+# Agent 启动命令模板
+AGENT_START_COMMANDS = {
+    "claude": "claude --resume",
+    "codex": "codex --resume",
+}
+
+
+@dataclass
+class RestartResult:
+    """重启结果"""
+    success: bool
+    agent_name: str
+    reason: str
+    attempt: int
+    error: str | None = None
+
+
+@dataclass
+class AgentState:
+    """Agent 状态追踪"""
+    name: str
+    tmux_session: str
+    restart_attempts: list[float] = field(default_factory=list)
+    last_restart: float | None = None
+    cooldown_until: float | None = None
+
+
+class AgentSupervisor:
+    """Agent 守护进程"""
+
+    def __init__(
+        self,
+        check_interval: int = CHECK_INTERVAL_SECONDS,
+        max_attempts: int = MAX_RESTART_ATTEMPTS,
+        window_seconds: int = RESTART_WINDOW_SECONDS,
+        cooldown_seconds: int = COOLDOWN_SECONDS,
+        audit_logger=None,
+    ):
+        self.check_interval = check_interval
+        self.max_attempts = max_attempts
+        self.window_seconds = window_seconds
+        self.cooldown_seconds = cooldown_seconds
+        self.audit_logger = audit_logger
+        self._agent_states: dict[str, AgentState] = {}
+        self._shutdown = False
+        self._config_loader = YAMLConfigLoader(config_dir=DEFAULT_CONFIG_DIR)
+        self._launcher_agent_name = "service-agent-launcher"
+
+    def _get_agent_spec(self) -> dict[str, dict[str, Any]]:
+        """Load agent spec from agents_registry.yaml as a name->spec mapping."""
+        cfg = self._config_loader.get_agents_registry()
+        root = cfg.get("agents_registry", {}) if isinstance(cfg, dict) else {}
+        agents = root.get("agents", []) if isinstance(root, dict) else []
+        if not isinstance(agents, list):
+            return {}
+
+        out: dict[str, dict[str, Any]] = {}
+        for a in agents:
+            if not isinstance(a, dict):
+                continue
+            name = str(a.get("name") or "").strip()
+            tmux_session = str(a.get("tmux_session") or "").strip()
+            if not name or not tmux_session:
+                continue
+            out[name] = a
+        return out
+
+    def _log_event(self, event_type: str, payload: dict) -> None:
+        """记录审计日志"""
+        if self.audit_logger:
+            self.audit_logger.log_event(event_type, payload)
+        else:
+            # Fallback: 打印到 stdout
+            ts = datetime.now().isoformat(timespec="seconds")
+            print(f"[{ts}] [{event_type}] {json.dumps(payload, ensure_ascii=False)}")
+
+    def _parse_agent_name(self, instance_id_or_name: str) -> str:
+        s = (instance_id_or_name or "").strip()
+        if not s:
+            return ""
+        return s.split("@", 1)[0]
+
+    def _ipc_allowed_senders(self) -> set[str]:
+        try:
+            cfg = self._config_loader.get_whitelist()
+            root = cfg.get("whitelist", {}) if isinstance(cfg, dict) else {}
+            ipc = root.get("ipc_control", {}) if isinstance(root, dict) else {}
+            allowed = ipc.get("allowed_from_agents", []) if isinstance(ipc, dict) else []
+            if isinstance(allowed, list):
+                return {str(x).strip() for x in allowed if str(x).strip()}
+        except Exception:
+            pass
+        return {"manager", "codex", "claude"}
+
+    def _daemon_request(self, action: str, data: dict[str, Any]) -> dict[str, Any] | None:
+        try:
+            sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            sock.settimeout(5.0)
+            sock.connect(DAEMON_SOCKET)
+            req = {"action": action, "data": data}
+            sock.sendall((json.dumps(req, ensure_ascii=False) + "\n").encode("utf-8"))
+            buf = b""
+            while True:
+                chunk = sock.recv(4096)
+                if not chunk:
+                    break
+                buf += chunk
+                if b"\n" in buf:
+                    break
+            sock.close()
+            if not buf:
+                return None
+            return json.loads(buf.decode("utf-8"))
+        except Exception:
+            return None
+
+    def _tmux_session_name(self) -> str:
+        try:
+            p = subprocess.run(
+                ["tmux", "display-message", "-p", "#S"],
+                capture_output=True,
+                text=True,
+                timeout=1.5,
+                check=False,
+            )
+            return (p.stdout or "").strip()
+        except Exception:
+            return ""
+
+    def _tmux_pane_id(self) -> str:
+        pane = os.environ.get("TMUX_PANE", "") or ""
+        if pane:
+            return pane
+        try:
+            p = subprocess.run(
+                ["tmux", "display-message", "-p", "#{pane_id}"],
+                capture_output=True,
+                text=True,
+                timeout=1.5,
+                check=False,
+            )
+            return (p.stdout or "").strip()
+        except Exception:
+            return ""
+
+    def _ipc_poll_commands(self) -> None:
+        """Poll IPC control channel for launcher commands and execute them."""
+        resp = self._daemon_request(
+            "ipc_recv",
+            {
+                "agent": self._launcher_agent_name,
+                "ack_mode": "manual",
+                "max_items": 10,
+            },
+        )
+        if not isinstance(resp, dict) or resp.get("status") != "ok":
+            return
+
+        messages = resp.get("messages", []) or []
+        if not isinstance(messages, list) or not messages:
+            return
+
+        allowed = self._ipc_allowed_senders()
+        ack_ids: list[str] = []
+
+        for msg in messages:
+            if not isinstance(msg, dict):
+                continue
+            msg_id = str(msg.get("msg_id") or "")
+            if msg_id:
+                ack_ids.append(msg_id)
+
+            from_ = str(msg.get("from") or "")
+            from_agent = self._parse_agent_name(from_)
+            payload = msg.get("payload", {}) or {}
+            if not isinstance(payload, dict):
+                payload = {}
+
+            if from_agent and from_agent not in allowed:
+                self._log_event(
+                    "launcher_command_rejected",
+                    {"from": from_, "reason": "sender_not_allowed", "payload": payload},
+                )
+                continue
+
+            cmd = str(payload.get("cmd") or "").strip()
+            agent = str(payload.get("agent") or "").strip()
+            reason = str(payload.get("reason") or "ipc_command").strip()
+
+            self._log_event(
+                "launcher_command_received",
+                {"from": from_, "cmd": cmd, "agent": agent, "reason": reason},
+            )
+
+            try:
+                if cmd in ("reconcile", "check"):
+                    self.check_and_restart()
+                elif cmd in ("reload", "reload_config"):
+                    self._config_loader.reload()
+                elif cmd == "restart":
+                    if not agent:
+                        raise ValueError("missing agent")
+                    if agent == self._launcher_agent_name:
+                        raise ValueError("refuse to restart self")
+                    self.restart(agent, reason=reason)
+                elif cmd == "start":
+                    if not agent:
+                        raise ValueError("missing agent")
+                    spec = self._get_agent_spec().get(agent)
+                    if not spec:
+                        raise ValueError(f"unknown agent: {agent}")
+                    tmux_session = str(spec.get("tmux_session") or "").strip()
+                    if not tmux_session:
+                        raise ValueError("missing tmux_session")
+                    if tmux_session in self._get_tmux_sessions():
+                        continue
+                    # start via restart() path (session missing -> new-session)
+                    self.restart(agent, reason=reason)
+                elif cmd == "stop":
+                    if not agent:
+                        raise ValueError("missing agent")
+                    if agent == self._launcher_agent_name:
+                        raise ValueError("refuse to stop self")
+                    spec = self._get_agent_spec().get(agent)
+                    if not spec:
+                        raise ValueError(f"unknown agent: {agent}")
+                    tmux_session = str(spec.get("tmux_session") or "").strip()
+                    if tmux_session:
+                        subprocess.run(["tmux", "kill-session", "-t", tmux_session], capture_output=True, timeout=8)
+                else:
+                    raise ValueError(f"unknown cmd: {cmd}")
+
+                self._log_event(
+                    "launcher_command_executed",
+                    {"from": from_, "cmd": cmd, "agent": agent},
+                )
+            except Exception as e:
+                self._log_event(
+                    "launcher_command_error",
+                    {"from": from_, "cmd": cmd, "agent": agent, "error": str(e)},
+                )
+
+        if ack_ids:
+            self._daemon_request(
+                "ipc_ack",
+                {
+                    "agent": self._launcher_agent_name,
+                    "msg_ids": ack_ids,
+                },
+            )
+
+    def _get_online_agents(self) -> dict[str, dict[str, Any]]:
+        """通过 IPC 获取在线 agent 列表"""
+        try:
+            sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            sock.settimeout(5.0)
+            sock.connect(DAEMON_SOCKET)
+
+            request = {"action": "agent_list", "data": {"include_offline": False}}
+            sock.sendall((json.dumps(request) + "\n").encode("utf-8"))
+
+            data = b""
+            while True:
+                chunk = sock.recv(4096)
+                if not chunk:
+                    break
+                data += chunk
+                if b"\n" in data:
+                    break
+            sock.close()
+
+            response = json.loads(data.decode("utf-8"))
+            if response.get("status") != "ok":
+                return {}
+
+            # 转换为 {agent_name: info} 格式
+            result = {}
+            for agent in response.get("agents", []):
+                name = agent.get("name")
+                if name and agent.get("online"):
+                    result[name] = agent
+            return result
+        except Exception as e:
+            self._log_event("supervisor_error", {"error": f"Failed to get agents: {e}"})
+            return {}
+
+    def _get_tmux_sessions(self) -> dict[str, dict[str, Any]]:
+        """获取 tmux session 列表"""
+        try:
+            result = subprocess.run(
+                ["tmux", "list-sessions", "-F", "#{session_name}:#{session_attached}"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if result.returncode != 0:
+                return {}
+
+            sessions = {}
+            for line in result.stdout.strip().split("\n"):
+                if not line:
+                    continue
+                parts = line.split(":")
+                if len(parts) >= 2:
+                    name = parts[0]
+                    attached = parts[1] == "1"
+                    sessions[name] = {"name": name, "attached": attached}
+            return sessions
+        except Exception as e:
+            self._log_event("supervisor_error", {"error": f"Failed to list tmux sessions: {e}"})
+            return {}
+
+    def _get_expected_agents(self) -> list[dict[str, str]]:
+        """获取期望运行的 agent 列表（从配置）"""
+        try:
+            agents = []
+            for agent in self._get_agent_spec().values():
+                name = str(agent.get("name") or "").strip()
+                # Supervisor does not supervise itself (avoid self-restart loops).
+                if name == self._launcher_agent_name:
+                    continue
+
+                desired_state = str(agent.get("desired_state") or "running").strip().lower()
+                required = bool(agent.get("required", False))
+                status = str(agent.get("status") or "active").strip().lower()
+
+                should_run = (desired_state == "running") or required
+                if not should_run:
+                    continue
+                if status not in ("active", "inactive", "planned"):
+                    status = "active"
+
+                # Only manage agents that are allowed to run in this environment.
+                # - active: expected
+                # - planned: allowed (for rollout)
+                # - inactive: only if required/desired_state says running (rare)
+                if status == "inactive" and not required and desired_state != "running":
+                    continue
+
+                agents.append(
+                    {
+                        "name": name,
+                        "tmux_session": str(agent.get("tmux_session") or ""),
+                        "cwd": str(agent.get("cwd") or ""),
+                        "start_cmd": str(agent.get("start_cmd") or ""),
+                    }
+                )
+            return agents
+        except Exception:
+            return [
+                {"name": "claude", "tmux_session": "claude_common"},
+                {"name": "codex", "tmux_session": "codex_common"},
+            ]
+
+    def _calculate_backoff(self, attempts: int) -> float:
+        """计算指数退避时间"""
+        backoff = BACKOFF_BASE_SECONDS * (2 ** min(attempts, 6))
+        return min(backoff, BACKOFF_MAX_SECONDS)
+
+    def _should_restart(self, agent_name: str) -> tuple[bool, str]:
+        """判断是否应该重启 agent"""
+        state = self._agent_states.get(agent_name)
+        if not state:
+            return True, "first_restart"
+
+        now = time.time()
+
+        # 检查冷却期
+        if state.cooldown_until and now < state.cooldown_until:
+            remaining = int(state.cooldown_until - now)
+            return False, f"in_cooldown ({remaining}s remaining)"
+
+        # 清理窗口外的重启记录
+        state.restart_attempts = [
+            t for t in state.restart_attempts
+            if now - t < self.window_seconds
+        ]
+
+        # 检查重启次数限制
+        if len(state.restart_attempts) >= self.max_attempts:
+            return False, f"max_attempts_reached ({self.max_attempts} in {self.window_seconds}s)"
+
+        return True, "allowed"
+
+    def restart(self, agent_name: str, reason: str) -> RestartResult:
+        """重启指定 agent"""
+        # 初始化状态
+        if agent_name not in self._agent_states:
+            expected = self._get_expected_agents()
+            agent_info = next((a for a in expected if a["name"] == agent_name), None)
+            if not agent_info:
+                return RestartResult(
+                    success=False,
+                    agent_name=agent_name,
+                    reason=reason,
+                    attempt=0,
+                    error=f"Unknown agent: {agent_name}",
+                )
+            self._agent_states[agent_name] = AgentState(
+                name=agent_name,
+                tmux_session=agent_info["tmux_session"],
+            )
+
+        state = self._agent_states[agent_name]
+
+        # 检查是否可以重启
+        can_restart, check_reason = self._should_restart(agent_name)
+        if not can_restart:
+            self._log_event("agent_restart_skipped", {
+                "agent_name": agent_name,
+                "reason": reason,
+                "skip_reason": check_reason,
+            })
+            return RestartResult(
+                success=False,
+                agent_name=agent_name,
+                reason=reason,
+                attempt=len(state.restart_attempts),
+                error=check_reason,
+            )
+
+        # 记录重启尝试
+        now = time.time()
+        state.restart_attempts.append(now)
+        attempt = len(state.restart_attempts)
+
+        self._log_event("agent_restart_attempt", {
+            "agent_name": agent_name,
+            "reason": reason,
+            "attempt": attempt,
+            "tmux_session": state.tmux_session,
+        })
+
+        # 执行重启
+        try:
+            # 获取启动命令（优先配置，其次 fallback）
+            spec = self._get_agent_spec().get(agent_name, {})
+            start_cmd = str(spec.get("start_cmd") or "").strip() or AGENT_START_COMMANDS.get(
+                agent_name, f"{agent_name} --resume"
+            )
+            cwd = str(spec.get("cwd") or "").strip() or None
+
+            # 尝试 respawn-pane（如果 session 存在）
+            sessions = self._get_tmux_sessions()
+            if state.tmux_session in sessions:
+                # Session 存在，尝试在现有窗口发送命令
+                subprocess.run(
+                    ["tmux", "send-keys", "-t", f"{state.tmux_session}:0", start_cmd, "Enter"],
+                    capture_output=True,
+                    timeout=10,
+                )
+            else:
+                # Session 不存在，创建新的
+                cmd = ["tmux", "new-session", "-d", "-s", state.tmux_session]
+                if cwd:
+                    cmd += ["-c", cwd]
+                cmd += [start_cmd]
+                subprocess.run(cmd, capture_output=True, timeout=10)
+
+            state.last_restart = now
+
+            # 设置冷却期
+            backoff = self._calculate_backoff(attempt)
+            state.cooldown_until = now + backoff
+
+            self._log_event("agent_restart_success", {
+                "agent_name": agent_name,
+                "reason": reason,
+                "attempt": attempt,
+                "next_allowed_in": backoff,
+            })
+
+            return RestartResult(
+                success=True,
+                agent_name=agent_name,
+                reason=reason,
+                attempt=attempt,
+            )
+
+        except Exception as e:
+            self._log_event("agent_restart_failed", {
+                "agent_name": agent_name,
+                "reason": reason,
+                "attempt": attempt,
+                "error": str(e),
+            })
+            return RestartResult(
+                success=False,
+                agent_name=agent_name,
+                reason=reason,
+                attempt=attempt,
+                error=str(e),
+            )
+
+    def check_and_restart(self) -> list[RestartResult]:
+        """检查所有 agent 并重启挂掉的"""
+        results = []
+
+        # 获取期望运行的 agent
+        expected = self._get_expected_agents()
+
+        # 获取当前在线的 agent
+        online = self._get_online_agents()
+
+        # 获取 tmux sessions
+        sessions = self._get_tmux_sessions()
+
+        for agent_info in expected:
+            name = agent_info["name"]
+            tmux_session = agent_info["tmux_session"]
+
+            # 检查是否在线
+            is_online = name in online
+            session_exists = tmux_session in sessions
+
+            if not is_online:
+                reason = "agent_offline"
+                if not session_exists:
+                    reason = "session_missing"
+
+                result = self.restart(name, reason)
+                results.append(result)
+
+        return results
+
+    def run(self) -> None:
+        """主循环"""
+        # Note: `ipc_recv` itself updates daemon heartbeat for non-interactive services.
+        self._ipc_poll_commands()
+        self._log_event("supervisor_started", {
+            "check_interval": self.check_interval,
+            "max_attempts": self.max_attempts,
+            "window_seconds": self.window_seconds,
+        })
+
+        while not self._shutdown:
+            try:
+                self._ipc_poll_commands()
+                results = self.check_and_restart()
+                for r in results:
+                    if not r.success and r.error:
+                        self._log_event("supervisor_check_result", {
+                            "agent_name": r.agent_name,
+                            "success": r.success,
+                            "error": r.error,
+                        })
+            except Exception as e:
+                self._log_event("supervisor_error", {"error": str(e)})
+
+            time.sleep(self.check_interval)
+
+    def shutdown(self) -> None:
+        """停止守护进程"""
+        self._shutdown = True
+        self._log_event("supervisor_stopped", {})
+
+
+# CLI 入口
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Agent Supervisor")
+    parser.add_argument("--interval", type=int, default=CHECK_INTERVAL_SECONDS,
+                        help="Check interval in seconds")
+    parser.add_argument("--once", action="store_true",
+                        help="Run once and exit")
+    args = parser.parse_args()
+
+    supervisor = AgentSupervisor(check_interval=args.interval)
+
+    if args.once:
+        supervisor._ipc_poll_commands()
+        results = supervisor.check_and_restart()
+        for r in results:
+            print(f"{r.agent_name}: {'OK' if r.success else 'FAILED'} - {r.reason}")
+    else:
+        try:
+            supervisor.run()
+        except KeyboardInterrupt:
+            supervisor.shutdown()

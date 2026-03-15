@@ -1,0 +1,80 @@
+{
+  "$schema": "context_windows_schema",
+  "_comment": "各 provider 模型的 context window 配置。更新此文件无需重新部署代码。",
+  "_updated": "2026-03-15",
+  "providers": {
+    "copilot": {
+      "_name": "GitHub Copilot",
+      "claude-sonnet-4":           { "context": 144000 },
+      "claude-sonnet-4.5":         { "context": 160000 },
+      "claude-sonnet-4.6":         { "context": 160000 },
+      "claude-opus-4.5":           { "context": 160000 },
+      "claude-opus-4.6":           { "context": 192000 },
+      "claude-haiku-4.5":          { "context": 160000 },
+      "claude-haiku-4-5-20251001": { "context": 160000 },
+      "gemini-2.5-pro":            { "context": 173000 },
+      "gemini-3-flash":            { "context": 173000 },
+      "gemini-3-pro":              { "context": 173000 },
+      "gemini-3.1-pro":            { "context": 173000 },
+      "gpt-4.1":                   { "context": 128000 },
+      "gpt-4o":                    { "context":  68000 },
+      "gpt-4o-mini":               { "context": 128000 },
+      "gpt-5-mini":                { "context": 192000 },
+      "gpt-5.1":                   { "context": 192000 },
+      "gpt-5.1-codex":             { "context": 256000 },
+      "gpt-5.1-codex-max":         { "context": 256000 },
+      "gpt-5.1-codex-mini":        { "context": 256000 },
+      "gpt-5.2":                   { "context": 192000 },
+      "gpt-5.2-codex":             { "context": 400000 },
+      "gpt-5.3-codex":             { "context": 400000 },
+      "gpt-5.4":                   { "context": 400000 },
+      "grok-code-fast-1":          { "context": 173000 }
+    },
+    "claude": {
+      "_name": "Anthropic Claude (native API)",
+      "claude-sonnet-4":           { "context": 200000 },
+      "claude-sonnet-4-5":         { "context": 200000 },
+      "claude-sonnet-4.5":         { "context": 200000 },
+      "claude-sonnet-4-6":         { "context": 200000 },
+      "claude-sonnet-4.6":         { "context": 200000 },
+      "claude-opus-4-5":           { "context": 200000 },
+      "claude-opus-4.5":           { "context": 200000 },
+      "claude-opus-4-6":           { "context": 200000 },
+      "claude-opus-4.6":           { "context": 200000 },
+      "claude-haiku-4-5":          { "context": 200000 },
+      "claude-haiku-4.5":          { "context": 200000 },
+      "claude-haiku-4-5-20251001": { "context": 200000 }
+    },
+    "alibaba": {
+      "_name": "Alibaba Cloud / Model Studio",
+      "qwen3.5-plus":              { "context": 1000000, "output": 65536 },
+      "qwen3-max-2026-01-23":      { "context":  262144, "output": 32768 },
+      "qwen3-coder-next":          { "context":  262144, "output": 65536 },
+      "qwen3-coder-plus":          { "context": 1000000, "output": 65536 },
+      "MiniMax-M2.5":              { "context":  196608, "output": 24576 },
+      "glm-5":                     { "context":  202752, "output": 16384 },
+      "glm-4.7":                   { "context":  202752, "output": 16384 },
+      "kimi-k2.5":                 { "context":  262144, "output": 32768 }
+    },
+    "minimax": {
+      "_name": "MiniMax (platform.minimax.io)",
+      "MiniMax-M2.5":              { "context": 204800 },
+      "MiniMax-M2.5-highspeed":    { "context": 204800 },
+      "MiniMax-M2.1":              { "context": 204800 },
+      "MiniMax-M2.1-highspeed":    { "context": 204800 },
+      "MiniMax-M2":                { "context": 204800 }
+    },
+    "zhipu": {
+      "_name": "Zhipu AI / 智谱",
+      "glm-5":                     { "context": 202752, "output": 16384 },
+      "glm-4.7":                   { "context": 169984 },
+      "glm-4.6":                   { "context": 169984 },
+      "glm-4.5":                   { "context": 131072 },
+      "glm-4.5-air":               { "context":  98304 }
+    },
+    "doubao": {
+      "_name": "ByteDance Doubao / 字节跳动",
+      "doubao-1.5-thinking-vision-pro": { "context": 128000 }
+    }
+  }
+}

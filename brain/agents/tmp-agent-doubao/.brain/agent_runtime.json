@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "agent_name": "tmp-agent-doubao",
+  "skill_bindings": {
+    "source": "/xkagent_infra/brain/infrastructure/config/agentctl/skill_bindings.yaml",
+    "resolved_skills": [
+      "lep",
+      "doc-search",
+      "tmux",
+      "sandbox"
+    ],
+    "role_skills": [
+      "lep",
+      "doc-search",
+      "tmux",
+      "sandbox"
+    ],
+    "agent_skills": [],
+    "workflow_skills": []
+  },
+  "lep_bindings": {
+    "source": "/xkagent_infra/brain/infrastructure/config/agentctl/lep_bindings.yaml",
+    "resolved_lep_profiles": [
+      "workspace-dev"
+    ],
+    "role_lep_profiles": [
+      "workspace-dev"
+    ],
+    "agent_lep_profiles": [],
+    "workflow_lep_profiles": []
+  },
+  "runtime": {
+    "command": "claude",
+    "args": [
+      "--model",
+      "doubao-seed-2-0-pro",
+      "[Brain Skill Bindings]\nEnabled skills: lep, doc-search, tmux, sandbox.\nWhen a task matches these skills or the bound workflow, load and follow the corresponding skill before execution.\nRole defaults: lep, doc-search, tmux, sandbox.\n\n[Brain LEP Profiles]\nEnabled LEP profiles: workspace-dev.\nThese LEP profiles tighten hook enforcement and should be treated as mandatory operating constraints.\nRole defaults: workspace-dev."
+    ],
+    "env": {
+      "IS_SANDBOX": "1",
+      "BRAIN_SKILL_BINDINGS_FILE": "/xkagent_infra/brain/infrastructure/config/agentctl/skill_bindings.yaml",
+      "BRAIN_ENABLED_SKILLS": "lep,doc-search,tmux,sandbox",
+      "BRAIN_ROLE_DEFAULT_SKILLS": "lep,doc-search,tmux,sandbox",
+      "BRAIN_LEP_BINDINGS_FILE": "/xkagent_infra/brain/infrastructure/config/agentctl/lep_bindings.yaml",
+      "BRAIN_ENABLED_LEP_PROFILES": "workspace-dev",
+      "BRAIN_ROLE_DEFAULT_LEP_PROFILES": "workspace-dev"
+    },
+    "agent_type": "bytedance",
+    "use_claude_cli": true
+  }
+}

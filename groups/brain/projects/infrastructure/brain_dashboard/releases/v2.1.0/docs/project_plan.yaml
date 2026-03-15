@@ -1,0 +1,305 @@
+project_plan:
+  project_id: brain-dashboard-2026-03-11
+  plan_version: "1.0"
+  status: planning_passed
+  completed_at: "2026-03-11T00:00:00Z"
+
+  implementation_language: Python 3.12
+  runtime_stack:
+    backend: FastAPI + Uvicorn
+    database: SQLite (复用现有)
+    frontend: HTMX 1.9 + Tailwind CSS (复用现有)
+    realtime: SSE (Server-Sent Events)
+
+  engineering_standards:
+    - "PEP 8 代码风格"
+    - "Type hints 强制使用"
+    - "FastAPI 依赖注入模式"
+    - "HTMX Server-Side Rendering"
+    - "API 版本控制 /api/v2/*"
+
+  deliverables:
+    code:
+      - src/api/v2/routes.py (新 API 路由)
+      - src/api/v2/proxy.py (Proxy 流量 API)
+      - src/api/v2/registry.py (服务注册 API)
+      - src/api/v2/logs.py (日志 API)
+      - src/web/static/app.js (前端增强)
+      - src/web/templates/v2/index.html (新版页面)
+    config:
+      - config/dashboard_v2.yaml
+    docs:
+      - docs/api_spec.md
+      - docs/deployment.md
+    tests:
+      - tests/test_api_v2.py
+      - tests/test_proxy_stats.py
+      - tests/test_log_stream.py
+
+  architecture_summary: |
+    Dashboard v2.0 基于 v1.0 增量开发：
+
+    ┌─────────────────────────────────────────────────────────┐
+    │                    Frontend (HTMX)                       │
+    │  ┌──────────────┬──────────────┬──────────────────────┐ │
+    │  │ Agent Monitor│ Proxy Traffic│ Service Registry     │ │
+    │  │   (已有)     │   (新增)     │    (新增)            │ │
+    │  └──────────────┴──────────────┴──────────────────────┘ │
+    │  ┌───────────────────────────────────────────────────┐  │
+    │  │              Log Viewer (新增)                     │  │
+    │  └───────────────────────────────────────────────────┘  │
+    └─────────────────────────────────────────────────────────┘
+                              │
+    ┌─────────────────────────────────────────────────────────┐
+    │                  FastAPI Backend                         │
+    │  ┌──────────────┬──────────────┬──────────────────────┐ │
+    │  │ /api/v2/     │ /api/v2/     │ /api/v2/             │ │
+    │  │ agents       │ proxy/*      │ registry/*           │ │
+    │  │ (已有)       │  (新增)      │    (新增)            │ │
+    │  └──────────────┴──────────────┴──────────────────────┘ │
+    │  ┌───────────────────────────────────────────────────┐  │
+    │  │           /ws/logs (WebSocket 流式日志)            │  │
+    │  └───────────────────────────────────────────────────┘  │
+    └─────────────────────────────────────────────────────────┘
+                              │
+    ┌─────────────────────────────────────────────────────────┐
+    │                  Data Sources                            │
+    │  ┌──────────────┬──────────────┬──────────────────────┐ │
+    │  │  SQLite DB   │brain_gateway │ agents_registry.yaml │ │
+    │  │  (已有)      │  :8200/stats │    (新增)            │ │
+    │  └──────────────┴──────────────┴──────────────────────┘ │
+    │  ┌───────────────────────────────────────────────────┐  │
+    │  │           Log Files (*.log)                        │  │
+    │  └───────────────────────────────────────────────────┘  │
+    └─────────────────────────────────────────────────────────┘
+
+  modules:
+    - name: proxy_monitor
+      description: Proxy 流量监控模块
+      interfaces:
+        - GET /api/v2/proxy/stats
+        - GET /api/v2/proxy/routes
+        - GET /api/v2/proxy/traffic
+      complexity: medium
+      owner: developer
+
+    - name: registry_viewer
+      description: 服务注册中心视图
+      interfaces:
+        - GET /api/v2/registry/services
+        - GET /api/v2/registry/agents
+        - GET /api/v2/registry/health
+      complexity: low
+      owner: developer
+
+    - name: log_viewer
+      description: 在线日志查看器
+      interfaces:
+        - GET /api/v2/logs/services
+        - WS /ws/logs/{service}
+        - GET /api/v2/logs/tail
+      complexity: medium
+      owner: developer
+
+    - name: dashboard_ui
+      description: 前端界面增强
+      interfaces:
+        - HTML /dashboard/v2
+        - SSE /api/sse
+      complexity: medium
+      owner: developer
+
+  interfaces:
+    external:
+      - name: brain_gateway
+        endpoint: "http://127.0.0.1:8200"
+        purpose: "获取流量统计"
+      - name: brain_ipc
+        endpoint: "/tmp/brain_ipc.sock"
+        purpose: "Agent 状态查询"
+    internal:
+      - name: sqlite_db
+        path: "/xkagent_infra/runtime/data/services/dashboard.db"
+      - name: registry_yaml
+        path: "/brain/infrastructure/config/agentctl/agents_registry.yaml"
+
+  complexity_estimate:
+    total_modules: 4
+    total_interfaces: 12
+    total_lines: ~2000
+    estimated_dev_days: 7
+
+  execution_phases:
+    - phase: phase_1_core
+      name: "核心 API 开发"
+      modules: [proxy_monitor, registry_viewer]
+      duration_days: 3
+
+    - phase: phase_2_log
+      name: "日志模块开发"
+      modules: [log_viewer]
+      duration_days: 2
+
+    - phase: phase_3_ui
+      name: "前端界面集成"
+      modules: [dashboard_ui]
+      duration_days: 1
+
+    - phase: phase_4_test
+      name: "测试与验证"
+      modules: []
+      duration_days: 1
+
+  milestones:
+    - id: M1
+      name: "Core API Complete"
+      criteria: "proxy 和 registry API 可正常返回数据"
+      due_date: "2026-03-14"
+
+    - id: M2
+      name: "Log Module Complete"
+      criteria: "WebSocket 日志流式传输工作正常"
+      due_date: "2026-03-16"
+
+    - id: M3
+      name: "UI Integration"
+      criteria: "前端页面所有功能可正常使用"
+      due_date: "2026-03-18"
+
+    - id: M4
+      name: "Release Ready"
+      criteria: "测试通过，准备发布"
+      due_date: "2026-03-20"
+
+  role_roster:
+    - role: architect
+      agent: agent-brain_manager (兼任)
+      responsibility: "架构设计、技术决策"
+      allocation: "20%"
+
+    - role: developer
+      agent: agent-brain_dev
+      responsibility: "代码实现、单元测试"
+      allocation: "80%"
+
+    - role: devops
+      agent: agent-brain_devops
+      responsibility: "部署配置、supervisor 注册"
+      allocation: "10%"
+
+  external_integrations:
+    - system: brain_gateway
+      owner: agent-brain_manager
+      interface: HTTP GET /stats
+      status: "待验证"
+
+    - system: agentctl
+      owner: agent-brain_manager
+      interface: YAML 文件读取
+      status: "ready"
+
+  integration_plan:
+    - step: 1
+      action: "验证 brain_gateway stats 接口格式"
+      owner: architect
+      timing: "phase_1 开始前"
+
+    - step: 2
+      action: "集成 agents_registry.yaml 解析"
+      owner: developer
+      timing: "phase_1"
+
+    - step: 3
+      action: "部署到 supervisor"
+      owner: devops
+      timing: "phase_4 后"
+
+  environment_usage_plan:
+    dev: "sandbox 本地开发测试"
+    stage: "直接复用现有 dashboard 端口并行测试"
+    prod: "替换 /brain/infrastructure/service/dashboard/current 软链接"
+
+  test_plan:
+    unit:
+      scope: "每个 API endpoint"
+      framework: pytest
+      coverage_target: "80%"
+
+    integration:
+      scope: "gateway / registry / log 集成"
+      method: "本地启动所有依赖服务"
+
+    e2e:
+      scope: "完整用户场景"
+      method: "Playwright 浏览器自动化"
+
+  qa_plan:
+    stage_gate:
+      - "所有单元测试通过"
+      - "手动验证各功能页面"
+    prod_smoke:
+      - "首页可正常访问"
+      - "SSE 连接正常"
+      - "日志流正常"
+
+  dependency_strategy:
+    - proxy_monitor 依赖: brain_gateway (必须)
+    - registry_viewer 依赖: agents_registry.yaml (必须)
+    - log_viewer 依赖: 文件读取权限 (必须)
+    - dashboard_ui 依赖: 以上三个模块 (串行)
+
+  parallelism_strategy:
+    - phase_1: proxy_monitor 和 registry_viewer 可并行开发
+    - phase_2: 依赖 phase_1 API 完成
+    - phase_3: 依赖所有 API 完成
+
+  task_design_strategy:
+    granularity: "模块级别，每个模块 1-2 个 task"
+    owner_assignment: "developer 为主，architect review"
+    handoff_rule: "每个模块完成后需要 code review"
+
+  assignment_strategy:
+    - proxy_monitor: agent-brain_dev
+    - registry_viewer: agent-brain_dev
+    - log_viewer: agent-brain_dev
+    - dashboard_ui: agent-brain_dev
+
+  tracking_plan:
+    board: "brain_task_manager"
+    snapshot_cadence: "每日"
+    report_cadence: "每 milestone"
+    escalation: "阻塞超过 1 天上报 manager"
+
+  validation_path:
+    - checkpoint: code_review
+      trigger: "每个模块 PR"
+      gate: "architect approve"
+
+    - checkpoint: integration_test
+      trigger: "phase 完成"
+      gate: "所有测试通过"
+
+    - checkpoint: stage_release
+      trigger: "M4 完成"
+      gate: "smoke test 通过"
+
+    - checkpoint: prod_release
+      trigger: "stage 验证通过"
+      gate: "devops approve"
+
+    - checkpoint: audit
+      trigger: "prod 发布后 1 周"
+      gate: "收集反馈"
+
+  release_path:
+    - step: "打包 v2.0.0"
+    - step: "更新 /brain/infrastructure/service/dashboard/current 软链接"
+    - step: "supervisor 重启服务"
+    - step: "验证健康检查"
+
+  audit_checkpoints:
+    - time: "prod 发布后 1 周"
+      focus: "功能完整性、性能、用户体验"
+
+  planning_decision: PASS
+  next_phase: task_modeling

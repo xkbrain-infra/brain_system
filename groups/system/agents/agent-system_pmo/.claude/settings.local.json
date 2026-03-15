@@ -1,10 +1,23 @@
 {
   "permissions": {
+    "allow": [
+      "Bash:*:*",
+      "Read:*:*",
+      "Edit:*:*",
+      "Write:*:*",
+      "Glob:*:*",
+      "Grep:*:*",
+      "Task:*:*",
+      "Skill:*:*",
+      "mcp__*:*",
+      "AskUserQuestion:*:*",
+      "NotebookEdit:*:*"
+    ],
     "defaultMode": "bypassPermissions"
   },
   "statusLine": {
     "type": "command",
-    "command": "input=$(cat); model=$(echo \"$input\" | jq -r '.model.display_name // \"Claude\"'); dir=$(echo \"$input\" | jq -r '.workspace.current_dir // \"~\"'); used=$(echo \"$input\" | jq -r '.context_window.used_percentage // empty'); if [ -n \"$used\" ]; then printf \"%s | %s | Context: %.1f%% used\" \"$model\" \"$dir\" \"$used\"; else printf \"%s | %s\" \"$model\" \"$dir\"; fi"
+    "command": "input=$(cat); model=$(echo \"$input\" | jq -r '.model.display_name // \"Claude\"'); dir=$(echo \"$input\" | jq -r '.workspace.current_dir // \"~\"'); used=$(echo \"$input\" | jq -r 'def token_pct($ctx): if (($ctx.context_window_size // 0) | tonumber) > 0 then ((($ctx.current_usage.input_tokens // $ctx.total_input_tokens // 0) + ($ctx.current_usage.output_tokens // $ctx.total_output_tokens // 0) + ($ctx.current_usage.cache_creation_input_tokens // 0) + ($ctx.current_usage.cache_read_input_tokens // 0)) / ($ctx.context_window_size | tonumber) * 100) else empty end; (.context_window.used_percentage // .context_window.percent_used // .contextWindow.usedPercentage // .contextWindow.percentUsed // .session.context_window.used_percentage // .usage.context_window.used_percentage // empty) as $reported | (.context_window // .contextWindow // .session.context_window // .usage.context_window // {}) as $ctx | if ($reported | tostring | length) > 0 then $reported else token_pct($ctx) end'); if [ -n \"$used\" ]; then printf \"%s | %s | Context: %.1f%% used\" \"$model\" \"$dir\" \"$used\"; else printf \"%s | %s | Context: n/a\" \"$model\" \"$dir\"; fi"
   },
   "enabledPlugins": {
     "frontend-design@claude-plugins-official": true,
@@ -20,8 +33,35 @@
     "greptile@claude-plugins-official": true
   },
   "language": "中文",
-  "mcpServers": {},
+  "mcpServers": {
+    "mcp-brain_ipc_c": {
+      "command": "/brain/bin/mcp/mcp-brain_ipc_c",
+      "args": [],
+      "env": {
+        "BRAIN_AGENT_NAME": "agent-system_pmo",
+        "BRAIN_DAEMON_AUTOSTART": "0"
+      }
+    }
+  },
   "skipDangerousModePermissionPrompt": true,
+  "env": {
+    "ANTHROPIC_BASE_URL": "http://127.0.0.1:8210",
+    "ANTHROPIC_AUTH_TOKEN": "bgw-apx-v1--p-copilot--m-claude_sonnet_4_6--n-agent_system_pmo",
+    "ANTHROPIC_MODEL": "copilot/claude-sonnet-4.6",
+    "ANTHROPIC_SMALL_FAST_MODEL": "copilot/claude-sonnet-4.6",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "copilot/claude-sonnet-4.6",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "copilot/claude-sonnet-4.6",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "copilot/claude-sonnet-4.6",
+    "API_TIMEOUT_MS": "3000000",
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+    "BRAIN_SKILL_BINDINGS_FILE": "/xkagent_infra/brain/infrastructure/config/agentctl/skill_bindings.yaml",
+    "BRAIN_ENABLED_SKILLS": "lep,ipc",
+    "BRAIN_ROLE_DEFAULT_SKILLS": "lep,ipc",
+    "BRAIN_LEP_BINDINGS_FILE": "/xkagent_infra/brain/infrastructure/config/agentctl/lep_bindings.yaml",
+    "BRAIN_ENABLED_LEP_PROFILES": "delivery-governance",
+    "BRAIN_ROLE_DEFAULT_LEP_PROFILES": "delivery-governance"
+  },
+  "spinnerTipsEnabled": false,
   "hooks": {
     "PreToolUse": [
       {
@@ -29,14 +69,17 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/brain/infrastructure/service/agent_abilities/bin/hooks/current/pre_tool_use",
+            "command": "/brain/base/hooks/pre_tool_use",
             "timeout": 5000,
-            "description": "LEP Engine - pmo-brain_system PreToolUse",
+            "description": "LEP Engine - pmo-system PreToolUse",
             "env": {
-              "BRAIN_AGENT_NAME": "agent_system_pmo",
+              "BRAIN_AGENT_NAME": "agent-system_pmo",
               "BRAIN_AGENT_ROLE": "pmo",
-              "BRAIN_AGENT_GROUP": "brain_system",
-              "BRAIN_SCOPE_PATH": "/brain/groups/org/brain_system"
+              "BRAIN_AGENT_GROUP": "system",
+              "BRAIN_SCOPE_PATH": "/xkagent_infra/groups/system",
+              "BRAIN_ROLE_DEFAULT_LEP_PROFILES": "delivery-governance",
+              "BRAIN_ENABLED_LEP_PROFILES": "delivery-governance",
+              "BRAIN_LEP_BINDINGS_FILE": "/xkagent_infra/brain/infrastructure/config/agentctl/lep_bindings.yaml"
             }
           }
         ]
@@ -48,27 +91,21 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/brain/infrastructure/service/agent_abilities/bin/hooks/current/post_tool_use",
+            "command": "/brain/base/hooks/post_tool_use",
             "timeout": 5000,
-            "description": "LEP Engine - pmo-brain_system PostToolUse audit",
+            "description": "LEP Engine - pmo-system PostToolUse audit",
             "env": {
-              "BRAIN_AGENT_NAME": "agent_system_pmo",
+              "BRAIN_AGENT_NAME": "agent-system_pmo",
               "BRAIN_AGENT_ROLE": "pmo",
-              "BRAIN_AGENT_GROUP": "brain_system",
-              "BRAIN_SCOPE_PATH": "/brain/groups/org/brain_system"
+              "BRAIN_AGENT_GROUP": "system",
+              "BRAIN_SCOPE_PATH": "/xkagent_infra/groups/system",
+              "BRAIN_ROLE_DEFAULT_LEP_PROFILES": "delivery-governance",
+              "BRAIN_ENABLED_LEP_PROFILES": "delivery-governance",
+              "BRAIN_LEP_BINDINGS_FILE": "/xkagent_infra/brain/infrastructure/config/agentctl/lep_bindings.yaml"
             }
           }
         ]
       }
     ]
-  },
-  "env": {
-    "ANTHROPIC_BASE_URL": "http://127.0.0.1:8210",
-    "ANTHROPIC_MODEL": "copilot/claude-sonnet-4.6",
-    "ANTHROPIC_SMALL_FAST_MODEL": "copilot/claude-sonnet-4.6",
-    "ANTHROPIC_DEFAULT_SONNET_MODEL": "copilot/claude-sonnet-4.6",
-    "ANTHROPIC_DEFAULT_OPUS_MODEL": "copilot/claude-sonnet-4.6",
-    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "copilot/claude-sonnet-4.6",
-    "ANTHROPIC_AUTH_TOKEN": "bgw-apx-v1--p-copilot--m-claude_sonnet_4_6--n-agent_system_pmo"
   }
 }

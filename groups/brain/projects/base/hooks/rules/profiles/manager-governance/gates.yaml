@@ -1,0 +1,19 @@
+# LEP Profile: manager-governance
+scope:
+  allowed_write:
+    - /xkagent_infra/groups/{group}/**/workflow/**
+    - /xkagent_infra/groups/{group}/**/memory/**
+    - /xkagent_infra/groups/{group}/**/logs/**
+    - /xkagent_infra/runtime/**
+  denied_write:
+    - /xkagent_infra/groups/{group}/**/projects/**/src/**
+    - /xkagent_infra/brain/base/spec/core/**
+    - /xkagent_infra/brain/INIT.yaml
+
+gate_overrides:
+  G-GATE-ATOMIC:
+    priority: CRITICAL
+    note: "manager 的计划必须能直接委派和审计。"
+  G-GATE-SCOPE-DEVIATION:
+    priority: CRITICAL
+    note: "manager 禁止静默缩小执行范围。"

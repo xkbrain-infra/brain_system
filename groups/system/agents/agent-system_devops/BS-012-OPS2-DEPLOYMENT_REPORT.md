@@ -73,7 +73,7 @@
 
 | 备份路径 | 内容 |
 |----------|------|
-| `/brain/infrastructure/data/backups/hooks/20260221_231724_pre_BS012/` | 升级前全量快照 |
+| `/xkagent_infra/brain/backup/infrastructure/hooks/20260221_231724_pre_BS012/` | 升级前全量快照 |
 
 ---
 

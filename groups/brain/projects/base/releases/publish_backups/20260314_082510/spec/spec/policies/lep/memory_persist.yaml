@@ -1,0 +1,19 @@
+# G-GATE-MEMORY-PERSIST
+# Agent 启动时必须配置 memory 持久化
+
+id: G-GATE-MEMORY-PERSIST
+name: Memory Persistence on Agent Start
+priority: HIGH
+applies_to: [agent_start]
+rule: agentctl 启动 agent 后必须配置 tmux pipe-pane 写入 /brain/runtime/memory/
+detail: /brain/base/spec/policies/memory/persistence.yaml
+enforcement:
+  who: agentctl
+  when: _start_session() 执行后
+  how: tmux pipe-pane -t "${session}" -o "cat >> '${memory_path}'"
+bindings:
+  hooks:
+    stage: post_tool_use
+    trigger_tools: [Write]
+  mcp_tools: []
+  related_skills: []

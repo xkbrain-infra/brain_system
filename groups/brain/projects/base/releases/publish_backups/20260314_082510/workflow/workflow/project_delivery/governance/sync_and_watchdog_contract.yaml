@@ -1,0 +1,80 @@
+sync_and_watchdog_contract:
+  id: "MWF-SYNC-001"
+  version: "0.1"
+  intent: "固定 snapshot、heartbeat、timer、watchdog 的并发控制和误报抑制规则"
+
+project_snapshot:
+  cadence:
+    recommended_seconds: 30
+    max_staleness_seconds: 90
+  required_fields:
+    - "project_id"
+    - "sandbox_id"
+    - "orchestrator_id"
+    - "snapshot_version"
+    - "project_state"
+    - "active_task_count"
+    - "blocked_task_count"
+    - "updated_at"
+
+heartbeat:
+  channels:
+    local: "IPC unix socket"
+    cross_boundary: "HTTP control endpoint or control IPC bridge"
+  intervals:
+    orchestrator_seconds: 20
+    agent_seconds: 30
+    sandbox_seconds: 30
+  stale_thresholds:
+    orchestrator_seconds: 60
+    agent_seconds: 90
+    sandbox_seconds: 120
+
+task_state_concurrency:
+  model: "optimistic_locking"
+  required_fields:
+    - "task_id"
+    - "version"
+    - "last_transition_at"
+    - "last_transition_source"
+  rules:
+    - "every TASK_UPDATE must include expected_version"
+    - "task manager rejects update if expected_version mismatches current_version"
+    - "orchestrator must re-read task state before issuing escalation after CAS failure"
+    - "timer-triggered checks are advisory until orchestrator confirms current version"
+
+timer_race_protection:
+  cases:
+    - case: "timer stale-check races with TASK_DONE"
+      required_behavior:
+        - "CAS failure cancels stale escalation"
+        - "orchestrator reloads task state"
+    - case: "dependency recheck races with manual unblock"
+      required_behavior:
+        - "latest version wins only after orchestrator validation"
+
+watchdog:
+  false_positive_mitigation:
+    - "do not escalate on first missed snapshot"
+    - "require two consecutive missed snapshots before marking orchestrator stale"
+    - "treat heartbeat loss with recent task activity as degraded, not offline"
+    - "distinguish network partition from execution deadlock"
+  escalation_thresholds:
+    stale_snapshot_consecutive_count: 2
+    offline_agent_consecutive_count: 2
+    blocked_task_recheck_seconds: 300
+  outputs:
+    - "stale_warning"
+    - "offline_warning"
+    - "escalation_request"
+    - "recovery_needed"
+
+sync_rules:
+  source_of_truth:
+    local_execution_state: "sandbox local task runtime"
+    global_summary_state: "global task manager"
+  ordering:
+    - "local runtime update first"
+    - "summary/event sync second"
+    - "watchdog decision only after confirmed read"
+

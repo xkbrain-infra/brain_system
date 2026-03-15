@@ -1,0 +1,17 @@
+Include /etc/ssh/sshd_config.d/*.conf
+
+Port 22
+AddressFamily any
+ListenAddress 0.0.0.0
+
+PermitRootLogin yes
+PubkeyAuthentication yes
+AuthorizedKeysFile .ssh/authorized_keys
+MaxAuthTries 20
+
+PasswordAuthentication no
+ChallengeResponseAuthentication no
+UsePAM yes
+
+Match Address 172.16.0.0/12,172.17.0.0/16,192.168.0.0/16,10.0.0.0/8,127.0.0.1,::1
+    PasswordAuthentication yes

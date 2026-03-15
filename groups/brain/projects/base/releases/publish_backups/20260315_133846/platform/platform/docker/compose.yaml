@@ -1,0 +1,75 @@
+name: ${COMPOSE_PROJECT_NAME:-xk-agent-infra}
+
+networks:
+  ${COMPOSE_PROJECT_NAME:-xk-agent-infra}-net:
+    name: ${COMPOSE_PROJECT_NAME:-xk-agent-infra}-net
+    driver: bridge
+
+services:
+  ${COMPOSE_PROJECT_NAME:-xk-agent-infra}:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        - CONTAINER_PREFIX=${CONTAINER_PREFIX:-XKAgentInfra}
+        - IPC_AGENT_PREFIX=${IPC_AGENT_PREFIX:-agent-brain}
+    image: ${COMPOSE_PROJECT_NAME:-xk-agent-infra}:${IMAGE_TAG:-local}
+    container_name: ${CONTAINER_PREFIX:-XKAgentInfra}${INSTANCE_ID:+-${INSTANCE_ID}}
+    hostname: ${HOSTNAME:-${CONTAINER_PREFIX:-XKAgentInfra}${INSTANCE_ID:+-${INSTANCE_ID}}}
+    working_dir: /xkagent_infra/brain
+    command:
+      - /bin/bash
+      - -lc
+      - |
+        if [ -x /xkagent_infra/brain/platform/docker/scripts/container_bootstrap.sh ]; then
+          /xkagent_infra/brain/platform/docker/scripts/container_bootstrap.sh
+        else
+          echo '[bootstrap] script not found, skip'
+        fi
+        exec /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf
+    networks:
+      - ${COMPOSE_PROJECT_NAME:-xk-agent-infra}-net
+    volumes:
+      - ${COMPOSE_PROJECT_NAME:-xk-agent-infra}-data:/xkagent_infra
+      - ${COMPOSE_PROJECT_NAME:-xk-agent-infra}-root:/root
+    ports:
+      - "${SSH_PORT:-8622}:22"
+    environment:
+      # 基础配置
+      DEPLOYMENT_NAME: ${COMPOSE_PROJECT_NAME:-xk-agent-infra}
+      INSTANCE_ID: ${INSTANCE_ID:-}
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      CONTAINER_PREFIX: ${CONTAINER_PREFIX:-XKAgentInfra}
+      IPC_AGENT_PREFIX: ${IPC_AGENT_PREFIX:-agent-brain}
+
+      # 路径配置
+      BRAIN_PATH: /xkagent_infra/brain
+      BRAIN_IPC_SOCKET: ${BRAIN_IPC_SOCKET:-/tmp/brain_ipc.sock}
+      SECRETS_ROOT: /xkagent_infra/brain/secrets/system
+
+      # SSH 配置
+      SSH_PORT: ${SSH_PORT:-8622}
+      DEFAULT_USER: ${DEFAULT_USER:-root}
+      DEFAULT_PASSWORD: ${DEFAULT_PASSWORD:-aigroup}
+      SSH_HOST_KEY_TYPES: ${SSH_HOST_KEY_TYPES:-rsa ecdsa ed25519}
+      SSH_CLIENT_KEY_TYPE: ${SSH_CLIENT_KEY_TYPE:-ed25519}
+      SSH_CLIENT_KEY_NAME: ${SSH_CLIENT_KEY_NAME:-id_ed25519}
+      KEY_COMMENT_FORMAT: ${KEY_COMMENT_FORMAT:-xkagent-{hostname}-{date}}
+
+      # 日志配置
+      VERBOSE: ${VERBOSE:-true}
+
+      # 系统配置
+      TZ: ${TZ:-Asia/Shanghai}
+
+    healthcheck:
+      test: ["CMD-SHELL", "/xkagent_infra/brain/platform/docker/scripts/healthcheck.sh runtime"]
+      interval: 30s
+      timeout: 15s
+      retries: 5
+      start_period: 90s
+    restart: unless-stopped
+
+volumes:
+  ${COMPOSE_PROJECT_NAME:-xk-agent-infra}-data:
+  ${COMPOSE_PROJECT_NAME:-xk-agent-infra}-root:

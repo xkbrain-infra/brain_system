@@ -1,0 +1,270 @@
+policy:
+  id: "G-POLICY-DEPLOYMENT-PENDING-WORKFLOW"
+  name: "Pending Update Workflow"
+  version: "1.0"
+  description: |
+    定义通过 /xkagent_infra/runtime/update_brain/pending/ 提交更新的完整工作流程。
+    适用于修改受 G-SCOP 保护的核心配置文件（/brain/base/**, /brain/INIT.yaml 等）。
+  applies_to: [brain-manager, pmo, devops]
+  priority: HIGH
+
+# ============================================
+# 1. 目录结构规范
+# ============================================
+directory_structure:
+  base_path: /xkagent_infra/runtime/update_brain/pending/
+  batch_pattern: "<YYYYMMDD>_<description>"
+
+  required_subdirs:
+    - base/          # 镜像 /brain/base/ 的目录结构
+    - base/spec/
+    - base/workflow/
+    - base/knowledge/
+    # ... 根据变更内容创建对应子目录
+
+  required_files:
+    - CHANGELOG.md   # 必须包含变更说明
+
+  optional_files:
+    - PLAN.md        # 复杂变更的执行计划
+    - ROLLBACK.md    # 回滚方案（高风险变更）
+    - TEST_REPORT.md # 验证结果
+
+# ============================================
+# 2. 批次命名规范
+# ============================================
+batch_naming:
+  format: "<YYYYMMDD>_<description>"
+  description_rules:
+    - 使用小写字母、数字、下划线
+    - 描述性（如：hooks_fix, registry_update, lep_enhancement）
+    - 避免模糊词汇（如：update, fix, change）
+  examples:
+    good:
+      - "20260309_hooks_fix"
+      - "20260309_registry_schema_v3"
+      - "20260309_lep_critical_gates"
+    bad:
+      - "20260309_update"      # 描述不清
+      - "20260309_fix"         # 描述不清
+      - "update_20260309"      # 日期位置错误
+
+# ============================================
+# 3. CHANGELOG 规范
+# ============================================
+changelog:
+  filename: CHANGELOG.md
+  required_sections:
+    - title: "变更摘要"
+      content: "一句话描述变更目的"
+
+    - title: "问题描述"  # 可选
+      content: "说明为什么要做这个变更"
+
+    - title: "变更内容"
+      content: |
+        - 修改文件列表
+        - 每个文件的具体变更（行号范围、操作类型）
+
+    - title: "风险等级"
+      content: "CRITICAL | HIGH | MEDIUM | LOW"
+
+    - title: "验证步骤"
+      content: "变更后如何验证"
+
+    - title: "回滚方案"
+      content: "出问题如何回滚"
+
+  template: |
+    # LEP Update Batch: {batch_name}
+
+    ## 变更摘要
+    {summary}
+
+    ## 问题描述（可选）
+    {problem_description}
+
+    ## 变更内容
+
+    ### 修改文件
+    - `{file_path}`
+
+    ### 具体变更
+    {change_details}
+
+    ## 风险等级
+    - **等级**: {risk_level}
+    - **理由**: {risk_rationale}
+
+    ## 验证步骤
+    {verification_steps}
+
+    ## 回滚方案
+    {rollback_steps}
+
+    ## 提交信息
+    - **批次**: {batch_name}
+    - **提交者**: {agent_name}
+    - **日期**: {date}
+
+# ============================================
+# 4. 审批流程
+# ============================================
+approval_workflow:
+  stages:
+    - name: "准备阶段"
+      actor: any-agent
+      actions:
+        - 创建批次目录
+        - 复制原文件到 base/ 对应路径
+        - 进行修改
+        - 编写 CHANGELOG.md
+        -
+    - name: "提交审批"
+      actor: any-agent
+      actions:
+        - 通过 IPC 向组内 PMO 发送 APPROVAL_REQUEST
+        - 提供：diff、CHANGELOG、验证计划、回滚方案
+        -
+    - name: "PMO 审查"
+      actor: pmo
+      actions:
+        - 审查变更内容
+        - 评估风险
+        - 决定是否批准或上报用户
+        -
+    - name: "用户审批"
+      actor: user
+      condition: pmo_escalated
+      actions:
+        - 最终审批决策
+        -
+    - name: "发布执行"
+      actor: brain-manager
+      condition: approved
+      actions:
+        - 合并变更到 /brain/base/
+        - 记录发布日志
+
+# ============================================
+# 5. 验证步骤
+# ============================================
+verification:
+  pre_merge:
+    - name: "语法检查"
+      command: |
+        # YAML 文件
+        python3 -c "import yaml; yaml.safe_load(open('{file}'))"
+
+        # JSON 文件
+        python3 -c "import json; json.load(open('{file}'))"
+
+    - name: "路径验证"
+      command: |
+        # 确认变更路径正确
+        ls -la /xkagent_infra/runtime/update_brain/pending/{batch}/base/{path}
+
+    - name: "diff 生成"
+      command: |
+        diff -u /brain/base/{path} /xkagent_infra/runtime/update_brain/pending/{batch}/base/{path}
+
+  post_merge:
+    - name: "文件存在性"
+      command: ls -la /brain/base/{path}
+
+    - name: "语法再次检查"
+      command: |
+        python3 -c "import yaml; yaml.safe_load(open('/brain/base/{path}'))"
+
+    - name: "功能验证"
+      description: "根据变更内容执行特定验证"
+
+# ============================================
+# 6. 发布流程
+# ============================================
+deployment:
+  method: "atomic_copy"
+  steps:
+    - name: "备份原文件"
+      command: |
+        cp /brain/base/{path} /brain/base/{path}.bak.{timestamp}
+
+    - name: "执行复制"
+      command: |
+        cp /xkagent_infra/runtime/update_brain/pending/{batch}/base/{path} /brain/base/{path}
+
+    - name: "验证"
+      command: |
+        # 根据变更类型执行验证
+        echo "验证完成"
+
+    - name: "清理批次"
+      command: |
+        # 可选：保留或删除批次目录
+        # mv /xkagent_infra/runtime/update_brain/pending/{batch} /xkagent_infra/runtime/update_brain/completed/
+
+# ============================================
+# 7. 回滚流程
+# ============================================
+rollback:
+  triggers:
+    - 变更导致系统故障
+    - 验证失败
+    - 用户要求撤销
+
+  steps:
+    - name: "定位备份"
+      command: |
+        ls -la /brain/base/{path}.bak.* | tail -1
+
+    - name: "执行回滚"
+      command: |
+        BACKUP=$(ls /brain/base/{path}.bak.* | tail -1)
+        cp "$BACKUP" /brain/base/{path}
+
+    - name: "验证回滚"
+      command: |
+        # 验证回滚后的文件
+        echo "回滚完成"
+
+    - name: "通知"
+      description: "通过 IPC 通知相关人员回滚完成"
+
+# ============================================
+# 8. 相关 LEP Gates
+# ============================================
+lep_gates:
+  - gate_id: G-GATE-SCOP
+    description: "触发 pending 流程的主要 gate"
+    trigger: "修改 /brain/base/** 路径"
+
+  - gate_id: G-GATE-APPROVAL-DELEGATION
+    description: "需要 PMO 审批"
+    trigger: "提交 APPROVAL_REQUEST"
+
+  - gate_id: G-GATE-ATOMIC
+    description: "变更必须原子化（具体到文件和行号）"
+    trigger: "准备 CHANGELOG 时检查"
+
+# ============================================
+# 9. 快速参考
+# ============================================
+quick_reference:
+  create_batch: |
+    mkdir -p /xkagent_infra/runtime/update_brain/pending/$(date +%Y%m%d)_description/base/spec
+    cp /brain/base/spec/target.yaml $_/
+    # 编辑 $_/target.yaml
+
+  generate_changelog: |
+    # 使用模板创建 CHANGELOG.md
+
+  submit_approval: |
+    # 通过 IPC 发送 APPROVAL_REQUEST 给 PMO
+
+  deploy: |
+    # brain-manager 执行：
+    cp pending/{batch}/base/{path} /brain/base/{path}
+
+  rollback: |
+    BACKUP=$(ls /brain/base/{path}.bak.* | tail -1)
+    cp "$BACKUP" /brain/base/{path}

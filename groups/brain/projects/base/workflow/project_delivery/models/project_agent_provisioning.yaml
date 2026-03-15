@@ -1,0 +1,259 @@
+project_agent_provisioning:
+  id: "MWF-AGENT-PROVISION-001"
+  version: "0.1"
+  intent: "定义 project_delivery 中 project-scoped agents 的来源、命名、目录布局与 sandbox 内创建逻辑"
+
+positioning:
+  note:
+    - "group agents 是 group 能力模板与控制面角色，不是项目执行 worker 本体"
+    - "project-scoped agents 必须在 sandbox 内创建并以 project identity 运行"
+    - "requested_roles 表达角色需求，不等于直接复用现有 agent_id"
+    - "template source 仅用于生成模板 bundle；真正执行的 agent runtime 必须在 sandbox 内创建"
+
+source_references:
+  - "/brain/base/spec/policies/creation/group.yaml"
+  - "/brain/base/spec/policies/creation/project.yaml"
+  - "/brain/base/spec/policies/agents/agents_registry_spec.yaml"
+  - "/brain/base/spec/policies/agents/agent_protocol.yaml"
+  - "/brain/base/spec/templates/agent/type_profiles/general.yaml"
+  - "/brain/base/spec/templates/agent/type_profiles/software_dev.yaml.base"
+
+recommended_role_sets:
+  software_dashboard_complete_delivery:
+    required_roles:
+      - "pmo"
+      - "orchestrator"
+      - "researcher"
+      - "architect"
+      - "qa"
+      - "devops"
+      - "auditor"
+    recommended_role_expansions:
+      - "developer"
+      - "dev_ui"
+      - "dev_api"
+      - "reviewer"
+    rules:
+      - "orchestrator 是正式项目 role agent，不得省略"
+      - "researcher 与 auditor 属于完整交付基线，不得以 MVP 理由删除"
+
+default_provider_model_policy:
+  pmo:
+    default:
+      agent_type: "claude"
+      model: "claude-sonnet-4-6"
+      reason: "治理、协调、审批与 IPC 交互优先"
+  orchestrator:
+    default:
+      agent_type: "claude"
+      model: "claude-sonnet-4-6"
+      reason: "负责任务编排、agent lifecycle、tmux/IPC 调度"
+  researcher:
+    default:
+      agent_type: "codex"
+      model: "gpt-5.3-codex"
+      reason: "技术调研、benchmark 与多来源信息整合"
+    fallback:
+      agent_type: "claude"
+      model: "claude-sonnet-4-6"
+  architect:
+    default:
+      agent_type: "codex"
+      model: "gpt-5.3-codex"
+      reason: "架构推理与代码/基础设施联动修改并重"
+    fallback:
+      agent_type: "claude"
+      model: "opus"
+  developer:
+    default:
+      agent_type: "codex"
+      model: "gpt-5.3-codex"
+      reason: "实现、重构、代码编辑密集"
+  dev_ui:
+    default:
+      agent_type: "claude"
+      model: "sonnet"
+      reason: "前端交互与界面生成偏重可读性与交互表达"
+  dev_api:
+    default:
+      agent_type: "codex"
+      model: "gpt-5.3-codex"
+      reason: "后端接口、逻辑实现与调试偏代码密集"
+  qa:
+    default:
+      agent_type: "codex"
+      model: "gpt-5.3-codex"
+      reason: "测试脚本、回归检查与标准化验证"
+  devops:
+    default:
+      agent_type: "claude"
+      model: "sonnet"
+      reason: "shell/infra 工具调用与环境调试"
+  auditor:
+    default:
+      agent_type: "claude"
+      model: "claude-sonnet-4-6"
+      reason: "审计、证据核对、报告汇总"
+
+agent_layers:
+  group_agent_templates:
+    role: "capability_template_and_control_plane_actor"
+    canonical_root: "/xkagent_infra/groups/{group_id}/agents"
+    allowed_usage:
+      - "提供角色能力模板、prompt/config skeleton、工具许可边界"
+      - "参与 intake/planning/review 等 group control-plane 决策"
+      - "作为 template_source_ref 的宿主机来源"
+    forbidden_usage:
+      - "直接作为 project worker roster 进入 sandbox 执行"
+      - "把 group agent 的 cwd/path 直接绑定为 project runtime cwd"
+
+  project_agent_manifests:
+    role: "project SSOT records"
+    canonical_root: "/xkagent_infra/groups/{group_id}/projects/{project_id}/config/agents"
+    required_files:
+      - "roster.yaml"
+      - "template_map.yaml"
+      - "provision_plan.yaml"
+    note:
+      - "项目侧只保留 roster/manifest/plan 等记录，不承载长驻 runtime"
+
+  sandbox_agent_runtime:
+    role: "sandbox runtime instances"
+    canonical_root: "/workspace/runtime/agents/{agent_id}"
+    required_assets:
+      - "agent home/config directory"
+      - "template bundle materialized inside sandbox"
+      - "rendered prompt/config from approved template"
+      - "runtime log path"
+      - "orchestrator registration record"
+    note:
+      - "真正执行任务的 project agents 只存在于 sandbox runtime 中"
+
+  template_bundle:
+    role: "bridge between host template source and sandbox runtime"
+    canonical_root: "/workspace/runtime/template_bundles/agents/{agent_id}"
+    required_assets:
+      - "template_bundle_ref"
+      - "template_source_ref"
+      - "bundle_manifest"
+    rules:
+      - "bootstrap 必须先把宿主机模板解析为 project-specific template bundle"
+      - "sandbox 内 agent runtime 只能消费 bundle，不得直接指向宿主机 groups/agents 路径"
+
+naming_contract:
+  project_agent_id:
+    format: "agent_{group_id}_{project_key}_{role_key}_{slot}"
+    example: "agent_brain_brain_dashboard_dev_01"
+  slot:
+    rule:
+      - "同一 role 可按容量创建多个 slot，slot 使用两位序号"
+      - "project_key 必须使用稳定、可路径化的 project identifier"
+  prohibitions:
+    - "不得直接复用 group agent_id 作为 project agent_id"
+    - "不得使用 agent-system_* 或 agent_{group}_* 作为 project roster 中的运行实例 ID"
+
+planning_to_bootstrap_mapping:
+  requested_roles_semantics:
+    - "intake.requested_roles 是项目所需能力需求"
+    - "planning.role_roster 把能力需求细化为角色、容量、班次、优先级"
+    - "bootstrap 根据 requested_roles 生成 bootstrap roster；planning 可进一步扩容/缩容"
+  required_transformations:
+    - "从 requested_roles 解析 role_key 与 capacity_hint"
+    - "为每个 role_key 解析 group template source"
+    - "将 template source 打包为 sandbox-consumable template bundle"
+    - "生成 project_agent_provision_plan"
+
+bootstrap_roster:
+  minimum_required_roles:
+    - "project_orchestrator"
+  optional_by_profile:
+    - "architect"
+    - "developer"
+    - "researcher"
+    - "qa"
+    - "devops"
+    - "reviewer"
+  rules:
+    - "bootstrap 阶段至少要把 orchestrator 和首批 bootstrap worker 准备好"
+    - "最终执行 roster 可在 planning 后扩容，但 bootstrap roster 必须先实现 project-scoped identities"
+
+provisioning_flow:
+  steps:
+    - "read requested_roles and workflow profile"
+    - "resolve approved group agent templates and capability profiles"
+    - "package approved template sources into template bundles"
+    - "materialize project_agent_provision_plan under group project root"
+    - "render project_agent_roster manifest with project-scoped agent ids"
+    - "create sandbox runtime homes under /workspace/runtime/agents/{agent_id}"
+    - "import template bundles into sandbox runtime"
+    - "render agent config/prompt/hooks from imported template bundles"
+    - "start agents under sandbox supervisor/orchestrator management"
+    - "register live agents to project orchestrator and emit roster evidence"
+
+runtime_creation_contract:
+  required_steps:
+    - "mkdir -p /workspace/runtime/agents/{agent_id}"
+    - "materialize template bundle into /workspace/runtime/template_bundles/agents/{agent_id}"
+    - "render provider-specific config into runtime_home"
+    - "write runtime_meta.yaml with provider/model/project/sandbox/orchestrator refs"
+    - "launch agent under orchestrator or supervisor control"
+    - "register tmux/process handle and heartbeat to orchestrator"
+  provider_specific_assets:
+    claude:
+      required_files:
+        - ".claude/settings.local.json"
+        - ".mcp.json"
+        - "AGENTS.md"
+    codex:
+      required_files:
+        - ".codex/config.toml"
+        - ".mcp.json"
+        - "AGENTS.md"
+  rules:
+    - "运行目录必须是 /workspace/runtime/agents/{agent_id}"
+    - "不得直接以 template_source_ref 目录作为 cwd"
+    - "provider-specific config 必须在 sandbox 内渲染，不得复用宿主机 agent home"
+
+project_agent_provision_plan_contract:
+  required_fields:
+    - "group_id"
+    - "project_id"
+    - "sandbox_id"
+    - "requested_roles"
+    - "template_resolution_map"
+    - "template_bundle_plan"
+    - "project_agent_roster"
+    - "runtime_root"
+    - "created_at"
+    - "created_by"
+
+project_agent_roster_contract:
+  required_fields:
+    - "agent_id"
+    - "role_key"
+    - "slot"
+    - "agent_scope"
+    - "template_source_ref"
+    - "template_bundle_ref"
+    - "runtime_home"
+    - "runtime_created_in_sandbox"
+    - "log_path"
+    - "orchestrator_id"
+    - "status"
+  required_values:
+    agent_scope: "project"
+    runtime_created_in_sandbox: true
+
+forbidden_patterns:
+  - "reuse system agents as project worker roster"
+  - "reuse group agents as project worker roster"
+  - "treat requested_roles as concrete existing agent ids"
+  - "create mutable project runtime under /xkagent_infra/groups/{group_id}/agents"
+  - "create project agents outside sandbox runtime boundary"
+  - "point runtime_home to /xkagent_infra/groups/{group_id}/agents/*"
+  - "let template_source_ref double as runtime cwd"
+
+rules:
+  - "group agents 提供模板与治理，不直接代替 project agents 执行项目任务"
+  - "project agent manifests 属于 project_root/config/agents，runtime 实例属于 sandbox"
+  - "任何 project agent 都必须能追溯到 template_source_ref、template_bundle_ref、project_id、sandbox_id 和 orchestrator_id"

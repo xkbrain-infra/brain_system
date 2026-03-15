@@ -1,0 +1,33 @@
+gate_id: G-GATE-DOCKER-STD
+name: Docker Standard Compliance
+applies_to: [write]
+rule: |
+  - WORKDIR /app
+  - USER 非 root
+  - 路径映射正确
+trigger: target matches **/Dockerfile*
+ref: /brain/base/spec/standards/infra/docker/docker.yaml
+
+enforcement:
+  stage: pre_tool_use
+  method: python_inline
+  priority: MEDIUM
+
+  triggers:
+    tools: [Write, Edit]
+    patterns:
+      - "**/Dockerfile*"
+      - "**/compose.yaml"
+
+  rules:
+    dockerfile_standards:
+      - check: "WORKDIR must be /app"
+      - check: "USER must not be root"
+      - check: "Path mappings must be correct"
+bindings:
+  hooks:
+    stage: pre_tool_use
+    trigger_tools: [Bash]
+    patterns: [docker_run_nonstandard]
+  mcp_tools: []
+  related_skills: []

@@ -1,0 +1,9 @@
+---
+project:
+  id: brain_google_api
+  name: brain_google_api
+  version: 1.0.0
+organization:
+  org: xkagent_infra
+  group: brain
+  type: infrastructure_service

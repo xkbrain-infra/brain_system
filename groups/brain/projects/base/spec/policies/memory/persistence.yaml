@@ -1,0 +1,212 @@
+# Memory Persistence Policy
+# Agent 会话记录持久化规范
+#
+# 核心原则：所有运行时产生的记录统一写入 /xkagent_infra/runtime/memory/
+
+id: POLICY-MEMORY-PERSISTENCE
+version: "1.1"
+created: "2026-02-14"
+status: active
+
+# ============================================================
+# 存储根目录（强制）
+# ============================================================
+root_directory: /xkagent_infra/runtime/memory
+enforcement: MANDATORY  # 所有 agent 无例外
+
+# ============================================================
+# 目录结构
+# ============================================================
+#
+# /xkagent_infra/runtime/memory/
+# ├── {date}/                          # 按日期一级分类（YYYY-MM-DD）
+# │   ├── {agent_name}/               # 按 agent 二级分类
+# │   │   ├── {session_id}.log        # 完整 stdout/stderr 捕获
+# │   │   ├── {session_id}.meta       # 会话元信息（可选）
+# │   │   └── audit.jsonl             # 该 agent 当天的审计事件
+# │   ├── service-agentctl/           # agentctl 服务自身的记录
+# │   │   └── audit.jsonl             # agentctl 审计日志
+# │   └── tmp/                        # 无关联对话
+# │       └── {session_id}.log
+# └── latest -> {date}/               # 指向当天的符号链接
+#
+directory_structure:
+  level_1:
+    type: date
+    format: "YYYY-MM-DD"
+    example: "2026-02-14"
+    rule: 按 UTC 日期分目录，跨日自动切换
+
+  level_2:
+    type: agent_name
+    source: agents_registry.yaml 中的 name 字段，或服务名（如 service-agentctl）
+    example: "agent-system_pmo"
+    rule: 每个 agent/服务 独立目录
+
+  unaffiliated:
+    path: "{date}/tmp/"
+    rule: |
+      以下情况写入 tmp/:
+      - 不属于任何项目组的对话
+      - 没有关联 TaskID 的临时会话
+      - 系统级调试/测试会话
+
+# ============================================================
+# 记录类型
+# ============================================================
+record_types:
+  session_log:
+    description: Agent 终端的完整 stdout/stderr 捕获
+    format: raw text
+    filename: "{tmux_session}_{HHMMSS}.log"
+    source: tmux pipe-pane
+
+  audit_log:
+    description: 结构化事件日志（启动、路由、错误等）
+    format: JSONL (每行一个 JSON 对象)
+    filename: "audit.jsonl"
+    source: audit_logger.py
+    note: |
+      audit 和 session_log 互补：
+      - audit = 结构化事件（可查询、可聚合）
+      - session_log = 原始终端输出（完整上下文、可回溯）
+
+  meta_file:
+    description: 会话元信息
+    format: YAML
+    filename: "{tmux_session}_{HHMMSS}.meta"
+    optional: true
+    content: |
+      agent_name: {agent_name}
+      session_start: {ISO8601}
+      group: {group_name}
+      task_ids: [{task_id}, ...]
+
+# ============================================================
+# 捕获方式
+# ============================================================
+capture:
+  session_log:
+    method: tmux_pipe_pane
+    description: |
+      agentctl 启动 agent 后，立即用 tmux pipe-pane 将该 session
+      的所有可见输出实时写入 memory。agent 本身无需任何改动。
+    implementation:
+      on_session_start: |
+        MEMORY_DIR="/xkagent_infra/runtime/memory/$(date -u +%Y-%m-%d)/${agent_name}"
+        mkdir -p "$MEMORY_DIR"
+        SESSION_FILE="${MEMORY_DIR}/${tmux_session}_$(date -u +%H%M%S).log"
+        tmux pipe-pane -t "${tmux_session}" -o "cat >> '${SESSION_FILE}'"
+
+      on_date_change: |
+        # agentctl orchestrator_tick 检测日期变更时执行
+        tmux pipe-pane -t "${tmux_session}"  # 关闭旧 pipe
+        MEMORY_DIR="/xkagent_infra/runtime/memory/$(date -u +%Y-%m-%d)/${agent_name}"
+        mkdir -p "$MEMORY_DIR"
+        SESSION_FILE="${MEMORY_DIR}/${tmux_session}_continued.log"
+        tmux pipe-pane -t "${tmux_session}" -o "cat >> '${SESSION_FILE}'"
+
+    what_is_captured:
+      - stdout (agent 的所有输出)
+      - stderr (错误信息)
+      - 用户输入的回显 (stdin echo)
+      - 工具调用输出
+
+  audit_log:
+    method: audit_logger.py
+    description: |
+      agentctl 的 AuditLogger 改为写入 /xkagent_infra/runtime/memory/{date}/{agent}/audit.jsonl，
+      不再写入项目级目录。
+    migration: |
+      旧路径: /xkagent_infra/groups/brain/projects/agent_orchestrator/memory/audit/
+      新路径: /xkagent_infra/runtime/memory/{date}/service-agentctl/audit.jsonl
+      迁移: 修改 audit_logger.py 的 default_sinks()
+
+# ============================================================
+# 生命周期管理（agentctl 负责）
+# ============================================================
+lifecycle:
+  manager: agentctl
+  description: |
+    agentctl 作为 agent 生命周期管理者，同时负责 memory 的生命周期。
+    清理逻辑集成在 agentctl 的 orchestrator_tick 或独立子命令中。
+
+  config:
+    path: /xkagent_infra/brain/infrastructure/config/agentctl/memory_retention.yaml
+    schema:
+      retention_days:
+        default: 30
+        tmp: 7
+        description: 超过天数的目录/文件自动删除
+      compression:
+        enabled: true
+        after_days: 7
+        format: gzip
+        description: 超过天数的 .log 文件压缩为 .log.gz
+      symlink:
+        path: /xkagent_infra/runtime/memory/latest
+        description: 指向当天日期目录，每日自动更新
+
+  commands:
+    cleanup:
+      description: "brain-agentctl memory-cleanup [--apply] [--retention-days N]"
+      action: 删除超期文件，压缩旧日志，更新 symlink
+    status:
+      description: "brain-agentctl memory-status"
+      action: 显示 memory 磁盘占用、各 agent 记录量、最早/最新日期
+
+  automation:
+    trigger: agentctl orchestrator_tick（每 10 秒）中检测日期变更
+    daily_actions:
+      - 创建新日期目录
+      - 更新 latest 符号链接
+      - 切换所有 running agent 的 pipe-pane 到新目录
+      - 执行 cleanup（删除超期、压缩旧文件）
+
+# ============================================================
+# LEP Gate 关联
+# ============================================================
+lep_gates:
+  existing:
+    - G-GATE-MEMORY-TIMELINE  # timeline.md 追加保护
+  proposed:
+    - G-GATE-MEMORY-PERSIST   # agent 启动时必须配置 pipe-pane
+
+# ============================================================
+# 实现步骤
+# ============================================================
+implementation:
+  step_1:
+    description: |
+      修改 audit_logger.py default_sinks()，
+      将 project_path 改为 /xkagent_infra/runtime/memory/{date}/service-agentctl/audit.jsonl
+    files:
+      - /brain/infrastructure/service/service-agentctl/services/audit_logger.py
+
+  step_2:
+    description: |
+      修改 agentctl _start_session()，启动 agent 后自动执行 tmux pipe-pane
+    files:
+      - /brain/infrastructure/service/service-agentctl/releases/current/bin/brain-agentctl
+
+  step_3:
+    description: |
+      创建 /xkagent_infra/runtime/memory/ 根目录，
+      创建 memory_retention.yaml 配置文件
+    files:
+      - /xkagent_infra/runtime/memory/
+      - /brain/infrastructure/config/agentctl/memory_retention.yaml
+
+  step_4:
+    description: |
+      在 agentctl orchestrator_tick 中加入：
+      - 日期变更检测 + pipe-pane 切换
+      - 每日 cleanup 执行
+    files:
+      - /brain/infrastructure/service/service-agentctl/services/agentctl_service.py
+
+  step_5:
+    description: 添加 G-GATE-MEMORY-PERSIST 到 LEP domain gates
+    files:
+      - /brain/base/spec/policies/lep/memory_persist.yaml
+      - /brain/base/spec/policies/lep/index.yaml

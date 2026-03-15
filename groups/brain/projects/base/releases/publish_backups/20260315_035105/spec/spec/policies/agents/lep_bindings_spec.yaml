@@ -1,0 +1,95 @@
+# LEP Bindings Specification
+# lep_bindings.yaml 的结构约束和绑定优先级规范
+
+spec:
+  id: "SPEC-LEP-BINDINGS"
+  version: "1.0"
+  status: "Active"
+  owner: "brain_system"
+
+intent:
+  summary: "将 LEP profile 绑定策略从 agents_registry.yaml 中分离，单独管理 role/agent/workflow 与 LEP overlays 的映射。"
+  location: "/brain/infrastructure/config/agentctl/lep_bindings.yaml"
+  rationale:
+    - "agents_registry.yaml 负责运行时注册信息，不应承载完整 LEP 分层策略。"
+    - "LEP enforcement 需要按 role、agent、workflow 独立演进。"
+    - "workflow.required_lep_profiles、role.default_lep_profiles、agent.extra_lep_profiles 语义不同，单独建模更清晰。"
+
+schema:
+  lep_bindings:
+    required:
+      - version
+      - updated
+      - roles
+    optional:
+      - owner
+      - description
+      - resolution_order
+      - merge_rules
+      - agents
+      - workflows
+
+  role_binding:
+    required:
+      - default_lep_profiles
+    optional: []
+
+  agent_binding:
+    required: []
+    optional:
+      - extra_lep_profiles
+
+  workflow_binding:
+    required: []
+    optional:
+      - required_lep_profiles
+      - recommended_roles
+
+constraints:
+  separate_from_agents_registry:
+    rule: "LEP profile 绑定不直接定义在 agents_registry.yaml 中；全局 LEP 绑定统一放入 lep_bindings.yaml。"
+
+  profile_names_reference_hook_profiles:
+    rule: "所有 LEP profile 名必须能映射到 /brain/base/hooks/rules/profiles/<profile>/gates.yaml。"
+
+  role_keys_match_runtime_roles:
+    rule: "roles.* 的 key 应与 agents_registry.yaml 中的 role 值语义一致。"
+
+  merge_deduplicate:
+    rule: "同一 profile 通过 role/agent/workflow 多次命中时，只保留一次。"
+
+resolution:
+  order:
+    - workflow.required_lep_profiles
+    - agent.extra_lep_profiles
+    - role.default_lep_profiles
+  description:
+    - "workflow.required_lep_profiles: 进入某 workflow 时需要额外收紧的 LEP overlay。"
+    - "agent.extra_lep_profiles: 针对具体 agent 的附加 LEP overlay。"
+    - "role.default_lep_profiles: 角色常驻的 LEP overlay。"
+
+example:
+  lep_bindings:
+    version: "1.0"
+    updated: "2026-03-14"
+    roles:
+      manager:
+        default_lep_profiles: [manager-governance]
+      devops:
+        default_lep_profiles: [runtime-ops]
+    agents:
+      agent-brain_manager:
+        extra_lep_profiles: [brain-manager-elevated]
+    workflows:
+      project_delivery:
+        required_lep_profiles: [delivery-governance]
+        recommended_roles: [manager, pmo, devops]
+
+consumer_guidance:
+  intended_consumers:
+    - "agentctl 配置加载层"
+    - "hooks role_scope overlay 解析层"
+    - "session/runtime 注入层"
+  non_goals:
+    - "不替代 LEP spec 本体"
+    - "不替代 hooks checker 实现"

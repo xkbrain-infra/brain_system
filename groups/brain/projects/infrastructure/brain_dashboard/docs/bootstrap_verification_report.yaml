@@ -1,0 +1,63 @@
+bootstrap_verification_report:
+  project_id: brain-dashboard-2026-03-11
+  sandbox_id: sandbox-brain-dashboard-20260311
+  status: bootstrap_passed
+  completed_at: "2026-03-11T00:00:00Z"
+
+  baseline_image: "brain/base/workflow/project_delivery/models/environment_baseline.yaml"
+  runtime_version: "Python 3.12 + FastAPI + HTMX/Tailwind"
+  repo_revision: "develop branch"
+
+  workspace_status:
+    path: /brain/sandbox/brain_dashboard_20260311
+    layout:
+      - docs/
+      - spec/
+      - src/
+      - logs/
+    status: ready
+
+  toolchain_status:
+    python: "3.12"
+    fastapi: "available"
+    uvicorn: "available"
+    sqlite3: "available"
+    git: "available"
+    status: ready
+
+  test_status:
+    entrypoint: "pytest"
+    staging_connectivity: "N/A - will use local test"
+    status: ready
+
+  environment_layers_status:
+    dev: "sandbox"
+    stage: "N/A"
+    prod: "/brain/infrastructure/service/brain_dashboard/releases/"
+    status: ready
+
+  config_status:
+    intake_record: loaded
+    research_report: loaded
+    status: ready
+
+  connectivity_status:
+    ipc_daemon: "available at /tmp/brain_ipc.sock"
+    task_manager: "available"
+    config_registry: "available via agents_registry.yaml"
+    status: ready
+
+  registration_status:
+    service_name: "brain_dashboard_v2"
+    port: "TBD - 8300"
+    supervisor: "will register after release"
+    status: ready
+
+  orchestrator_status:
+    agent: "agent-brain_manager"
+    mode: "passive IPC"
+    heartbeat: "manual"
+    status: online
+
+  bootstrap_decision: PASS
+  next_phase: planning

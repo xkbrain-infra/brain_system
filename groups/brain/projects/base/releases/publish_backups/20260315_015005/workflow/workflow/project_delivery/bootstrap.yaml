@@ -1,0 +1,264 @@
+workflow:
+  id: "MWF-WF-BOOTSTRAP-001"
+  name: "Sandbox Bootstrap Workflow"
+  owner: "brain_infra + sandbox_manager + project_orchestrator"
+  trigger: "project passed RESEARCH_PASS AND sandbox_evaluation.mode != read_only"
+  description: |
+    Bootstrap 现在为条件触发，根据 sandbox_evaluation 结果执行不同级别的启动流程：
+    - full_sandbox: 执行完整 Docker 容器隔离
+    - worktree_sandbox: 执行轻量 worktree + hooks 隔离
+    - read_only: 跳过 bootstrap，直接进入轻量 execution
+  inputs:
+    - intake_record
+    - research_report
+    - recommended_approach
+    - group_root
+    - project_root
+    - sandbox_evaluation_record  # 评估记录，决定执行路径
+    - sandbox_strategy
+    - sandbox_mode               # full_sandbox / worktree_sandbox
+    - sandbox_provider
+    - sandbox_template_profile
+    - baseline_source
+    - brain_runtime_version_ref
+    - sandbox_provision_mode
+    - project_payload_package
+    - requested_roles
+    - project_agent_provision_plan
+    - project_agent_template_bundle
+    - task_storage_strategy
+    - workflow_profile
+    - environment_constraints
+  steps:
+    # ========== 通用准备步骤 ==========
+    - "freeze brain runtime version and image reference"
+    - "resolve sandbox contract, approved provider, and template profile based on sandbox_mode"
+    - "verify project_root belongs to group_root/projects and remains project SSOT"
+
+    # ========== Full Sandbox 路径 (Level 1) ==========
+    - "IF sandbox_mode == full_sandbox:"
+    - "  - resolve sandbox provisioning mode and parent image strategy"
+    - "  - package project payload from group project root"
+    - "  - package project agent templates from approved group template sources"
+    - "  - materialize sandbox from built-in provider template"
+    - "  - apply project-specific adaptation on top of the built-in template"
+    - "  - initialize isolated writable workspace from complete brain baseline and import project payload"
+    - "  - create project local task storage and task_manager.yaml baseline"
+    - "  - resolve group agent templates and render project-scoped bootstrap agent plan"
+    - "  - import project agent template bundles into sandbox runtime"
+    - "  - verify source baseline revision and execution boundary"
+    - "  - verify provider template fixed assets and project adaptation boundary"
+    - "  - install or verify pinned runtime toolchain"
+    - "  - inject runtime config and allowed secrets"
+    - "  - install workflow package/profile configuration"
+    - "  - prepare local test entrypoints and test/staging connectivity"
+    - "  - declare dev/stage/prod environment endpoints or environment strategy"
+    - "  - start project orchestrator runtime"
+    - "  - provision project-scoped worker agents inside sandbox"
+    - "  - register bootstrap agent roster and runtime homes"
+    - "  - verify IPC/task manager/timer/config registry connectivity"
+    - "  - verify task manager write path, local task storage, and dispatch acknowledgement policy"
+    - "  - verify service_name/port/supervisor registration path"
+    - "  - register sandbox and orchestrator to brain infra"
+
+    # ========== Worktree Sandbox 路径 (Level 2) ==========
+    - "IF sandbox_mode == worktree_sandbox:"
+    - "  - create git worktree at {group_root}/.worktrees/{project_id}"
+    - "  - clone/checkout project payload to worktree"
+    - "  - install scope guard hooks (PreToolUse path checker)"
+    - "  - configure skill constraints for project_root only write"
+    - "  - create project local task storage and task_manager.yaml baseline"
+    - "  - resolve group agent templates for worktree environment"
+    - "  - install workflow package/profile configuration"
+    - "  - prepare local test entrypoints (if applicable)"
+    - "  - declare dev/stage/prod environment endpoints or strategy"
+    - "  - start project orchestrator runtime (worktree mode)"
+    - "  - provision project-scoped worker agents"
+    - "  - verify IPC/task manager connectivity"
+    - "  - register worktree sandbox to brain infra"
+
+    # ========== Read Only 路径 (Level 3) ==========
+    - "IF sandbox_mode == read_only:"
+    - "  - SKIP bootstrap (no workspace creation)"
+    - "  - install read-only hooks (PreToolUse write blocker)"
+    - "  - configure skill constraints for read-only operations"
+    - "  - register read-only project session to brain infra"
+    - "  - proceed directly to lightweight execution"
+
+  outputs:
+    - sandbox_record
+    - bootstrap_verification_report
+    - online project orchestrator (or lightweight executor for read_only)
+    - provisioning failure report when applicable
+
+bootstrap_components:
+  required:
+    - "declared sandbox contract"
+    - "approved sandbox provider"
+    - "built-in sandbox template profile"
+    - "complete brain baseline source"
+    - "group-owned project root"
+    - "brain runtime version record"
+    - "project payload package"
+    - "project agent provision plan"
+    - "project agent template bundle"
+    - "project local task storage"
+    - "isolated writable workspace/runtime/artifacts/logs/memory layout"
+    - "runtime toolchain"
+    - "workflow/profile configuration"
+    - "project-scoped orchestrator and worker agents"
+    - "test entrypoint or staging connectivity"
+    - "IPC/task manager/timer/config registry connectivity"
+    - "service_name/port/supervisor registration capability"
+
+pass_gate:
+  id: "BOOTSTRAP_PASS"
+  rule: "sandbox 只有在环境、代码、工具链、测试、版本控制、通信与注册都通过校验后，才能进入 PLANNING"
+  required_checks:
+    sandbox_contract_ready:
+      description: "sandbox strategy、provider、template profile 已声明且符合 contract"
+    provider_ready:
+      description: "选定 provider 已被 workflow 批准且已成功 provision"
+    runtime_version_ready:
+      description: "brain runtime 的 git/image/version 信息已冻结并可追溯"
+    provision_mode_ready:
+      description: "sandbox_provision_mode 已明确，且 parent image 策略可执行"
+    project_root_ready:
+      description: "project_root 位于 group_root/projects/ 下，且不被 sandbox 路径替代"
+    project_payload_ready:
+      description: "project payload 已从 group project root 打包，并具有 version/hash/manifest"
+    agent_plan_ready:
+      description: "bootstrap agent provision plan 已从 requested_roles 解析，且模板来源可追溯"
+    agent_template_bundle_ready:
+      description: "project agent template bundle 已从宿主机 template source 打包并导入 sandbox"
+    template_materialized:
+      description: "provider 内置模板已实例化，且项目适配层已落地"
+    template_boundary_valid:
+      description: "模板固定资产未被破坏，项目适配仅发生在允许边界内"
+    workspace_seed_ready:
+      description: "完整 brain baseline 已复制或实例化到隔离工作区，并可识别 revision"
+    workspace_ready:
+      description: "workspace/runtime/artifacts/logs/memory 目录齐备"
+    task_storage_ready:
+      description: "project_root/spec/06_tasks 或 sandbox writable project workspace 下的 task 目录与 task_manager.yaml 已创建"
+    execution_boundary_ready:
+      description: "项目执行发生在 sandbox 内部，不直接污染 host brain"
+    toolchain_ready:
+      description: "language runtime/build/test tools 可执行"
+    workflow_ready:
+      description: "workflow profile 和必要配置已安装"
+    test_ready:
+      description: "至少存在本地 test entrypoint；需要时 staging/test target 可达"
+    environment_layers_ready:
+      description: "dev/stage/prod 三层环境或其策略已声明并可验证"
+    config_ready:
+      description: "运行所需 config/secrets 注入成功"
+    connectivity_ready:
+      description: "orchestrator 可连接 IPC、task manager、timer、config registry"
+    task_manager_write_ready:
+      description: "orchestrator 可对 task manager 执行 CREATE_PROJECT/TASK_CREATE/TASK_UPDATE 等写操作"
+    dispatch_ack_policy_ready:
+      description: "dispatch ack double-check 策略、超时阈值和 retry/escalate 行为已装载"
+    registration_ready:
+      description: "service_name、port、supervisor registration 链路可用"
+    provider_evidence_ready:
+      description: "provider 级证据齐全，例如 container/vm/jail/workspace isolation 元数据"
+    orchestrator_online:
+      description: "project orchestrator 进程在线且可发送初始心跳"
+    project_agent_roster_ready:
+      description: "项目专属 worker agents 已在 sandbox 内创建并可被 orchestrator 管理"
+
+fail_gate:
+  id: "BOOTSTRAP_HOLD"
+  rule: "任一 required_checks 不满足时，不得进入 PLANNING，必须进入 BOOTSTRAP_HOLD 或销毁重建路径"
+  typical_reasons:
+    - "sandbox contract undefined or unsupported"
+    - "brain runtime version or image reference missing"
+    - "project payload package missing or unverifiable"
+    - "project agent provision plan missing or template resolution invalid"
+    - "project agent template bundle missing or not imported into sandbox"
+    - "task storage missing or task_manager.yaml absent"
+    - "project root created under sandbox or outside group/projects"
+    - "provider template materialization failed"
+    - "template fixed assets violated or project adaptation exceeded allowed boundary"
+    - "complete brain baseline missing or incomplete"
+    - "execution boundary violated by host-path development"
+    - "toolchain missing or wrong version"
+    - "test entrypoint unavailable"
+    - "dev/stage/prod environment strategy missing"
+    - "required config/secrets missing"
+    - "IPC/task manager/timer/config registry unreachable"
+    - "task manager write path or dispatch ack policy undefined"
+    - "service registration path unavailable"
+    - "orchestrator failed to start"
+  required_followups:
+    - "record hold reason and retryability"
+    - "define retry_in_place or destroy_and_recreate decision"
+    - "release allocated resources on destroy"
+
+required_record:
+  name: "bootstrap_verification_report"
+  required_fields:
+    - project_id
+    - sandbox_id
+    - sandbox_strategy
+    - sandbox_provider
+    - sandbox_template_profile
+    - baseline_source
+    - brain_runtime_version_ref
+    - sandbox_provision_mode
+    - sandbox_parent_image_ref
+    - runtime_version
+    - baseline_source_revision
+    - group_root
+    - project_root
+    - brain_workspace_root
+    - project_workspace_root
+    - project_payload_version
+    - project_payload_archive_ref
+    - project_payload_hash
+    - project_payload_manifest_ref
+    - project_agent_provision_plan_ref
+    - project_agent_template_bundle_ref
+    - project_agent_roster_ref
+    - task_storage_strategy_ref
+    - workspace_root
+    - provider_evidence
+    - workspace_status
+    - task_storage_status
+    - execution_boundary_status
+    - toolchain_status
+    - test_status
+    - environment_layers_status
+    - config_status
+    - connectivity_status
+    - task_manager_write_status
+    - dispatch_ack_policy_status
+    - registration_status
+    - orchestrator_status
+    - project_agent_roster_status
+    - bootstrap_decision
+  note: "没有完整 bootstrap_verification_report 的项目不得进入 PLANNING"
+
+failure_paths:
+  references:
+    - "44_failure_paths.yaml"
+    - "48_rollout_degrade_modes.yaml"
+  required_cases:
+    - "SANDBOX_PROVIDER_UNSUPPORTED"
+    - "BRAIN_RUNTIME_VERSION_MISSING"
+    - "PROJECT_PAYLOAD_INVALID"
+    - "PROJECT_AGENT_PLAN_MISSING"
+    - "AGENT_TEMPLATE_UNRESOLVED"
+    - "AGENT_TEMPLATE_BUNDLE_MISSING"
+    - "SYSTEM_AGENT_REUSE_DETECTED"
+    - "TASK_STORAGE_MISSING"
+    - "TASK_MANAGER_WRITE_UNREADY"
+    - "DISPATCH_ACK_POLICY_MISSING"
+    - "SANDBOX_TEMPLATE_INVALID"
+    - "TEMPLATE_ADAPTATION_FAILED"
+    - "SANDBOX_BOUNDARY_VIOLATION"
+    - "PORT_ALLOCATION_FAILED"
+    - "IPC_CONNECTIVITY_FAILED"
+    - "SANDBOX_CREATE_FAILED"
+    - "TOOLCHAIN_INIT_FAILED"

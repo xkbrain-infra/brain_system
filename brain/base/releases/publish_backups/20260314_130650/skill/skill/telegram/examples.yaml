@@ -1,0 +1,208 @@
+# Telegram Integration Examples
+# Telegram Bot 使用示例
+
+examples:
+  version: "1.0"
+  last_updated: "2026-01-17"
+
+  usage_examples:
+    scenario_1:
+      name: "Scope deviation notification"
+      description: "通知用户实际执行范围与计划偏差"
+      code: |
+        from base.integrations.telegram import send_approval_request
+
+        decision = send_approval_request(
+            title="Scope Deviation Detected",
+            description=f"Planned: {planned_scope}\nActual: {actual_scope}",
+            context={
+                "project": project_name,
+                "planned_items": len(planned_scope),
+                "actual_items": len(actual_scope),
+                "deviation_reason": reason
+            },
+            options=[
+                {"label": "A: Continue (Partial)", "action": "continue_partial"},
+                {"label": "B: Abort", "action": "abort"},
+                {"label": "C: Discuss", "action": "discuss"}
+            ],
+            timeout=3600
+        )
+
+        if decision["action"] == "continue_partial":
+            # Proceed with partial completion
+            pass
+        elif decision["action"] == "abort":
+            # Abort task
+            pass
+        elif decision["action"] == "discuss":
+            # Open discussion thread
+            pass
+
+    scenario_2:
+      name: "Retry exhausted notification"
+      description: "重试次数用尽，请求用户决策"
+      code: |
+        from base.integrations.telegram import send_telegram_message
+
+        response = send_telegram_message(
+            message=f"""
+⚠️ **Retry Exhausted**
+
+**Operation**: {operation_name}
+**Attempts**: {retry_count}/{max_retries}
+**Last Error**: {error_message}
+
+**Options**:
+A) Skip this item
+B) Increase retry limit and retry
+C) Abort entire operation
+            """,
+            options=[
+                {"label": "A: Skip", "action": "skip"},
+                {"label": "B: Retry more", "action": "increase_retry"},
+                {"label": "C: Abort", "action": "abort"}
+            ],
+            await_response=True,
+            timeout=1800
+        )
+
+    scenario_3:
+      name: "Simple progress notification"
+      description: "发送简单的进度通知"
+      code: |
+        from base.integrations.telegram import send_notification
+
+        send_notification(
+            level="INFO",
+            message="✅ Download phase completed",
+            details={
+                "regions": ["US", "UK", "HK"],
+                "files": 245,
+                "total_size": "1.2 GB",
+                "duration": "15 minutes"
+            }
+        )
+
+    scenario_4:
+      name: "Unrecoverable error halt"
+      description: "遇到不可恢复错误时的处理"
+      code: |
+        from base.integrations.telegram import send_approval_request
+
+        decision = send_approval_request(
+            title="🛑 Unrecoverable Error",
+            description=f"Error: {error_type}\n{error_message}",
+            context={
+                "operation": operation_name,
+                "error_type": error_type,
+                "error_context": error_context,
+                "agent_status": "HALTED"
+            },
+            options=[
+                {"label": "A: View logs", "action": "view_logs"},
+                {"label": "B: Discuss solution", "action": "discuss"},
+                {"label": "C: Abort task", "action": "abort"}
+            ],
+            timeout=7200
+        )
+
+    scenario_5:
+      name: "Batch operation partial failure"
+      description: "批量操作部分失败的处理"
+      code: |
+        from base.integrations.telegram import send_approval_request
+
+        decision = send_approval_request(
+            title="ℹ️ Batch Operation Partial Failure",
+            description=f"Success: {success_count}/{total_count} items",
+            context={
+                "success_count": success_count,
+                "failed_count": failed_count,
+                "failure_rate": f"{failure_rate:.2%}",
+                "failed_items": failed_items_preview
+            },
+            options=[
+                {"label": "A: Continue", "action": "continue"},
+                {"label": "B: Retry failed", "action": "retry_failed"},
+                {"label": "C: Abort", "action": "abort"}
+            ],
+            timeout=3600
+        )
+
+  migration_notes:
+    from_manual_notification:
+      description: |
+        If currently using manual Telegram messages, migrate to this API:
+
+        Before:
+        - Manually send message to Telegram channel
+        - User types response
+        - Agent checks for response
+
+        After:
+        - Call send_approval_request()
+        - API handles message formatting, button rendering, and response collection
+        - Agent receives structured response
+
+      example_before: |
+        # Manual approach (OLD)
+        # 1. Agent writes to a notification file
+        # 2. User manually checks Telegram
+        # 3. User types response
+        # 4. Agent polls for response file
+
+      example_after: |
+        # API approach (NEW)
+        from base.integrations.telegram import send_approval_request
+
+        decision = send_approval_request(
+            title="Action Required",
+            description="Please approve this action",
+            context={"details": "..."},
+            options=[
+                {"label": "Approve", "action": "approve"},
+                {"label": "Reject", "action": "reject"}
+            ],
+            timeout=3600
+        )
+
+        # Agent receives structured response immediately
+        if decision["action"] == "approve":
+            proceed_with_action()
+
+    backward_compatibility:
+      - "Existing manual notification scripts continue to work"
+      - "Gradually migrate to API-based approach"
+      - "Both methods can coexist during transition"
+
+  best_practices:
+    message_design:
+      - "Use emojis to indicate severity (⚠️, 🛑, ✅, ℹ️)"
+      - "Keep messages concise and structured"
+      - "Provide clear options with action identifiers"
+      - "Include relevant context in a structured format"
+
+    timeout_selection:
+      - "Simple approvals: 1800s (30 min)"
+      - "Complex decisions: 3600s (1 hour)"
+      - "Critical errors: 7200s (2 hours)"
+      - "Non-urgent notifications: 14400s (4 hours)"
+
+    option_design:
+      - "Limit to 3-4 options for clarity"
+      - "Use letters (A, B, C) for quick reference"
+      - "Make default/recommended action first"
+      - "Include 'Discuss' option for complex cases"
+
+    error_handling:
+      - "Always handle timeout scenarios"
+      - "Log all user interactions"
+      - "Provide fallback options"
+      - "Include context for debugging"
+
+metadata:
+  maintainer: "Brain System"
+  related_docs:
+    - "api.yaml"
+    - "templates.yaml"

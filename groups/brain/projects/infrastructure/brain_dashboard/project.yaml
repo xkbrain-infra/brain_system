@@ -1,0 +1,67 @@
+---
+# Brain Dashboard 项目配置
+# 路径: /xkagent_infra/groups/brain/projects/infrastructure/brain_dashboard/project.yaml
+
+project:
+  id: brain_dashboard
+  name: Brain Dashboard
+  description: Agent Brain 监控仪表板服务
+  version: 2.2.0
+  status: active
+
+releases:
+  current: v2.0.0
+  available:
+    - v1.0.0
+    - v2.0.0
+
+organization:
+  org: xkagent_infra
+  group: brain
+  type: infrastructure_service
+
+paths:
+  source: ./src
+  tests: ./tests
+  docs: ./docs
+  releases: ./releases
+  bin: /xkagent_infra/brain/infrastructure/service/brain_dashboard/bin
+
+dependencies:
+  python: ">=3.10"
+  packages:
+    - fastapi
+    - uvicorn
+    - aiofiles
+    - sqlite3
+
+service:
+  type: web_service
+  port: 8080
+  entrypoint: src/main.py
+
+deployment:
+  target: /xkagent_infra/brain/infrastructure/service/brain_dashboard
+  method: symlink
+  strategy: blue_green
+  database:
+    path: /xkagent_infra/runtime/data/services/dashboard.db
+    backup_before_release: true
+
+build:
+  system: makefile
+  commands:
+    build: make build
+    test: make test
+    release: make release VERSION={version}
+    rollback: make rollback
+    verify: make verify
+
+maintainers:
+  - agent-brain_manager
+
+migration:
+  from: /xkagent_infra/groups/brain/projects/brain_dashboard/
+  to: /xkagent_infra/groups/brain/projects/infrastructure/brain_dashboard/
+  date: 2026-03-14
+  note: 从 projects/ 移动到 projects/infrastructure/

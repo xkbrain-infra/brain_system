@@ -1,0 +1,28 @@
+gate_id: G-GATE-BATCH-PARTIAL
+name: Batch Partial Failure
+applies_to: [batch_operations]
+rule: 批量操作部分失败时记录并通知 PMO
+
+enforcement:
+  stage: post_tool_use
+  method: python_inline
+  priority: MEDIUM
+
+  actions:
+    - record_failed_items
+    - notify_pmo
+    - await_pmo_decision
+
+  rules:
+    partial_failure_handling:
+      description: "批量操作部分失败时的处理流程"
+      steps:
+        - "记录失败项目清单"
+        - "通知 PMO 失败详情"
+        - "等待 PMO 决策：重试/跳过/终止"
+bindings:
+  hooks:
+    stage: post_tool_use
+    trigger_tools: [Bash]
+  mcp_tools: []
+  related_skills: []

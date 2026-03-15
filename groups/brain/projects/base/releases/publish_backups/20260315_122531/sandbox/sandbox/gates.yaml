@@ -1,0 +1,170 @@
+# Sandbox LEP Gates (Limitation Enforcement Policy)
+# 路径: /xkagent_infra/groups/brain/platform/sandbox/gates.yaml
+
+lep_gates:
+  # ============================================================================
+  # 命名规范 Gates
+  # ============================================================================
+  G-SANDBOX-NAME:
+    name: "Sandbox 命名规范"
+    severity: error
+    rule: |
+      容器名称必须符合格式: {group}-{project}-{type}-{instance_id}
+      - 全小写
+      - 仅允许字母、数字、连字符
+      - 长度 2-64 字符
+    validation: |
+      ^[a-z][a-z0-9-]{0,63}$
+    example: "brain-dashboard-dev-a7f3k2"
+
+  G-SANDBOX-UNIQUE:
+    name: "实例 ID 唯一性"
+    severity: error
+    rule: |
+      同一项目、同一类型下，instance_id 必须唯一
+    check_command: |
+      docker ps -a --filter "name=${CONTAINER_NAME}" --format "{{.Names}}" | wc -l
+    expect: "0"
+
+  # ============================================================================
+  # 资源限制 Gates
+  # ============================================================================
+  G-SANDBOX-CPU:
+    name: "CPU 限制"
+    severity: warning
+    rule: |
+      Sandbox 必须设置 CPU 限制，防止资源耗尽
+      - development: max 2.0 CPUs
+      - testing: max 1.0 CPUs
+      - staging: max 1.0 CPUs
+      - audit: max 0.5 CPUs
+
+  G-SANDBOX-MEMORY:
+    name: "内存限制"
+    severity: error
+    rule: |
+      Sandbox 必须设置内存限制
+      - development: max 2G
+      - testing: max 1G
+      - staging: max 1G
+      - audit: max 512M
+
+  # ============================================================================
+  # 安全 Gates
+  # ============================================================================
+  G-SANDBOX-PRIVILEGED:
+    name: "禁止特权模式"
+    severity: critical
+    rule: |
+      Sandbox 容器禁止以 --privileged 运行
+    check_command: |
+      docker inspect ${CONTAINER_NAME} --format '{{.HostConfig.Privileged}}'
+    expect: "false"
+
+  G-SANDBOX-HOST-NETWORK:
+    name: "禁止 host 网络"
+    severity: error
+    rule: |
+      Sandbox 禁止使用 host 网络模式
+      必须使用 bridge 网络
+    check_command: |
+      docker inspect ${CONTAINER_NAME} --format '{{.HostConfig.NetworkMode}}'
+    expect: "!host"
+
+  G-SANDBOX-SENSITIVE-MOUNTS:
+    name: "敏感路径挂载检查"
+    severity: critical
+    rule: |
+      禁止挂载以下敏感路径:
+      - /etc/ssh
+      - /root/.ssh
+      - /var/run/docker.sock (audit 模式)
+      - /brain/base/spec
+      - /brain/base/hooks
+    check_command: |
+      docker inspect ${CONTAINER_NAME} --format '{{range .Mounts}}{{.Source}}:{{.Destination}}\n{{end}}'
+    block_patterns:
+      - "^/etc/ssh"
+      - "^/root/.ssh"
+      - "^/brain/base/spec"
+      - "^/brain/base/hooks"
+
+  # ============================================================================
+  # 持久化 Gates
+  # ============================================================================
+  G-SANDBOX-REGISTRY:
+    name: "实例注册"
+    severity: error
+    rule: |
+      Sandbox 启动后必须在 registry 中注册
+      包含: instance_id, project, type, status, created_at
+
+  G-SANDBOX-PERSISTENCE:
+    name: "配置持久化"
+    severity: warning
+    rule: |
+      Sandbox 元数据必须保存到 host
+      路径: /xkagent_infra/groups/{group}/platform/sandbox/instances/
+
+  # ============================================================================
+  # 网络隔离 Gates
+  # ============================================================================
+  G-SANDBOX-NETWORK-ISOLATION:
+    name: "网络隔离"
+    severity: error
+    rule: |
+      不同类型 sandbox 必须隔离:
+      - audit: 完全隔离，无外部访问
+      - testing: 隔离，可访问 mock 服务
+      - development: 共享 dev 网络
+      - staging: 独立 staging 网络
+
+  # ============================================================================
+  # 生命周期 Gates
+  # ============================================================================
+  G-SANDBOX-TIMEOUT:
+    name: "运行时限"
+    severity: warning
+    rule: |
+      Sandbox 有最大运行时限:
+      - development: 8h
+      - testing: 2h
+      - staging: 24h
+      - audit: 72h
+      超时后自动暂停或销毁
+
+  G-SANDBOX-CLEANUP:
+    name: "清理策略"
+    severity: warning
+    rule: |
+      停止后清理策略:
+      - development: 保留数据，保留容器
+      - testing: 清理数据，删除容器
+      - staging: 保留数据，保留容器
+      - audit: 保留所有，归档日志
+
+  # ============================================================================
+  # 审计 Gates
+  # ============================================================================
+  G-SANDBOX-AUDIT-LOG:
+    name: "审计日志"
+    severity: error
+    rule: |
+      audit 类型 sandbox 必须记录所有操作:
+      - 所有 shell 命令
+      - 所有文件修改
+      - 所有网络访问
+      - 保存到 /workspace/audit/
+
+  # ============================================================================
+  # 项目覆盖 Gates
+  # ============================================================================
+  G-SANDBOX-PROJECT-OVERRIDE:
+    name: "项目级覆盖"
+    severity: info
+    rule: |
+      项目可通过 .sandbox/config.yaml 覆盖基础配置
+      但禁止覆盖:
+      - 安全相关 Gates (G-SANDBOX-PRIVILEGED, G-SANDBOX-SENSITIVE-MOUNTS)
+      - 命名规范 Gates
+      - 资源上限 (只能收紧，不能放宽)

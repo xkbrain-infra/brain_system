@@ -1,16 +1,53 @@
 {
   "version": 1,
   "agent_name": "agent-system_devops",
+  "skill_bindings": {
+    "source": "/xkagent_infra/brain/infrastructure/config/agentctl/skill_bindings.yaml",
+    "resolved_skills": [
+      "brain-publish",
+      "lep",
+      "agentctl",
+      "tmux",
+      "sandbox"
+    ],
+    "role_skills": [
+      "brain-publish",
+      "lep",
+      "agentctl",
+      "tmux",
+      "sandbox"
+    ],
+    "agent_skills": [],
+    "workflow_skills": []
+  },
+  "lep_bindings": {
+    "source": "/xkagent_infra/brain/infrastructure/config/agentctl/lep_bindings.yaml",
+    "resolved_lep_profiles": [
+      "runtime-ops"
+    ],
+    "role_lep_profiles": [
+      "runtime-ops"
+    ],
+    "agent_lep_profiles": [],
+    "workflow_lep_profiles": []
+  },
   "runtime": {
     "command": "claude",
     "args": [
       "--model",
-      "copilot/claude-sonnet-4.6"
+      "copilot/claude-sonnet-4.6",
+      "[Brain Skill Bindings]\nEnabled skills: brain-publish, lep, agentctl, tmux, sandbox.\nWhen a task matches these skills or the bound workflow, load and follow the corresponding skill before execution.\nRole defaults: brain-publish, lep, agentctl, tmux, sandbox.\n\n[Brain LEP Profiles]\nEnabled LEP profiles: runtime-ops.\nThese LEP profiles tighten hook enforcement and should be treated as mandatory operating constraints.\nRole defaults: runtime-ops."
     ],
     "env": {
       "IS_SANDBOX": "1",
       "BRAIN_AGENT_NAME": "agent-system_devops",
-      "BRAIN_TRANSPORT_MODE": "proxy"
+      "BRAIN_TRANSPORT_MODE": "proxy",
+      "BRAIN_SKILL_BINDINGS_FILE": "/xkagent_infra/brain/infrastructure/config/agentctl/skill_bindings.yaml",
+      "BRAIN_ENABLED_SKILLS": "brain-publish,lep,agentctl,tmux,sandbox",
+      "BRAIN_ROLE_DEFAULT_SKILLS": "brain-publish,lep,agentctl,tmux,sandbox",
+      "BRAIN_LEP_BINDINGS_FILE": "/xkagent_infra/brain/infrastructure/config/agentctl/lep_bindings.yaml",
+      "BRAIN_ENABLED_LEP_PROFILES": "runtime-ops",
+      "BRAIN_ROLE_DEFAULT_LEP_PROFILES": "runtime-ops"
     },
     "agent_type": "copilot",
     "use_claude_cli": true

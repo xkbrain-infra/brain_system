@@ -1,0 +1,61 @@
+group_workflow_index:
+  group_id: "brain"
+  version: "1.1"
+  last_updated: "2026-03-14"
+  workspace_ssot: "/xkagent_infra/groups/brain/projects/base/workflow"
+  publish_target: "/xkagent_infra/brain/base/workflow"
+  intent: "brain workflow 子包入口；与 skill/hooks 一起在 project 侧维护，再发布到 base"
+
+  entries:
+    workflow_root:
+      path: "/xkagent_infra/groups/brain/projects/base/workflow"
+      purpose: "brain workflow project 工作区根目录"
+
+    lifecycle_project:
+      path: "/xkagent_infra/groups/brain/projects/base/workflow/lifecycle/project.yaml"
+      purpose: "项目全生命周期（S1-S8）"
+
+    lifecycle_governance:
+      path: "/xkagent_infra/groups/brain/projects/base/workflow/lifecycle/governance.yaml"
+      purpose: "四域联动治理 gate"
+
+    execution_runtime:
+      path: "/xkagent_infra/groups/brain/projects/base/workflow/execution/runtime.yaml"
+      purpose: "PMO 治理与执行编排"
+
+    execution_dsl:
+      path: "/xkagent_infra/groups/brain/projects/base/workflow/execution/dsl.yaml"
+      purpose: "Task/Project/Group 状态机 DSL"
+
+    operations_update_brain:
+      path: "/xkagent_infra/groups/brain/projects/base/workflow/operations/update_brain.yaml"
+      purpose: "workflow/base 变更提交流程"
+
+    operations_project_initiation:
+      path: "/xkagent_infra/groups/brain/projects/base/workflow/operations/project_initiation.yaml"
+      purpose: "项目启动操作规范"
+
+    project_delivery:
+      path: "/xkagent_infra/groups/brain/projects/base/workflow/project_delivery"
+      purpose: "project delivery 的 workflow 子包"
+
+    project_delivery_index:
+      path: "/xkagent_infra/groups/brain/projects/base/workflow/project_delivery/index.yaml"
+      purpose: "project delivery 子域入口"
+
+    registry:
+      path: "/xkagent_infra/groups/brain/projects/base/workflow/registry.yaml"
+      purpose: "workflow 文档注册表"
+
+    pmo_board:
+      path: "/xkagent_infra/groups/brain/projects/base/workflow/pmo/board.yaml"
+      purpose: "PMO 看板入口"
+
+    pmo_agent_roster:
+      path: "/xkagent_infra/groups/brain/projects/base/workflow/pmo/agent_roster.yaml"
+      purpose: "PMO agent roster"
+
+  migration_note:
+    source_snapshot: "/xkagent_infra/brain/base/workflow"
+    copied_on: "2026-03-14"
+    rule: "当前先从 base 全量镜像到 project/workflow；后续 workflow 修改应优先发生在 project，再整理发布到 base"

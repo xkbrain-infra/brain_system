@@ -1,0 +1,23 @@
+# Novel Writing Industry Template
+
+industry: novel_writing
+version: "1.0"
+
+goals:
+  - "稳定输出长篇叙事内容"
+  - "维护世界观、人物弧线与章节连续性"
+
+primary_roles:
+  - writer
+  - editor
+  - researcher
+
+common_deliverables:
+  - story_bible
+  - chapter_outline
+  - chapter_draft
+  - continuity_review
+
+overlays:
+  writer: /brain/base/spec/templates/industries/novel_writing/writer.overlay.md
+  editor: /brain/base/spec/templates/industries/novel_writing/editor.overlay.md

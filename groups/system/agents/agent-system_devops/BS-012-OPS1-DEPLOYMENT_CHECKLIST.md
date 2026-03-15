@@ -55,7 +55,7 @@
 
 | 备份项 | 路径 | 状态 |
 |--------|------|------|
-| 备份目录 | `/brain/infrastructure/data/backups/hooks/20260221_231724_pre_BS012/` | ✅ 完成 |
+| 备份目录 | `/xkagent_infra/brain/backup/infrastructure/hooks/20260221_231724_pre_BS012/` | ✅ 完成 |
 | 备份内容 | 11个 brain_system agent hooks | ✅ 已备份 |
 | brain root hooks | `backup/brain_root_hooks/` | ✅ 已备份 |
 | brain base hooks | `backup/brain_base_hooks/` | ✅ 已备份 |
@@ -143,7 +143,7 @@ md5sum {agent_hooks_dir}/pre_tool_use
 **回滚步骤**:
 ```bash
 # 从备份恢复
-BACKUP="/brain/infrastructure/data/backups/hooks/20260221_231724_pre_BS012"
+BACKUP="/xkagent_infra/brain/backup/infrastructure/hooks/20260221_231724_pre_BS012"
 AGENT_NAME="{agent_name}"
 
 cp -p "$BACKUP/agents/$AGENT_NAME/"* \

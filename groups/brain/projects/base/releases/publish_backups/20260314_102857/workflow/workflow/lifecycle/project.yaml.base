@@ -1,0 +1,925 @@
+# /brain/base/workflow/lifecycle/project.yaml
+# 项目生命周期 — 从立项到归档的完整流程
+#
+# S0: 立项初始化（创建目录 + 创建项目 agents + 收集 references）
+# Phase 1: Proposal (S1-S4) — 探索，搞清楚值不值得做
+# Gate: Go/No-Go — PMO 决策
+# Phase 2: Execution (S5-S8) — 细化设计 + 任务分配 + 验收 + 归档
+#
+# 每个 Step 的 ref 指向 spec_dsl.yaml 对应 section，
+# agent 必须按该 schema 填写字段，禁止自由发挥。
+#
+# mandatory_guide: agent 执行该 step 前必须先 Read 对应的 guide 文件。
+# 不同 step 由不同 agent 执行，guide 是该 agent 理解任务的唯一入口。
+# 禁止跳过 guide 直接开始工作。
+
+project_lifecycle:
+  id: "WF-PROJECT-001"
+  version: "4.0"
+  templates_ref: ../../spec/templates/spec/spec_dsl.yaml
+
+# ============================================
+# Agent 生命周期原则
+# ============================================
+agent_lifecycle:
+  principle: |
+    除 brain_system 组的核心 agent 常驻外，其他 agent 都不常驻。
+    项目 agent 在 S0 立项时创建，项目归档后 purge。
+  core_agents:
+    global:
+      - agent_brain_pmo       # 常驻，全局项目生命周期管理
+      - agent-brain-manager   # 常驻，全局 base spec 部署
+    group:
+      - brain_system_pmo      # 常驻，组内日常管理
+      - brain_system_frontdesk  # 常驻，用户交互
+  project_agents:
+    description: "每个项目立项时创建以下 6 个 agent"
+    naming: "agent_{group_alias}_{role}"
+    lifecycle: "S0 创建 → 项目期间运行 → S9 审计后 purge"
+    roles:
+      pmo:             { agent_type: claude, model: Sonnet }
+      orchestrator:    { agent_type: claude, model: Sonnet }
+      architect:       { agent_type: claude, model: Sonnet }
+      test_engineer:   { agent_type: codex,  model: gpt-5.3-codex, desc: "测试计划/用例编写 + code review + 测试执行（S5-S7）" }
+      auditor:         { agent_type: claude, model: Sonnet, desc: "独立审计（仅S9），不参与 S5-S7" }
+      devops:          { agent_type: claude, model: Sonnet }
+      researcher:      { agent_type: claude, model: Sonnet }
+    creation: |
+      通过 agentctl add 创建，必须指定 --agent-type 和 --model，desired-state: stopped。
+      需要时通过 agentctl start 唤醒，空闲时 stop。
+      项目归档后 agentctl purge 清理。
+    purge_gate: |
+      purge/delete agent 是不可逆操作，必须经过用户确认：
+        1. PMO 通过 ipc_send(to=frontdesk) 向用户列出待 purge 的 agent 清单
+        2. 用户明确批准后才执行 agentctl purge
+        3. 禁止 agent 自行决定 purge 其他 agent
+        4. 违反此规则视同 G-GATE-NAWP 违规
+
+# ============================================
+# 项目目录规范
+# ============================================
+directory:
+  root: "{group_root}/projects/{project_id}/"
+  naming:
+    project_id: "{group_prefix}-{seq}-{short_name}"
+    examples: ["BS-023-orchestrator", "XQ-031-signal-v2"]
+    global_id_rule: |
+      【强制】项目内生成的任何 ID 都必须带项目前缀，无例外。
+      格式: {project_id}-{类型}{序号}
+
+      完整类型表：
+      - SC:   Success Criteria   {project_id}-SC{seq}      例: BS-025-SC1
+      - R:    Must Requirement   {project_id}-R{seq}       例: BS-025-R1
+      - RS:   Should Req         {project_id}-RS{seq}      例: BS-025-RS1
+      - RC:   Could Req          {project_id}-RC{seq}      例: BS-025-RC1
+      - Q:    Research Question  {project_id}-Q{seq}       例: BS-025-Q1
+      - DIR:  Direction          {project_id}-DIR{seq}     例: BS-025-DIR1
+      - SR:   Source Reference   {project_id}-SR{seq}      例: BS-025-SR1
+      - T:    Task               {project_id}-T{seq}       例: BS-025-T1
+      - ISS:  Issue              {project_id}-ISS{seq}     例: BS-025-ISS001
+      - BUG:  Defect             {project_id}-BUG{seq}     例: BS-025-BUG001
+      - TC:   Test Case          {project_id}-TC{seq}      例: BS-025-TC1
+      - AUD:  Audit Check        {project_id}-AUD{seq}     例: BS-025-AUD1
+      - M:    Milestone          {project_id}-M{seq}       例: BS-025-M1
+      - MOD:  Module             {project_id}-MOD{seq}     例: BS-025-MOD1
+
+      原则：如遇上表未列出的实体类型，同样必须加 {project_id}- 前缀。
+      禁止使用不带项目前缀的裸 ID（如 R1, SC1, T1），以支持跨项目 graph/DAG 查询。
+  structure:
+    index.yaml: "项目元信息（id, title, status, phase, owner, created_at, agents）"
+    references/:
+      _about: "外部参考资料，每个来源一个 md 文件"
+      _naming: "{SR-序号}_{简短标题}.md  例: SR-001_crewai_docs.md"
+      _format: "每个文件包含：来源 URL、摘要、关键内容、与项目的关联"
+    spec/:
+      01_alignment.yaml: "S1: 目标与范围"
+      02_requirements.yaml: "S2: 需求"
+      03_research.yaml: "S3: 调研结论（引用 references/）"
+      04_analysis.yaml: "S4: 方案决策 + go/no-go"
+      05_solution.yaml: "S5: 详细技术设计（原子级）"
+      06_tasks/:
+        _about: "S6: 任务管理目录"
+        plan.yaml: "任务总览（dod、team_allocation、execution_plan、依赖图）"
+        backlog.yaml: "未分配任务池（orchestrator 按需分配）"
+        assigned/:
+          _naming: "{agent_name}.yaml  例: dev1.yaml"
+          _format: "该 agent 的任务清单（任务列表 + 进度 + 完成时间）"
+        review/:
+          _naming: "{project_id}-T{序号}.yaml  例: BS-024-T003.yaml  # task_id 必须全局唯一"
+          _format: "已完成待 review 的任务（qa review 后标记 pass/fail）"
+        done/:
+          _naming: "{project_id}-T{序号}.yaml  # 全局唯一 ID"
+          _format: "review 通过的任务归档"
+        task_manager.yaml: "任务调度器配置（timer、状态机、绑定项目）"
+      07_verification/:
+        _about: "S7: 验收目录"
+        test_plan.md: "测试计划（范围、策略、环境、退出标准）"
+        traceability.yaml: "可追溯矩阵（需求 ↔ 用例 ↔ 缺陷 ↔ 版本）"
+        cases/:
+          _naming: "{模块名}.yaml  例: api_auth.yaml"
+          _format: "该模块的测试用例（id + maps_to + method + expected + status + evidence）"
+        defects/:
+          _naming: "{project_id}-BUG-{序号}_{简述}.md  例: BS-024-BUG-001_login_timeout.md  # 全局唯一"
+          _format: "缺陷记录（复现步骤、预期/实际、严重级别、修复状态）"
+        reports/:
+          test_report.md: "测试报告（通过率、覆盖率、未测项解释）"
+          defect_report.md: "缺陷报表（按级别/模块/趋势/修复率）"
+          nfr_report.md: "NFR 报告（性能/安全/长稳/可观测性）"
+          release_readiness.md: "发布就绪清单（灰度/回滚/监控/值班）"
+        summary.yaml: "验收结论（decision: Pass/Fail + exceptions + 风险接受）"
+      08_retrospective.yaml: "S8: 归档报表 + 经验沉淀"
+    journal/:
+      _about: "执行日志 — 问题、决策、审计记录"
+      issues/:
+        _about: "执行期间发现的问题，实时记录"
+        _naming: "{project_id}-ISS-{序号}_{简述}.yaml  # ID 必须全局唯一，带项目前缀"
+        _format: "id({project_id}-ISS-{seq}) + title + discovered_at + discovered_by + stage + severity + description + impact + resolution + resolved_at + base_upgrade_candidate + base_upgrade_detail"
+      audit/:
+        _about: "S9 审计报告"
+        audit_report.yaml: "审计结论"
+    memory/: "项目记忆（进度快照、临时数据...）"
+
+# ============================================
+# S0: 立项初始化
+# ============================================
+steps:
+
+  S0:
+    name: init
+    phase: init
+    intent: "创建项目目录 + 创建项目 agents + 收集初始参考资料"
+    owner: pmo
+    participants: [pmo]
+    requires: null
+    actions:
+      - "mkdir -p {group_root}/projects/{project_id}/{references,spec/06_tasks/{assigned,review,done},spec/07_verification/{cases,defects,reports},journal/{issues,audit},memory}"
+      - "写 index.yaml: {id, title, status: init, phase: proposal, owner, created_at}"
+      - "agentctl add agent_{group_alias}_pmo --group {group} --role pmo --agent-type claude --model Sonnet --apply"
+      - "agentctl add agent_{group_alias}_orchestrator --group {group} --role orchestrator --agent-type claude --model Sonnet --apply"
+      - "agentctl add agent_{group_alias}_architect --group {group} --role architect --agent-type claude --model Sonnet --apply"
+      - "agentctl add agent_{group_alias}_te --group {group} --role test_engineer --agent-type codex --model gpt-5.3-codex --apply"
+      - "agentctl add agent_{group_alias}_auditor --group {group} --role auditor --agent-type claude --model Sonnet --desired-state stopped --apply"
+      - "agentctl add agent_{group_alias}_devops --group {group} --role devops --agent-type claude --model Sonnet --apply"
+      - "agentctl add agent_{group_alias}_researcher --group {group} --role researcher --agent-type claude --model Sonnet --apply"
+      - "将 agent 列表写入 index.yaml agents 字段（包含每个 agent 的 agent_type）"
+    output: index.yaml
+    pmo_action: |
+      PMO 创建项目目录，写 index.yaml。
+      通过 agentctl add 创建 7 个项目 agent（pmo, orchestrator, architect, test_engineer, auditor, devops, researcher）。
+      agent 创建后默认 stopped，后续步骤按需 start 唤醒。
+      如有已知的参考资料（需求来源、外部文档等），放入 references/。
+
+# ============================================
+# Phase 1: Proposal (S1-S4)
+# 目的：搞清楚值不值得做
+# ============================================
+phase_1_proposal:
+  intent: "用 S1-S4 搞清楚：问题是什么 → 需要什么 → 现状如何 → 推荐什么方向"
+
+  S1:
+    name: alignment
+    ref: "../../spec/templates/spec/spec_dsl.yaml#alignment"
+    phase: proposal
+    intent: "搞清楚我们在解决什么问题，范围边界在哪，集成假设是否成立"
+    owner: pmo
+    participants: [pmo, architect]
+    requires: S0
+    mandatory_guide: "../../knowledge/guides/workflow/alignment_guide.md"
+    mandatory_references:
+      - doc: "../../knowledge/architecture/infrastructure_reference.md"
+        reason: "了解 Brain 系统全部服务、端口、通信方式，验证集成假设"
+      - doc: "../../knowledge/architecture/python_ipc_client.md"
+        reason: "如项目涉及独立 Python 服务，必须了解 IPC 接入方式"
+      - doc: "../../knowledge/architecture/ipc_wire_protocol.md"
+        reason: "如项目涉及 IPC 通信，必须了解协议细节"
+    output: spec/01_alignment.yaml
+    content:
+      - background: "当前痛点是什么？为什么现在要解决？"
+      - goal: "成功后看起来是什么样的？"
+      - in_scope: "这次要做的"
+      - out_scope: "这次不做的（明确排除）"
+      - constraints: "time / budget / tech / compliance"
+      - success_criteria: "怎么判断成功了？（id + text + metric + target）"
+      - integration_points: "依赖哪些服务？通信方式？是否已验证？（id + service + communication + verified + reference）"
+    validate:
+      - field_not_empty: alignment.goal
+      - field_not_empty: alignment.in_scope
+      - integration_verified: alignment.integration_points  # 所有 integration_points.verified 必须为 true
+    pmo_action: |
+      PMO 写 01_alignment.yaml。
+      可唤醒 architect（agentctl start）对话确认技术边界，但 S1 不需要技术方案。
+
+      【新增】集成对齐：
+        1. PMO 先 Read mandatory_references 中的基础设施文档
+        2. 识别项目依赖的服务和通信方式
+        3. 填写 integration_points（每项含 service + communication + verified + reference）
+        4. 如有不确定的集成点，唤醒 architect 验证
+        5. 所有 integration_points.verified 必须为 true 才能进入 S2
+
+  S2:
+    name: requirements
+    ref: "../../spec/templates/spec/spec_dsl.yaml#requirements"
+    phase: proposal
+    intent: "初步需求定义，不求完整，求明确 must-have"
+    owner: pmo
+    participants: [pmo, architect]
+    requires: S1
+    mandatory_guide: "../../knowledge/guides/workflow/requirements_guide.md"
+    output: spec/02_requirements.yaml
+    content:
+      - must: "必须有的，没有就没意义（id + text）"
+      - should: "应该有的"
+      - could: "有更好，没有也行"
+      - nfr: "performance / security_privacy / availability"
+    validate:
+      - list_min_items: [requirements.must, 1]
+    pmo_action: |
+      PMO 写需求文件，技术细节咨询 architect。
+      此阶段需求是草稿，允许不完整，go 之后会精化。
+
+  S3:
+    name: research
+    ref: "../../spec/templates/spec/spec_dsl.yaml#research"
+    phase: proposal
+    intent: "基于 S1/S2 内容做多维度联网调研，找出主流可行方向和大致方案，为 S4 决策提供依据"
+    owner: researcher
+    participants: [researcher, architect]
+    requires: S2
+    mandatory_guide: "../../knowledge/guides/workflow/research_guide.md"
+    output:
+      conclusions: spec/03_research.yaml
+      raw_materials: "references/SR-{序号}_{标题}.md — 每个来源一个文件"
+    mandatory_tools: [WebSearch, WebFetch]
+    content:
+      - research_brief: "调研目标、待回答问题、假设列表、决策点（从 S1/S2 提取）"
+      - questions: "待解答的问题（id + text，源自 S1 goal/constraints + S2 must/nfr）"
+      - search_dimensions:
+          user_scenario: "用户痛点、场景、真实语料（论坛/社区/Issues）"
+          competitive: "竞品/替代方案对比（功能、限制、定价、changelog）"
+          technical: "技术可行性、依赖、API 文档、开源实现、性能基线"
+          nfr_benchmark: "同类产品 SLA、延迟、安全合规标准"
+          industry: "行业标准、政策法规、合规要求（如适用）"
+      - findings: "调研发现（id + summary + sources + confidence + impacts）"
+      - viable_directions: "主流可行方向（id + name + approach_summary + pros + cons + feasibility）"
+      - recommended_shortlist: "推荐进入 S4 详细对比的 2-3 个方向"
+    note: |
+      S3 必须做联网搜索（WebSearch），不允许仅凭已有知识"想"结论。
+      搜索查询从 S1 alignment + S2 requirements 内容推导，参见 research_guide.md 检索式模板。
+      每个有价值的来源单独写一个 references/SR-{序号}_{标题}.md，包含原文链接和内容摘要。
+      03_research.yaml 只写结论和引用（引用 references/ 中的文件）。
+    validate:
+      - file_exists: spec/03_research.yaml
+      - field_not_empty: research.findings
+      - list_min_items: [research.viable_directions, 2]
+      - all_findings_have_sources: research.findings
+    pmo_action: |
+      PMO 唤醒 researcher（agentctl start），派其做联网调研：
+        1. 从 01_alignment.yaml 和 02_requirements.yaml 提取关键词和问题
+        2. 用 WebSearch 工具做多维度搜索（至少覆盖竞品、技术可行性两个维度）
+        3. 搜索查询参考 research_guide.md 的检索式模板
+        4. 找出至少 2 个主流可行方向，给出大致方案轮廓
+        5. 每条 finding 必须有 sources（URL）和 confidence（高/中/低）
+        6. 每个有价值的来源写一个 references/SR-{序号}_{标题}.md（含原文链接+摘要）
+        7. 03_research.yaml 写结论 + viable_directions + recommended_shortlist
+      禁止：仅凭已有知识编写结论，不做实际搜索。
+
+  S4:
+    name: analysis_and_decision
+    ref: "../../spec/templates/spec/spec_dsl.yaml#analysis"
+    phase: proposal
+    intent: "全员讨论方案，达成共识，architect 汇总结论，提交 PMO 做 go/no-go 审批"
+    owner: architect
+    participants: [pmo, orchestrator, architect, test_engineer, devops, researcher]
+    requires: S3
+    mandatory_guide: "../../knowledge/guides/workflow/analysis_guide.md"
+    output: spec/04_analysis.yaml
+    content:
+      - discussion_input: "S3 的 viable_directions + recommended_shortlist"
+      - options: "方案选项（id + name + approach + pros + cons + cost + risks）"
+      - role_opinions:
+          architect: "技术可行性、架构复杂度、维护成本"
+          devops: "部署难度、基础设施需求、运维成本"
+          qa: "可测试性、验收难度、质量风险"
+          researcher: "调研补充、方案依据强度"
+          orchestrator: "执行可行性、agent 资源需求、排期预估"
+      - consensus: "是否达成共识（yes/partial/no）+ 分歧点"
+      - decision:
+          chosen: "推荐方案 id"
+          rationale: "为什么选这个"
+          tradeoffs: "放弃了什么"
+          dissent: "不同意见记录（谁、什么观点、为什么没采纳）"
+      - if_go:
+          next_action: "进入 Phase 2"
+          estimated_scope: "小/中/大"
+          estimated_roles: "预估需要哪些角色"
+          estimated_tasks: "大致任务方向（S5 会细化）"
+      - if_no_go:
+          reason: "为什么不做"
+          archive_note: "什么情况下可以重新评估"
+    discussion_protocol: |
+      S4 是全员讨论阶段，所有 6 个项目 agent 参与：
+        1. PMO 唤醒所有项目 agent（agentctl start）
+        2. PMO 通过 IPC 发起讨论，附上 S3 的 viable_directions
+        3. architect 主持讨论，逐个方向分析
+        4. 各角色从自身视角评估，通过 IPC 发表意见
+        5. 目标是达成共识，如有分歧要记录
+        6. architect 汇总各方意见，写出推荐方案 + rationale
+        7. architect 通过 IPC 将 04_analysis.yaml 提交给 PMO
+        8. PMO 将汇总结论转交用户（人类），由用户做 go/no-go 最终审批
+    validate:
+      - field_not_empty: analysis.decision.chosen
+      - field_not_empty: analysis.role_opinions.architect
+      - field_not_empty: analysis.consensus
+    pmo_action: |
+      PMO 职责：
+        1. 唤醒所有项目 agent（agentctl start）
+        2. 发起讨论：ipc_send 给所有角色，附 S3 viable_directions
+        3. 等待 architect 汇总结论（04_analysis.yaml）
+        4. 将汇总结论提交给用户审批
+        5. 用户决策 go → 进入 Phase 2；no-go → 归档
+      注意：PMO 有最终决策权，但必须基于全员讨论结果。
+
+# ============================================
+# Go/No-Go Gate
+# ============================================
+go_no_go_gate:
+  trigger: "S4 analysis 完成 + PMO 审批后"
+  decision_owner: pmo
+
+  if_go:
+    actions:
+      - "更新 index.yaml: status: approved, phase: execution"
+      - "architect 精化 S1-S4（如需要），标记 status: refined"
+      - "进入 Phase 2 (S5-S8)"
+
+  if_no_go:
+    actions:
+      - "更新 index.yaml: status: archived"
+      - "agentctl purge 清理项目 agents（或 stop 保留待重新评估）"
+      - "ipc_send(to=pmo, type=PROJECT_ARCHIVED, body={project_id, reason})"
+
+# ============================================
+# Phase 2: Execution (S5-S8)
+# 前提：Go Gate 通过
+# ============================================
+phase_2_execution:
+  intent: "细化设计（原子级） → 任务分配（动态 agent） → 验收 → 归档"
+  prerequisite: "go_no_go_gate.decision == go"
+
+  S5:
+    name: solution
+    ref: "../../spec/templates/spec/spec_dsl.yaml#solution"
+    phase: execution
+    intent: "基于 S1-S4 全部信息，做原子级技术设计：架构、流程、接口、功能全部细化"
+    owner: architect
+    participants: [architect, test_engineer, devops]
+    requires: S4
+    mandatory_guide: "../../knowledge/guides/workflow/solution_guide.md"
+    mandatory_references:
+      - doc: "../../knowledge/architecture/infrastructure_reference.md"
+        reason: "设计时必须确认依赖服务的实际接口、端口、协议"
+      - doc: "../../knowledge/architecture/python_ipc_client.md"
+        reason: "如涉及 Python 服务开发，必须使用正确的 IPC 接入方式"
+    output:
+      solution: spec/05_solution.yaml
+      test_cases: spec/07_verification/cases/  # test_engineer 在 S5 产出测试用例（测试左移）
+    input_refs:
+      - spec/01_alignment.yaml
+      - spec/02_requirements.yaml
+      - spec/03_research.yaml
+      - spec/04_analysis.yaml
+    content:
+      - overview: "系统架构概述（分层、模块划分）"
+      - modules: "模块列表（id + name + responsibilities + io + failure_modes + test_strategy）"
+      - interfaces: "接口定义（API 合约、数据格式、协议、鉴权）"
+      - data_flow: "数据流图（输入 → 处理 → 输出 → 存储）"
+      - state_machine: "关键状态机（状态 + 转换 + 触发条件）"
+      - error_handling: "错误处理策略（重试、降级、熔断、告警）"
+      - milestones: "里程碑（id + text + due + deliverable）"
+    note: |
+      S5 必须细化到原子级别：
+        - 每个模块的输入输出、异常处理都要明确
+        - 接口要有具体的字段定义，不能只写"调用 XX API"
+        - 引用外部系统 API 时必须注明 reference 文档路径或链接，
+          不允许在 spec 中硬编码外部系统的字段名而不注明出处
+        - test_engineer 同步参与，确保每个模块有对应的验证方案
+        - 如果 architect 设计时不考虑可验证性，S7 验收就会出问题
+      测试左移（Shift-Left Testing）：
+        - test_engineer 在 S5 阶段基于 S1 success_criteria + S2 must-have 编写测试用例
+        - 测试用例产出到 spec/07_verification/cases/（在代码之前完成）
+        - 测试用例作为 S6 开发的验收标准，dev 开发时可参考
+      集成验证：
+        - architect 必须 Read mandatory_references 中的基础设施文档
+        - 设计中涉及的服务调用必须与 infrastructure_reference.md 一致
+        - 禁止假设服务接口，必须查阅文档确认
+    validate:
+      - list_min_items: [solution.modules, 1]
+      - all_modules_have_test_strategy: solution.modules
+    pmo_action: |
+      PMO 唤醒 architect + test_engineer + devops：
+        1. architect 基于 S1-S4 全部信息做详细设计
+        2. test_engineer 同步参与，为每个模块定义 test_strategy（验证方案）
+        3. test_engineer 基于 S1 success_criteria + S2 must-have 编写测试用例到 spec/07_verification/cases/
+        4. devops 确认部署方案、基础设施需求
+        5. architect 完成后通知 PMO，PMO 确认文档完整后进入 S6
+      关键：architect 和 test_engineer 必须同步工作。测试用例必须在代码之前完成（测试左移）。
+
+  S6:
+    name: tasks
+    ref: "../../spec/templates/spec/spec_dsl.yaml#tasks"
+    phase: execution
+    intent: "orchestrator 驱动 architect 拆任务，orchestrator 落盘 + 制定计划 + 动态分配 + 持续调度"
+    owner: orchestrator
+    participants: [orchestrator, architect, pmo]
+    requires: S5
+    mandatory_guide: "../../knowledge/guides/workflow/tasks_guide.md"
+    output: spec/06_tasks/
+    content:
+      # --- plan.yaml: 任务总览 ---
+      plan:
+        file: spec/06_tasks/plan.yaml
+        fields:
+          - decomposed_by: "architect（必须由 architect 拆解任务，禁止 PMO 代写）"
+          - dod_global: "全局完成定义"
+          - team_allocation:
+              discussion: "architect + pmo + orchestrator 共同决定"
+              dev_count: "需要多少个 dev agent"
+              qa_count: "需要多少个额外 qa agent"
+              rationale: "为什么需要这么多"
+          - execution_plan:
+              phases: "执行分几批，每批做什么"
+              critical_path: "关键路径上的任务"
+              parallel_tracks: "可并行的任务组"
+          - dependency_graph: "任务依赖关系（task_id → blocked_by[]）"
+
+      # --- backlog.yaml: 未分配任务池 ---
+      backlog:
+        file: spec/06_tasks/backlog.yaml
+        description: "所有未分配的任务，orchestrator 按优先级和依赖关系动态分配"
+        item_format:
+          - id: "T-001"
+          - title: "任务标题"
+          - priority: "P0/P1/P2"
+          - maps_to_module: "对应 S5 的模块 id"
+          - deps: "依赖的 task_id 列表（deps 都完成才能分配）"
+          - dod: "完成定义"
+          - estimated_effort: "预估工作量"
+          - status: "pending（待分配）"
+
+      # --- assigned/{agent}.yaml: 每个 agent 的任务清单 ---
+      assigned:
+        dir: spec/06_tasks/assigned/
+        description: "每个 agent 一个文件，记录分配给它的任务"
+        item_format:
+          - task_id: "T-001"
+          - title: "任务标题"
+          - assigned_at: "分配时间"
+          - status: "in_progress / blocked / completed"
+          - progress: "进度描述"
+          - work_log: "工作记录（时间 + 做了什么）"
+          - completed_at: "完成时间（如已完成）"
+          - artifacts: "产出物路径"
+          - blocked_reason: "阻塞原因（如 blocked）"
+
+      # --- review/{task_id}.yaml: 待 review 任务 ---
+      review:
+        dir: spec/06_tasks/review/
+        description: "dev 完成后提交到 review/，test_engineer 进行 code review"
+        item_format:
+          - task_id: "T-001"
+          - completed_by: "完成者 agent"
+          - submitted_at: "提交时间"
+          - artifacts: "产出物路径"
+          - reviewer: "test_engineer agent"
+          - review_status: "pending / pass / fail / revision_needed"
+          - review_comments: "review 意见"
+          - reviewed_at: "review 完成时间"
+
+      # --- done/{task_id}.yaml: 已通过任务归档 ---
+      done:
+        dir: spec/06_tasks/done/
+        description: "review pass 后移入 done/，作为完成记录"
+
+    # --- task_manager: 任务调度器 ---
+    task_manager:
+      file: spec/06_tasks/task_manager.yaml
+      description: "orchestrator 的任务调度行为规范（非自动化运行时，由 orchestrator 按此规则手动操作）"
+      protocol:
+        project_binding: "绑定到当前 project_id"
+        state_machine:
+          states: [pending, assigned, in_progress, blocked, review, revision, done]
+          transitions:
+            - "pending → assigned: orchestrator 分配"
+            - "assigned → in_progress: agent 开始工作"
+            - "in_progress → blocked: agent 遇到阻塞"
+            - "blocked → in_progress: 阻塞解除"
+            - "in_progress → review: agent 完成，提交 review"
+            - "review → done: qa review pass"
+            - "review → revision: qa review fail，需要修改"
+            - "revision → review: agent 修改后重新提交"
+        timer:
+          check_interval: "定期检查任务状态（通过 ipc_send_delayed 自触发）"
+          triggers:
+            - "agent 超时未更新进度 → ping agent 询问状态"
+            - "blocked 超过阈值 → 升级给 architect/pmo"
+            - "review 队列有新任务 → 通知 qa"
+            - "某 agent 空闲 → 从 backlog 分配下一个任务"
+        ipc_events:
+          TASK_ASSIGNED: "orchestrator → agent: 分配任务"
+          TASK_PROGRESS: "agent → orchestrator: 进度更新"
+          TASK_COMPLETED: "agent → orchestrator: 任务完成，进入 review"
+          TASK_BLOCKED: "agent → orchestrator: 任务阻塞"
+          TASK_REVIEW_RESULT: "qa → orchestrator: review 结果"
+          TASK_AVAILABLE: "orchestrator → idle agent: 有新任务可领取"
+
+    note: |
+      S6 是持续运行的阶段，不是一次性写完就结束：
+        - architect 拆完任务后，orchestrator 开始持续调度
+        - backlog 中的任务按依赖关系和优先级动态分配
+        - dev/qa 完成任务后自动进入 review 流程
+        - 空闲的 agent 可以从 backlog 领取新任务
+        - orchestrator 通过 timer 定期检查，动态调节
+        - task_manager 是 orchestrator 的行为规范，记录状态机和调度规则
+        - task_manager 当前为手动执行模式，orchestrator 按规则操作并记录 execution_log
+        - 自动化 task_manager runtime 作为独立项目实现（BS-025）
+    validate:
+      - dir_exists: spec/06_tasks/
+      - file_not_empty: spec/06_tasks/plan.yaml
+      - file_not_empty: spec/06_tasks/backlog.yaml
+      - file_not_empty: spec/06_tasks/task_manager.yaml
+      - dir_has_files: spec/06_tasks/assigned/        # 至少分配过任务
+      - dir_has_files: spec/06_tasks/done/            # 至少有完成的任务
+      - no_file_exists: spec/06_tasks.yaml            # 禁止扁平文件替代目录（如存在则 S6 判定 fail）
+      - field_not_empty: tasks.plan.decomposed_by  # 必须记录谁拆的任务
+      - field_value_equals: [tasks.plan.decomposed_by, architect]  # 必须是 architect
+      - field_not_empty: tasks.team_allocation.dev_count
+      - field_not_empty: task_manager.execution_log   # 状态机必须有运行记录
+    pmo_action: |
+      PMO 唤醒 orchestrator + architect，启动 S6：
+        1. orchestrator 读 tasks_guide.md（mandatory_guide）
+        2. orchestrator 通过 IPC 请求 architect 拆任务：
+           ipc_send(to=architect, "[TASK_DECOMPOSE] 请基于 05_solution.yaml 拆解任务")
+        3. architect 产出具体任务列表（每个任务含 id、title、maps_to_module、deps、dod、priority）
+        4. orchestrator 将 architect 产出的任务写入 spec/06_tasks/backlog.yaml
+        5. orchestrator 写 plan.yaml（执行计划、依赖图、团队分配）
+        6. orchestrator + architect + PMO 讨论 team_allocation
+        7. PMO 批准后，orchestrator 通过 agentctl add 创建 dev/qa agent
+        8. orchestrator 配置 task_manager.yaml（状态机 + execution_log）
+        9. orchestrator 从 backlog 取任务分配给 agent：
+           - 写入 assigned/{agent}.yaml
+           - ipc_send(to=agent, type=TASK_ASSIGNED, body={task_id, spec})
+        10. 持续调度循环（见 orchestrator INIT.md Phase C）：
+           - agent 完成 → 移入 review/ → qa review
+           - qa pass → 移入 done/
+           - qa fail → revision → 重新 review
+           - agent 空闲 → 从 backlog 分配下一个
+           - orchestrator 每次状态变更记录 execution_log
+
+      关键：architect 负责拆什么任务，orchestrator 负责怎么排怎么分。
+      禁止：用 06_tasks.yaml 扁平文件替代目录结构。
+      强制：S6 结束前 orchestrator 必须自查 validate 规则（assigned/ 和 done/ 非空），不通过则不进入 S7。
+      一致性自查：S6 结束前 orchestrator 须验证 spec 中的环境变量名、服务名与实际代码/配置一致，
+      不允许 spec 写 BRAIN_HEALTH_PORT 而代码用 HEALTH_CHECK_PORT 这类不一致。
+      参见: orchestrator INIT.md
+
+  S7:
+    name: verification
+    ref: "../../spec/templates/spec/spec_dsl.yaml#verification"
+    phase: execution
+    intent: "qa 对照 S1/S2/S3 定义验收标准，执行验收"
+    owner: test_engineer
+    participants: [test_engineer, architect, devops]
+    requires: S6
+    mandatory_guide:
+      - "../../knowledge/guides/workflow/verification_guide.md"
+      - "../../knowledge/guides/workflow/verification_fullstack_guide.md"
+    output: spec/07_verification/
+    input_refs:
+      - spec/01_alignment.yaml
+      - spec/02_requirements.yaml
+      - spec/03_research.yaml
+      - spec/05_solution.yaml
+    content:
+      # --- test_plan.md: 测试计划 ---
+      test_plan:
+        file: spec/07_verification/test_plan.md
+        fields:
+          - scope: "测试范围（in/out）"
+          - risk_assessment: "风险分层（P0/P1/P2）"
+          - test_types: "测试类型（Functional/Integration/Regression/Performance/Security/UAT）"
+          - environments: "测试环境与数据策略"
+          - automation_plan: "自动化范围与策略"
+          - exit_criteria: "退出标准与 Go/No-Go 门禁"
+
+      # --- traceability.yaml: 可追溯矩阵 ---
+      traceability:
+        file: spec/07_verification/traceability.yaml
+        description: "需求 ↔ 用例 ↔ 缺陷 ↔ 版本的追溯关系"
+        verification_basis:
+          from_s1: "success_criteria → 验证项"
+          from_s2: "must-have 需求 → 功能验证用例"
+          from_s2_nfr: "NFR → 性能/安全/可用性验证"
+          from_s3: "调研结论中的约束 → 兼容性/合规验证"
+
+      # --- cases/{模块}.yaml: 测试用例 ---
+      cases:
+        dir: spec/07_verification/cases/
+        description: "按模块拆分的测试用例"
+        item_format:
+          - id: "TC-001"
+          - maps_to: "对应的需求 id（R1 / SC1）"
+          - source_step: "来源（S1/S2/S3）"
+          - method: "测试方法（手动/自动/性能/安全）"
+          - expected: "预期结果"
+          - status: "pending / pass / fail"
+          - evidence: "证据（日志/截图/traceId）"
+          - owner: "执行者"
+
+      # --- defects/{BUG}.md: 缺陷记录 ---
+      defects:
+        dir: spec/07_verification/defects/
+        description: "每个缺陷一个 md 文件"
+
+      # --- reports/: 验收报告 ---
+      reports:
+        dir: spec/07_verification/reports/
+        files:
+          - test_report.md: "测试报告（通过率、覆盖率、未测项解释）"
+          - defect_report.md: "缺陷报表（按级别/模块/趋势/修复率）"
+          - nfr_report.md: "NFR 报告（性能/安全/长稳/可观测性）"
+          - release_readiness.md: "发布就绪清单（灰度/回滚/监控/值班）"
+
+      # --- summary.yaml: 验收结论 ---
+      summary:
+        file: spec/07_verification/summary.yaml
+        fields:
+          - decision: "Pass / Fail / TBD"
+          - exceptions: "例外项（已知问题 + 风险接受 + 审批人）"
+          - remaining_issues: "遗留问题清单"
+    note: |
+      S7 验收必须有据可查：
+        - 每条验收标准必须追溯到 S1 success_criteria 或 S2 must-have
+        - NFR 验收对照 S2 nfr + S3 调研的行业基线
+        - 不允许出现"凭感觉觉得 OK"的验收结论
+    validate:
+      - dir_exists: spec/07_verification/
+      - file_exists: spec/07_verification/test_plan.md
+      - file_exists: spec/07_verification/traceability.yaml
+      - file_exists: spec/07_verification/summary.yaml
+      - file_exists: spec/07_verification/reports/test_report.md
+      - field_not_empty: verification.summary.decision
+    pmo_action: |
+      S7 分三步：
+        1. 计划阶段（S5 完成后即可开始）：
+           test_engineer 写 test_plan.md（范围、策略、环境、退出标准）
+           test_engineer 建 traceability.yaml（需求 ↔ 用例追溯）
+        2. 执行阶段（开发完成后）：
+           test_engineer 用 S5 已编写的测试用例执行测试（可补充集成测试用例），结果写入 cases/{模块}.yaml
+           缺陷记录到 defects/BUG-{序号}_{简述}.md
+           每日 Defect Triage 统一定级与修复承诺
+        3. 报告阶段（测试完成后）：
+           test_engineer 产出 reports/（test_report + defect_report + nfr_report + release_readiness）
+           test_engineer 写 summary.yaml（decision: Pass/Fail + exceptions）
+           PMO 审阅 summary，确认是否可发布
+
+  S8:
+    name: retrospective
+    phase: execution
+    intent: "orchestrator 产出任务报表，沉淀经验到 knowledge，更新 pending_base"
+    owner: orchestrator
+    participants: [orchestrator, pmo, architect]
+    requires: S7
+    mandatory_guide: "../../knowledge/guides/workflow/retrospective_guide.md"
+    output: spec/08_retrospective.yaml
+    content:
+      - task_report:
+          total_tasks: "任务总数"
+          completed: "完成数"
+          completion_rate: "完成率"
+          plan_vs_actual: "计划 vs 实际工期"
+          team_composition: "实际参与的 agent 列表"
+      - blockers: "关键阻塞及解决方法"
+      - lessons_learned: "经验教训（技术 + 流程 + 协作）"
+      - reusable_patterns: "可复用的模式或组件"
+      - knowledge_output:
+          target: "{group_root}/knowledge/"
+          items: "从本项目中提炼的经验，写入 group knowledge"
+      - pending_base_update:
+          target: "/brain/runtime/update_brain/pending/base/"
+          items: "需要更新到 base 的内容（agent-brain-manager 编译时合并）"
+    validate:
+      - all_steps_completed: [S1, S2, S3, S4, S5, S6, S7]  # S8 不检查自己
+      - field_not_empty: retrospective.task_report
+      - issues_all_resolved: journal/issues/   # 所有 ISS 必须已 resolved
+    actions:
+      - update_index_status: archived
+      - purge_temp_agents: "agentctl purge 清理 dev agent — 必须经用户确认后执行，禁止自行决定 purge"
+    pmo_action: |
+      S8 由 orchestrator 主导：
+        1. orchestrator 产出任务报表（完成度、工期对比、agent 使用情况）
+        2. orchestrator + architect 提炼经验教训和可复用模式
+        3. 经验写入 {group_root}/knowledge/（group 级别知识）
+        4. 如有需要更新到 base 的内容，写入 /brain/runtime/update_brain/pending/base/（等待 agent-brain-manager 编译时合并）
+        5. orchestrator 通过 agentctl purge 清理临时 dev agent
+        6. PMO 审阅报表，更新 index.yaml status: archived
+        7. 项目 agent（pmo/architect/qa/devops/researcher）先 stop，purge 必须经用户确认
+
+# ============================================
+# S9: 审计 (Audit)
+# ============================================
+  S9:
+    name: audit
+    phase: execution
+    intent: "独立审计：QA 对照 project spec + brain spec 逐项检查合规性，上报问题"
+    owner: auditor
+    participants: [auditor, pmo, orchestrator]
+    requires: S8
+    mandatory_guide: "../../knowledge/guides/workflow/audit_guide.md"
+    output: journal/audit/audit_report.yaml
+    audit_scope:
+      project_spec:
+        - "S0 checklist 全部完成（目录、index.yaml、6 agent）"
+        - "S1-S4 文件存在且关键字段非空"
+        - "S1 integration_points 全部 verified=true"
+        - "S5 每个 module 有 test_strategy"
+        - "S6 目录结构完整（plan/backlog/assigned/done/task_manager）"
+        - "S6 task_manager 有 execution_log（状态机真实运行）"
+        - "S7 验收报告 4 份齐全 + summary.yaml decision 非空"
+        - "S8 retrospective 引用 journal/issues/"
+      brain_spec:
+        - "代码符合 G-GATE-VERIFICATION（编译+测试通过）"
+        - "文件路径符合 G-GATE-PATH-DISCIPLINE"
+        - "无未解决的冲突标记（<<<<<<< 行首）"
+        - "无硬编码密钥/credentials"
+      issues:
+        - "journal/issues/ 中所有 ISS 已 resolved"
+        - "base_upgrade_candidate=true 的 ISS 已写入 pending_base"
+    output_format:
+      total_checks: "检查项总数"
+      passed: "通过数"
+      failed: "失败数"
+      warnings: "警告数"
+      items:
+        - check_id: "AUD-001"
+          category: "project_spec / brain_spec / issues"
+          check: "检查项描述"
+          result: "pass / fail / warning"
+          evidence: "证据（文件路径、行号）"
+          recommendation: "改进建议"
+    validate:
+      - file_exists: journal/audit/audit_report.yaml
+      - field_not_empty: audit.total_checks
+      - no_critical_failures: audit.items   # fail 中无 critical 级别
+    pmo_action: |
+      S9 由 auditor agent 独立执行（不参与 S5-S7，确保审计独立性）：
+        1. Read project.yaml 获取所有 validate 规则
+        2. 逐项检查 S0-S8 的产出物（文件存在、字段完整、格式正确）
+        3. 对照 brain spec（LEP gates）检查代码合规
+        4. 检查 journal/issues/ 的收尾情况
+        5. 产出 journal/audit/audit_report.yaml
+        6. auditor 将审计结论通过 IPC 发送给 PMO（不只是写文件）：
+           ipc_send(to=pmo, "[AUDIT_RESULT] 审计完成，pass={N}, fail={N}, warning={N}")
+        7. PMO 评估审计结论：
+           - 有 fail 项 → PMO 决定是否返工，通知 orchestrator 执行修复
+           - 有 base_upgrade_candidate → PMO 安排 base spec 升级
+           - 有 pending ISS → PMO 决定是否需要补充修复
+        8. PMO 通知 orchestrator 执行剩余修复工作：
+           ipc_send(to=orchestrator, "[AUDIT_FOLLOWUP] 需修复: {fail_items}")
+        9. orchestrator 修复完成后，auditor 重新验证受影响的检查项
+        10. 全部 pass → PMO 确认项目正式关闭（index.yaml status: archived）
+
+      关键：S9 不是"写完报告就结束"，是"审计→PMO评估→修复→重新验证"的闭环。
+
+# ============================================
+# Agent 分配时机总结
+# ============================================
+agent_allocation:
+  S0_init:
+    action: "agentctl add 创建 6 个项目 agent"
+    agents: [pmo, orchestrator, architect, test_engineer, auditor, devops, researcher]
+    state: stopped
+
+  S1_S2:
+    action: "按需唤醒"
+    agents_active: [pmo, architect]
+
+  S3:
+    action: "唤醒 researcher"
+    agents_active: [pmo, researcher, architect]
+
+  S4:
+    action: "唤醒全员讨论"
+    agents_active: [pmo, orchestrator, architect, test_engineer, devops, researcher]
+
+  S5:
+    action: "architect + qa + devops 同步工作"
+    agents_active: [pmo, architect, test_engineer, devops]
+
+  S6_planning:
+    action: "architect 拆任务 + orchestrator 制定计划 + 动态创建 dev/qa agent"
+    agents_active: [pmo, orchestrator, architect]
+    dynamic_agents: "agentctl add agent_{group_alias}_dev{N} / qa{N}（数量由讨论决定）"
+
+  S6_execution:
+    action: "orchestrator 持续调度，dev 开发，qa review"
+    agents_active: [orchestrator, dev1..devN, test_engineer]
+    loop: |
+      backlog → assigned → in_progress → review → done
+      空闲 agent 从 backlog 领取/被分配新任务
+      orchestrator 通过 timer 定期检查 + 动态调节
+
+  S7:
+    action: "qa 验收"
+    agents_active: [pmo, test_engineer, architect, devops]
+
+  S8:
+    action: "orchestrator 归档 + purge 临时 agent"
+    agents_active: [pmo, orchestrator, architect]
+    cleanup: "agentctl purge dev agents（项目 agent 等 S9 审计完再 purge）"
+
+  S9:
+    action: "auditor 独立审计 → PMO 评估 → orchestrator 修复 → 重新验证"
+    agents_active: [auditor, pmo, orchestrator]
+    cleanup: "审计闭环通过后，PMO 向用户请求确认，用户批准后才执行 agentctl purge"
+
+# ============================================
+# 快速检查清单
+# ============================================
+checklist:
+  S0_done:
+    - "[ ] 项目目录已创建（references/, spec/, memory/）"
+    - "[ ] index.yaml 已写"
+    - "[ ] 7 个项目 agent 已创建（agentctl list 确认）"
+
+  S1_done:
+    - "[ ] 问题陈述清晰"
+    - "[ ] 范围边界明确（in/out 都有）"
+    - "[ ] 成功标准可度量（有 metric + target）"
+    - "[ ] integration_points 已填写且全部 verified=true"
+    - "[ ] 已阅读 infrastructure_reference.md"
+
+  S2_done:
+    - "[ ] must-have 需求列出（至少 1 条）"
+    - "[ ] NFR 约束已识别"
+
+  S3_done:
+    - "[ ] 实际做了联网搜索（references/ 下有 SR-*.md 文件）"
+    - "[ ] 至少对比 2 个方案"
+    - "[ ] findings 有 sources（URL）和 confidence"
+    - "[ ] 至少 2 个 viable_directions"
+
+  S4_done:
+    - "[ ] 全员讨论完成（6 个角色都发表了意见）"
+    - "[ ] consensus 字段已填（达成/部分/未达成）"
+    - "[ ] decision 是 go 或 no_go（不允许空）"
+    - "[ ] 推荐方案有明确理由"
+
+  go_gate_passed:
+    - "[ ] 用户审批 go"
+    - "[ ] index.yaml phase: execution"
+    - "[ ] S1-S4 已精化确认"
+
+  S5_done:
+    - "[ ] 架构设计到原子级（模块、接口、数据流、状态机）"
+    - "[ ] 每个模块有 test_strategy（qa 参与）"
+    - "[ ] modules 有 failure_modes"
+    - "[ ] 已阅读 infrastructure_reference.md，集成方式与文档一致"
+
+  S6_done:
+    - "[ ] spec/06_tasks/ 目录已创建"
+    - "[ ] plan.yaml 写完（dod、team_allocation、execution_plan、依赖图）"
+    - "[ ] backlog.yaml 写完（所有任务已入池）"
+    - "[ ] task_manager.yaml 已配置（状态机、timer、IPC 事件）"
+    - "[ ] team_allocation 已确定（dev/qa 数量）"
+    - "[ ] dev/qa agent 已通过 agentctl 创建"
+    - "[ ] orchestrator 已开始从 backlog 分配任务"
+    - "[ ] 所有任务最终进入 done/（review pass）"
+
+  S7_done:
+    - "[ ] spec/07_verification/ 目录已创建"
+    - "[ ] test_plan.md 已写（范围、策略、退出标准）"
+    - "[ ] traceability.yaml 已建（需求 ↔ 用例追溯）"
+    - "[ ] cases/ 下每个模块有测试用例"
+    - "[ ] reports/ 下四份报告齐全（test/defect/nfr/release_readiness）"
+    - "[ ] summary.yaml decision 已填写（Pass/Fail）"
+    - "[ ] S0/S1 缺陷 = 0（或有风险接受审批）"
+
+  S8_done:
+    - "[ ] 任务报表已产出（完成率、工期对比）"
+    - "[ ] 经验已写入 group knowledge"
+    - "[ ] pending_base 已更新（如需要）"
+    - "[ ] 临时 dev agent 已 purge"
+    - "[ ] journal/issues/ 中所有 ISS 已 resolved"
+
+  S9_done:
+    - "[ ] audit_report.yaml 已产出"
+    - "[ ] auditor 已将审计结论通过 IPC 发送给 PMO"
+    - "[ ] PMO 已评估审计结论并决定后续动作"
+    - "[ ] 有 fail 项时 orchestrator 已执行修复"
+    - "[ ] 修复后 QA 已重新验证"
+    - "[ ] 所有 project_spec 检查项 pass"
+    - "[ ] 所有 brain_spec 检查项 pass"
+    - "[ ] base_upgrade_candidate 的 ISS 已升级到 base spec"
+    - "[ ] 无 critical fail"
+    - "[ ] index.yaml status: archived（审计闭环通过后）"
+    - "[ ] 所有项目 agent 已 purge（经用户确认）"

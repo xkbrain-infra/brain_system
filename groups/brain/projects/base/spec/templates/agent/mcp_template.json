@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "mcp-brain_ipc_c": {
+      "command": "/brain/bin/mcp/mcp-brain_ipc_c",
+      "args": [],
+      "env": {
+        "BRAIN_AGENT_NAME": "{{agent_name}}"
+      }
+    }
+  }
+}

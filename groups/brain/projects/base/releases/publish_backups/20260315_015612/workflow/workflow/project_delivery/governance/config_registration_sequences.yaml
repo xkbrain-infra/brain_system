@@ -1,0 +1,63 @@
+config_registration_sequences:
+  id: "MWF-CFG-SEQ-001"
+  version: "0.1"
+  intent: "定义配置、端口、supervisor、endpoint、service 注册的顺序流"
+
+flows:
+  bootstrap_service_registration:
+    summary: "bootstrap 期间将候选 service 提升为正式受管 service"
+    participants:
+      - "sandbox bootstrap pipeline"
+      - "config registry service"
+      - "service supervisor"
+      - "project orchestrator"
+    steps:
+      - "bootstrap pipeline -> config registry: GET_ENV_BASELINE"
+      - "bootstrap pipeline -> config registry: RESERVE_SERVICE_NAME"
+      - "bootstrap pipeline -> config registry: ALLOCATE_PORT"
+      - "bootstrap pipeline -> config registry: PUT_CONFIG_VERSION"
+      - "bootstrap pipeline -> config registry: REGISTER_SUPERVISOR"
+      - "bootstrap pipeline -> service supervisor: install/update program"
+      - "service process starts"
+      - "bootstrap pipeline -> config registry: REGISTER_ENDPOINT"
+      - "project orchestrator -> config registry: REGISTER_SERVICE"
+      - "project orchestrator -> global sync/logging: emit sandbox.ready + service.registered"
+
+  runtime_service_addition:
+    summary: "执行中新增 service 或 sidecar 的控制面顺序"
+    participants:
+      - "project orchestrator"
+      - "config registry service"
+      - "service supervisor"
+    steps:
+      - "orchestrator resolves baseline config"
+      - "orchestrator reserves name and allocates port if needed"
+      - "orchestrator writes config override/version"
+      - "orchestrator registers supervisor spec"
+      - "service process starts under supervisor"
+      - "orchestrator registers endpoint and then service"
+      - "orchestrator writes task/log/event linkage"
+
+  release_config_resolution:
+    summary: "release 前解析目标环境配置并固化到 report"
+    participants:
+      - "release manager"
+      - "config registry service"
+    steps:
+      - "release manager -> config registry: GET_ENV_BASELINE(environment=stage/prod)"
+      - "release manager -> config registry: RESOLVE_SERVICE for release dependencies"
+      - "release manager validates config_version_refs and endpoint set"
+      - "release manager writes config refs into release_report"
+
+ordering_rules:
+  - "REGISTER_SERVICE 必须晚于 REGISTER_ENDPOINT"
+  - "REGISTER_ENDPOINT 必须晚于 service process started"
+  - "REGISTER_SUPERVISOR 必须早于长期 service process started"
+  - "PUT_CONFIG_VERSION 必须早于 REGISTER_SERVICE"
+  - "正式 service 不得在 name/port/config/supervisor 缺任一项时进入 active registry"
+
+failure_branches:
+  - "ALLOCATE_PORT failed -> bootstrap hold, do not start process"
+  - "REGISTER_SUPERVISOR failed -> bootstrap hold or runtime escalation"
+  - "REGISTER_ENDPOINT failed -> service remains unmanaged and cannot become dependency"
+  - "REGISTER_SERVICE failed -> service may run locally but is not eligible for formal workflow dependency"

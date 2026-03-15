@@ -1,0 +1,67 @@
+intake_record:
+  project_id: brain-dashboard-2026-03-11
+  profile: software_dev
+  status: intake_passed
+
+  project_goal: |
+    构建 Brain 统一后台管理系统，提供 proxy 流量监控、服务注册中心、
+    在线日志查看三大核心功能
+
+  scope_in:
+    - Proxy 流量监控面板 (brain_gateway + brain_agent_proxy)
+    - 服务注册中心 (agentctl + health_check)
+    - 在线日志查看 (tail -f 风格实时日志)
+    - 统一前端界面
+    - 基础权限控制 (ACL)
+
+  scope_out:
+    - 历史数据存储与分析
+    - 告警通知系统
+    - 多集群支持
+    - 移动端适配
+    - 用户管理系统
+
+  acceptance:
+    - 可实时查看各 proxy 的 QPS/延迟/错误率
+    - 可查看已注册 agent/service 列表及健康状态
+    - 可在线查看各服务日志 (WebSocket 流式)
+    - 页面响应时间 < 2s
+    - 支持同时监控 50+ 服务
+
+  constraints:
+    deadline: "2026-03-25"
+    tech_stack: "调研后确定"
+    environment: "brain sandbox"
+    dependencies:
+      - brain_gateway
+      - brain_agent_proxy
+      - agentctl
+      - brain_health_check
+
+  priority: normal
+  sponsor: agent-brain_manager
+
+  requested_roles:
+    - architect
+    - developer
+    - devops
+
+  baseline_image: "brain/base/workflow/project_delivery/models/environment_baseline.yaml"
+
+  intake_decision: PASS
+  intake_time: "2026-03-11T00:00:00Z"
+
+  sandbox_request:
+    path: /brain/sandbox/brain_dashboard_20260311
+    resources:
+      cpu: 2
+      memory: 4G
+      disk: 10G
+
+  initial_open_questions:
+    - 前端框架选择 (Vue3/React)
+    - 后端 API 设计模式 (REST/GraphQL)
+    - 日志采集方案 (filebeat/syslog/直接读取)
+    - 实时监控数据流 (WebSocket/SSE)
+
+  next_phase: research

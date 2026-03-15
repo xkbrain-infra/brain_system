@@ -1,0 +1,890 @@
+# Brain 全局 ID 注册表
+# 所有 base/ 下 YAML 中使用的 id 字段必须在此注册
+# 构建时检查：无重复 ID、所有 ID 有前缀
+#
+# 前缀分配表见底部 prefix_allocation
+# 新增 ID 前先查此表确认前缀可用且 ID 不重复
+
+version: "1.0"
+last_updated: "2026-02-23"
+
+# ============================================
+# 前缀分配表
+# ============================================
+prefix_allocation:
+  G-GATE:
+    domain: spec/core
+    description: "LEP 全员 Gate 规则"
+  G-SPEC-CORE:
+    domain: spec/core
+    description: "Spec 核心定义"
+  G-SPEC-POLICY:
+    domain: spec/policies
+    description: "Spec 策略文档"
+  G-SPEC-POLICY-LEP:
+    domain: spec/policies/lep
+    description: "LEP 策略扩展"
+  G-SPEC-STANDARD:
+    domain: spec/standards
+    description: "Spec 标准定义"
+  G-SPEC-TEMPLATE:
+    domain: spec/templates
+    description: "Spec 模板"
+  G-WF:
+    domain: workflow
+    description: "Workflow 文档"
+  G-EVO:
+    domain: evolution
+    description: "Evolution 文档"
+  G-KNLG:
+    domain: knowledge
+    description: "Knowledge 文档"
+  WF:
+    domain: workflow
+    description: "Workflow 内部 ID"
+  STD:
+    domain: spec/standards
+    description: "标准文档"
+  POL:
+    domain: spec/policies
+    description: "策略文档"
+  CORE:
+    domain: spec/policies/creation
+    description: "核心创建策略"
+  POLICY:
+    domain: spec/policies
+    description: "策略文档（旧前缀）"
+  SPEC:
+    domain: spec
+    description: "Spec 文档（旧前缀）"
+  IPC:
+    domain: spec/policies/ipc
+    description: "IPC 策略"
+  EVO:
+    domain: evolution
+    description: "Evolution 内部 ID"
+  SKL:
+    domain: skill
+    description: "Skill 定义"
+  SKILL:
+    domain: skill
+    description: "Skill 定义（旧前缀）"
+  INT:
+    domain: skill
+    description: "集成技能"
+  VAL:
+    domain: skill
+    description: "验证规则"
+  TP:
+    domain: spec/templates/agent
+    description: "Agent Type Profile（通用）"
+  TP-CAT:
+    domain: spec/templates/agent
+    description: "Type Profile 行业分类"
+  TP-SD:
+    domain: spec/templates/agent
+    description: "Type Profile - 软件开发"
+  TP-QT:
+    domain: spec/templates/agent
+    description: "Type Profile - 量化交易"
+  TP-VP:
+    domain: spec/templates/agent
+    description: "Type Profile - 短视频制作"
+  TP-CC:
+    domain: spec/templates/agent
+    description: "Type Profile - 内容创作"
+  PRJ:
+    domain: projects
+    description: "项目 ID"
+  BS:
+    domain: projects
+    description: "Brain System 项目 Spec ID"
+  XQ:
+    domain: projects
+    description: "XKQuant 项目 Spec ID"
+
+# ============================================
+# 全量 ID 索引
+# ============================================
+entries:
+
+  # --- spec/core (LEP gates) ---
+  - id: G-GATE-NAWP
+    prefix: G-GATE
+    domain: spec/core
+    file: spec/core/lep.yaml
+  - id: G-GATE-ATOMIC
+    prefix: G-GATE
+    domain: spec/core
+    file: spec/core/lep.yaml
+  - id: G-GATE-SCOP
+    prefix: G-GATE
+    domain: spec/core
+    file: spec/core/lep.yaml
+  - id: G-GATE-SCOPE-DEVIATION
+    prefix: G-GATE
+    domain: spec/core
+    file: spec/core/lep.yaml
+  - id: G-GATE-ROLLBACK-READY
+    prefix: G-GATE
+    domain: spec/core
+    file: spec/core/lep.yaml
+  - id: G-GATE-DELETE-BACKUP
+    prefix: G-GATE
+    domain: spec/core
+    file: spec/core/lep.yaml
+  - id: G-GATE-VERIFICATION
+    prefix: G-GATE
+    domain: spec/core
+    file: spec/core/lep.yaml
+  - id: G-GATE-UNRECOVERABLE
+    prefix: G-GATE
+    domain: spec/core
+    file: spec/core/lep.yaml
+  - id: G-GATE-IPC-TARGET
+    prefix: G-GATE
+    domain: spec/core
+    file: spec/core/lep.yaml
+  - id: G-GATE-KVCACHE-FIRST
+    prefix: G-GATE
+    domain: spec/core
+    file: spec/core/lep.yaml
+  - id: G-GATE-PATH-DISCIPLINE
+    prefix: G-GATE
+    domain: spec/core
+    file: spec/core/lep.yaml
+  - id: G-GATE-FILE-HIERARCHY
+    prefix: G-GATE
+    domain: spec/core
+    file: spec/core/lep.yaml
+  - id: G-GATE-NONBLOCKING-CMDS
+    prefix: G-GATE
+    domain: spec/core
+    file: spec/core/lep.yaml
+  - id: G-GATE-MEMORY-PERSIST
+    prefix: G-GATE
+    domain: spec/policies/lep
+    file: spec/policies/lep/memory_persist.yaml
+  - id: G-GATE-ID-PREFIX
+    prefix: G-GATE
+    domain: spec/core
+    file: spec/core/lep.yaml
+    note: "新增：ID 命名规范"
+
+  # --- spec/core (文档 registry) ---
+  - id: G-SPEC-CORE-LEP
+    prefix: G-SPEC-CORE
+    domain: spec
+    file: spec/registry.yaml
+  - id: G-SPEC-CORE-LAYERS
+    prefix: G-SPEC-CORE
+    domain: spec
+    file: spec/registry.yaml
+  - id: G-SPEC-CORE-WORKFLOW
+    prefix: G-SPEC-CORE
+    domain: spec
+    file: spec/registry.yaml
+
+  # --- spec/policies (文档 registry) ---
+  - id: G-SPEC-POLICY-IPC-MESSAGE-FORMAT
+    prefix: G-SPEC-POLICY
+    domain: spec
+    file: spec/registry.yaml
+  - id: G-SPEC-POLICY-IPC-RELIABILITY-DESIGN
+    prefix: G-SPEC-POLICY
+    domain: spec
+    file: spec/registry.yaml
+  - id: G-SPEC-POLICY-IPC-PRIORITY
+    prefix: G-SPEC-POLICY
+    domain: spec
+    file: spec/registry.yaml
+  - id: G-SPEC-POLICY-CONFIG-MANAGEMENT
+    prefix: G-SPEC-POLICY
+    domain: spec
+    file: spec/registry.yaml
+  - id: G-SPEC-POLICY-SECRETS-MANAGEMENT
+    prefix: G-SPEC-POLICY
+    domain: spec
+    file: spec/registry.yaml
+  - id: G-SPEC-POLICY-AGENTS-REGISTRY-SPEC
+    prefix: G-SPEC-POLICY
+    domain: spec
+    file: spec/registry.yaml
+  - id: G-SPEC-POLICY-AGENT-PROTOCOL
+    prefix: G-SPEC-POLICY
+    domain: spec
+    file: spec/registry.yaml
+  - id: G-SPEC-POLICY-LEP-INDEX
+    prefix: G-SPEC-POLICY-LEP
+    domain: spec
+    file: spec/registry.yaml
+  - id: G-SPEC-POLICY-VALIDATORS
+    prefix: G-SPEC-POLICY
+    domain: spec
+    file: spec/registry.yaml
+  - id: G-SPEC-POLICY-PROJECT-CREATION
+    prefix: G-SPEC-POLICY
+    domain: spec
+    file: spec/registry.yaml
+  - id: G-SPEC-POLICY-GROUP
+    prefix: G-SPEC-POLICY
+    domain: spec
+    file: spec/registry.yaml
+  - id: G-SPEC-POLICY-PROJECT
+    prefix: G-SPEC-POLICY
+    domain: spec
+    file: spec/registry.yaml
+  - id: G-SPEC-POLICY-MEMORY-PERSISTENCE
+    prefix: G-SPEC-POLICY
+    domain: spec
+    file: spec/registry.yaml
+  - id: G-SPEC-POLICY-ESTIMATION-TEMPLATE
+    prefix: G-SPEC-POLICY
+    domain: spec
+    file: spec/registry.yaml
+
+  # --- spec/policies (LEP 扩展) ---
+  - id: G-SPEC-POLICY-LEP-NAWP
+    prefix: G-SPEC-POLICY-LEP
+    domain: spec
+    file: spec/registry.yaml
+  - id: G-SPEC-POLICY-LEP-ATOMIC
+    prefix: G-SPEC-POLICY-LEP
+    domain: spec
+    file: spec/registry.yaml
+  - id: G-SPEC-POLICY-LEP-SCOP
+    prefix: G-SPEC-POLICY-LEP
+    domain: spec
+    file: spec/registry.yaml
+  - id: G-SPEC-POLICY-LEP-DELETE-BACKUP
+    prefix: G-SPEC-POLICY-LEP
+    domain: spec
+    file: spec/registry.yaml
+  - id: G-SPEC-POLICY-LEP-DB-MIGRATION
+    prefix: G-SPEC-POLICY-LEP
+    domain: spec
+    file: spec/registry.yaml
+  - id: G-SPEC-POLICY-LEP-DB-BACKUP
+    prefix: G-SPEC-POLICY-LEP
+    domain: spec
+    file: spec/registry.yaml
+  - id: G-SPEC-POLICY-LEP-VERIFICATION
+    prefix: G-SPEC-POLICY-LEP
+    domain: spec
+    file: spec/registry.yaml
+  - id: G-SPEC-POLICY-LEP-CODE-STYLE
+    prefix: G-SPEC-POLICY-LEP
+    domain: spec
+    file: spec/registry.yaml
+  - id: G-SPEC-POLICY-LEP-KVCACHE-FIRST
+    prefix: G-SPEC-POLICY-LEP
+    domain: spec
+    file: spec/registry.yaml
+  - id: G-SPEC-POLICY-LEP-PROJECT-REF
+    prefix: G-SPEC-POLICY-LEP
+    domain: spec
+    file: spec/registry.yaml
+  - id: G-SPEC-POLICY-LEP-MEMORY-TIMELINE
+    prefix: G-SPEC-POLICY-LEP
+    domain: spec
+    file: spec/registry.yaml
+  - id: G-SPEC-POLICY-LEP-USERSPACE
+    prefix: G-SPEC-POLICY-LEP
+    domain: spec
+    file: spec/registry.yaml
+  - id: G-SPEC-POLICY-LEP-NONBLOCKING-CMDS
+    prefix: G-SPEC-POLICY-LEP
+    domain: spec
+    file: spec/registry.yaml
+  - id: G-SPEC-POLICY-LEP-TOOL-CONVENTIONS
+    prefix: G-SPEC-POLICY-LEP
+    domain: spec
+    file: spec/registry.yaml
+  - id: G-SPEC-POLICY-LEP-IPC-TARGET
+    prefix: G-SPEC-POLICY-LEP
+    domain: spec
+    file: spec/registry.yaml
+  - id: G-SPEC-POLICY-LEP-VERSION-UPGRADE
+    prefix: G-SPEC-POLICY-LEP
+    domain: spec
+    file: spec/registry.yaml
+  - id: G-SPEC-POLICY-LEP-SPEC-SYNC
+    prefix: G-SPEC-POLICY-LEP
+    domain: spec
+    file: spec/registry.yaml
+  - id: G-SPEC-POLICY-LEP-AUDIT
+    prefix: G-SPEC-POLICY-LEP
+    domain: spec
+    file: spec/registry.yaml
+  - id: G-SPEC-POLICY-LEP-DEFER
+    prefix: G-SPEC-POLICY-LEP
+    domain: spec
+    file: spec/registry.yaml
+  - id: G-SPEC-POLICY-LEP-PATH-DISCIPLINE
+    prefix: G-SPEC-POLICY-LEP
+    domain: spec
+    file: spec/registry.yaml
+  - id: G-SPEC-POLICY-LEP-FILE-HIERARCHY
+    prefix: G-SPEC-POLICY-LEP
+    domain: spec
+    file: spec/registry.yaml
+  - id: G-SPEC-POLICY-LEP-SPEC-LOCATION
+    prefix: G-SPEC-POLICY-LEP
+    domain: spec
+    file: spec/registry.yaml
+  - id: G-SPEC-POLICY-LEP-FILE-ORG
+    prefix: G-SPEC-POLICY-LEP
+    domain: spec
+    file: spec/registry.yaml
+  - id: G-SPEC-POLICY-LEP-APPROVAL-DELEGATION
+    prefix: G-SPEC-POLICY-LEP
+    domain: spec
+    file: spec/registry.yaml
+  - id: G-SPEC-POLICY-LEP-AGENT-LIFECYCLE
+    prefix: G-SPEC-POLICY-LEP
+    domain: spec
+    file: spec/registry.yaml
+  - id: G-SPEC-POLICY-LEP-ROLLBACK-READY
+    prefix: G-SPEC-POLICY-LEP
+    domain: spec
+    file: spec/registry.yaml
+  - id: G-SPEC-POLICY-LEP-TECH-STACK
+    prefix: G-SPEC-POLICY-LEP
+    domain: spec
+    file: spec/registry.yaml
+  - id: G-SPEC-POLICY-LEP-DOCKER-STD
+    prefix: G-SPEC-POLICY-LEP
+    domain: spec
+    file: spec/registry.yaml
+  - id: G-SPEC-POLICY-LEP-SCOPE-DEVIATION
+    prefix: G-SPEC-POLICY-LEP
+    domain: spec
+    file: spec/registry.yaml
+  - id: G-SPEC-POLICY-LEP-BATCH-PARTIAL
+    prefix: G-SPEC-POLICY-LEP
+    domain: spec
+    file: spec/registry.yaml
+  - id: G-SPEC-POLICY-LEP-UNRECOVERABLE
+    prefix: G-SPEC-POLICY-LEP
+    domain: spec
+    file: spec/registry.yaml
+  - id: G-SPEC-POLICY-LEP-MEMORY-PERSIST
+    prefix: G-SPEC-POLICY-LEP
+    domain: spec
+    file: spec/registry.yaml
+
+  # --- spec/standards ---
+  - id: G-SPEC-STANDARD-FILE-ORGANIZATION
+    prefix: G-SPEC-STANDARD
+    domain: spec
+    file: spec/registry.yaml
+  - id: G-SPEC-STANDARD-FILE-ORGANIZATION-EXAMPLES
+    prefix: G-SPEC-STANDARD
+    domain: spec
+    file: spec/registry.yaml
+  - id: G-SPEC-STANDARD-CPP
+    prefix: G-SPEC-STANDARD
+    domain: spec
+    file: spec/registry.yaml
+  - id: G-SPEC-STANDARD-TIME-ESTIMATION
+    prefix: G-SPEC-STANDARD
+    domain: spec
+    file: spec/registry.yaml
+  - id: G-SPEC-STANDARD-PROBLEM-SOLVING
+    prefix: G-SPEC-STANDARD
+    domain: spec
+    file: spec/registry.yaml
+  - id: G-SPEC-STANDARD-VERSION-UPGRADE
+    prefix: G-SPEC-STANDARD
+    domain: spec
+    file: spec/registry.yaml
+  - id: G-SPEC-STANDARD-VERIFICATION
+    prefix: G-SPEC-STANDARD
+    domain: spec
+    file: spec/registry.yaml
+  - id: G-SPEC-STANDARD-OPERATION
+    prefix: G-SPEC-STANDARD
+    domain: spec
+    file: spec/registry.yaml
+  - id: G-SPEC-STANDARD-DEPLOYMENT
+    prefix: G-SPEC-STANDARD
+    domain: spec
+    file: spec/registry.yaml
+  - id: G-SPEC-STANDARD-DOCKER
+    prefix: G-SPEC-STANDARD
+    domain: spec
+    file: spec/registry.yaml
+  - id: G-SPEC-STANDARD-AGENT-ABILITIES-BUILD
+    prefix: G-SPEC-STANDARD
+    domain: spec
+    file: spec/standards/infra/agent_abilities_build.yaml
+  - id: G-STD-BUILD-MERGE-CONFLICT
+    prefix: G-STD
+    domain: spec/standards
+    file: spec/standards/build/merge_conflict.yaml
+  - id: STD-INFRA-DOCKER
+    prefix: STD
+    domain: spec/standards
+    file: spec/standards/infra/docker/docker.yaml
+  - id: STD-INFRA-DEPLOYMENT
+    prefix: STD
+    domain: spec/standards
+    file: spec/standards/infra/docker/deployment.yaml
+
+  # --- spec/templates ---
+  - id: G-SPEC-TEMPLATE-SPEC-DSL
+    prefix: G-SPEC-TEMPLATE
+    domain: spec
+    file: spec/registry.yaml
+  - id: G-SPEC-TEMPLATE-BASE-TEMPLATE
+    prefix: G-SPEC-TEMPLATE
+    domain: spec
+    file: spec/registry.yaml
+  - id: G-SPEC-TEMPLATE-DEVELOPER
+    prefix: G-SPEC-TEMPLATE
+    domain: spec
+    file: spec/registry.yaml
+  - id: G-SPEC-TEMPLATE-QA
+    prefix: G-SPEC-TEMPLATE
+    domain: spec
+    file: spec/registry.yaml
+  - id: G-SPEC-TEMPLATE-PMO
+    prefix: G-SPEC-TEMPLATE
+    domain: spec
+    file: spec/registry.yaml
+  - id: G-SPEC-TEMPLATE-FRONTDESK
+    prefix: G-SPEC-TEMPLATE
+    domain: spec
+    file: spec/registry.yaml
+  - id: G-SPEC-TEMPLATE-ARCHITECT
+    prefix: G-SPEC-TEMPLATE
+    domain: spec
+    file: spec/registry.yaml
+  - id: G-SPEC-TEMPLATE-DEVOPS
+    prefix: G-SPEC-TEMPLATE
+    domain: spec
+    file: spec/registry.yaml
+  - id: G-SPEC-TEMPLATE-RESEARCHER
+    prefix: G-SPEC-TEMPLATE
+    domain: spec
+    file: spec/registry.yaml
+  - id: G-SPEC-TEMPLATE-UI-DESIGNER
+    prefix: G-SPEC-TEMPLATE
+    domain: spec
+    file: spec/registry.yaml
+
+  # --- spec/policies (内部 ID) ---
+  - id: POL-DB-OPERATIONS
+    prefix: POL
+    domain: spec/standards
+    file: spec/standards/infra/database/operation.yaml
+  - id: POL-VERIFY-001
+    prefix: POL
+    domain: spec/standards
+    file: spec/standards/workflow/verification.yaml
+  - id: POLICY-CONFIG-001
+    prefix: POLICY
+    domain: spec/policies
+    file: spec/policies/config/config_management.yaml
+  - id: POLICY-IPC-PRIORITY-001
+    prefix: POLICY
+    domain: spec/policies
+    file: spec/policies/ipc/priority.yaml
+  - id: POLICY-IPC-FORMAT-001
+    prefix: POLICY
+    domain: spec/policies
+    file: spec/policies/ipc/message_format.yaml
+  - id: POLICY-MEMORY-PERSISTENCE
+    prefix: POLICY
+    domain: spec/policies
+    file: spec/policies/memory/persistence.yaml
+  - id: IPC-RELIABILITY-DESIGN
+    prefix: IPC
+    domain: spec/policies
+    file: spec/policies/ipc/reliability_design.yaml
+  - id: CORE-CREATION-INDEX
+    prefix: CORE
+    domain: spec/policies
+    file: spec/policies/creation/index.yaml
+  - id: CORE-CREATION-SPACE-PROJECT
+    prefix: CORE
+    domain: spec/policies
+    file: spec/policies/creation/project.yaml
+  - id: CORE-CREATION-SPACE-GROUP
+    prefix: CORE
+    domain: spec/policies
+    file: spec/policies/creation/group.yaml
+  - id: CORE-PROJECT-CREATION
+    prefix: CORE
+    domain: spec/policies
+    file: spec/policies/creation/project_creation.yaml
+  - id: SPEC-AGENTS-REGISTRY
+    prefix: SPEC
+    domain: spec/policies
+    file: spec/policies/agents/agents_registry_spec.yaml
+  - id: SPEC-CODE-CPP-001
+    prefix: SPEC
+    domain: spec/standards
+    file: spec/standards/coding/cpp.yaml
+  - id: SPEC-AGENT-THIRD-PARTY-LLM
+    prefix: SPEC
+    domain: knowledge
+    file: knowledge/guides/llm/third_party_setup.yaml
+
+  # --- workflow ---
+  - id: WF-BASE-INDEX
+    prefix: WF
+    domain: workflow
+    file: workflow/index.yaml
+  - id: WF-PROJECT-001
+    prefix: WF
+    domain: workflow
+    file: workflow/lifecycle/project.yaml
+  - id: WF-GOV-001
+    prefix: WF
+    domain: workflow
+    file: workflow/lifecycle/governance.yaml
+  - id: WF-RUNTIME-001
+    prefix: WF
+    domain: workflow
+    file: workflow/execution/runtime.yaml
+  - id: WF-DSL-001
+    prefix: WF
+    domain: workflow
+    file: workflow/execution/dsl.yaml
+  - id: WF-OPS-UPDATE-BRAIN-001
+    prefix: WF
+    domain: workflow
+    file: workflow/operations/update_brain.yaml
+  - id: WF-PROBLEM-SOLVING
+    prefix: WF
+    domain: spec/standards
+    file: spec/standards/workflow/problem_solving.yaml
+  - id: G-WF-LIFECYCLE-PROJECT
+    prefix: G-WF
+    domain: workflow
+    file: workflow/registry.yaml
+  - id: G-WF-LIFECYCLE-GOVERNANCE
+    prefix: G-WF
+    domain: workflow
+    file: workflow/registry.yaml
+  - id: G-WF-EXECUTION-RUNTIME
+    prefix: G-WF
+    domain: workflow
+    file: workflow/registry.yaml
+  - id: G-WF-EXECUTION-DSL
+    prefix: G-WF
+    domain: workflow
+    file: workflow/registry.yaml
+  - id: G-WF-OPS-UPDATE-BRAIN
+    prefix: G-WF
+    domain: workflow
+    file: workflow/registry.yaml
+  - id: G-FOUR-DOMAIN-SYNC
+    prefix: G
+    domain: workflow
+    file: workflow/lifecycle/governance.yaml
+
+  # --- evolution ---
+  - id: EVO-BASE-INDEX
+    prefix: EVO
+    domain: evolution
+    file: evolution/index.yaml
+  - id: EVO-PROPOSAL-001
+    prefix: EVO
+    domain: evolution
+    file: evolution/proposal.yaml
+  - id: EVO-CYCLE-001
+    prefix: EVO
+    domain: evolution
+    file: evolution/cycle.yaml
+  - id: G-EVO-CORE-CYCLE
+    prefix: G-EVO
+    domain: evolution
+    file: evolution/registry.yaml
+  - id: G-EVO-CORE-PROPOSAL
+    prefix: G-EVO
+    domain: evolution
+    file: evolution/registry.yaml
+
+  # --- knowledge ---
+  - id: G-KNLG-ARCHITECTURE-PROCESS-MANAGEMENT
+    prefix: G-KNLG
+    domain: knowledge
+    file: knowledge/registry.yaml
+  - id: G-KNLG-ARCHITECTURE-CONTAINER
+    prefix: G-KNLG
+    domain: knowledge
+    file: knowledge/registry.yaml
+  - id: G-KNLG-ARCHITECTURE-IPC-GUIDE
+    prefix: G-KNLG
+    domain: knowledge
+    file: knowledge/registry.yaml
+  - id: G-KNLG-ARCHITECTURE-INFRA-REFERENCE
+    prefix: G-KNLG
+    domain: knowledge
+    file: knowledge/registry.yaml
+  - id: G-KNLG-ARCHITECTURE-IPC-WIRE-PROTOCOL
+    prefix: G-KNLG
+    domain: knowledge
+    file: knowledge/registry.yaml
+  - id: G-KNLG-ARCHITECTURE-PYTHON-IPC-CLIENT
+    prefix: G-KNLG
+    domain: knowledge
+    file: knowledge/registry.yaml
+  - id: G-KNLG-TROUBLESHOOT-DEPENDENCY-ERRORS
+    prefix: G-KNLG
+    domain: knowledge
+    file: knowledge/registry.yaml
+  - id: G-KNLG-TROUBLESHOOT-CONFIGURATION-ERRORS
+    prefix: G-KNLG
+    domain: knowledge
+    file: knowledge/registry.yaml
+  - id: G-KNLG-TROUBLESHOOT-IPC-TROUBLESHOOTING
+    prefix: G-KNLG
+    domain: knowledge
+    file: knowledge/registry.yaml
+  - id: G-KNLG-TROUBLESHOOT-NETWORK-ERRORS
+    prefix: G-KNLG
+    domain: knowledge
+    file: knowledge/registry.yaml
+  - id: G-KNLG-TROUBLESHOOT-AUTHENTICATION-ERRORS
+    prefix: G-KNLG
+    domain: knowledge
+    file: knowledge/registry.yaml
+  - id: G-KNLG-TROUBLESHOOT-RESOURCE-ERRORS
+    prefix: G-KNLG
+    domain: knowledge
+    file: knowledge/registry.yaml
+  - id: G-KNLG-TROUBLESHOOT-DATA-ERRORS
+    prefix: G-KNLG
+    domain: knowledge
+    file: knowledge/registry.yaml
+  - id: G-KNLG-GUIDE-SETUP-KIMI-AGENT-SIMPLE
+    prefix: G-KNLG
+    domain: knowledge
+    file: knowledge/registry.yaml
+  - id: G-KNLG-GUIDE-KIMI-AGENT-QUICKSTART
+    prefix: G-KNLG
+    domain: knowledge
+    file: knowledge/registry.yaml
+  - id: G-KNLG-GUIDE-SETUP-KIMI-AGENT
+    prefix: G-KNLG
+    domain: knowledge
+    file: knowledge/registry.yaml
+  - id: G-KNLG-GUIDE-HOOKS-DEPLOYMENT
+    prefix: G-KNLG
+    domain: knowledge
+    file: knowledge/registry.yaml
+  - id: G-KNLG-GUIDE-SPEC-BUILD
+    prefix: G-KNLG
+    domain: knowledge
+    file: knowledge/registry.yaml
+  - id: G-KNLG-GUIDE-LLM-THIRD-PARTY-SETUP
+    prefix: G-KNLG
+    domain: knowledge
+    file: knowledge/registry.yaml
+  - id: G-KNLG-GUIDE-AGENT-VECTORDB
+    prefix: G-KNLG
+    domain: knowledge
+    file: knowledge/registry.yaml
+  - id: G-KNLG-GUIDE-AGENT-ABILITIES-BUILD
+    prefix: G-KNLG
+    domain: knowledge
+    file: knowledge/registry.yaml
+  - id: G-KNLG-BRIAN-SYSTEM
+    prefix: G-KNLG
+    domain: knowledge
+    file: knowledge/brian_system/_index.yaml
+  - id: G-KNLG-BRIAN-SYSTEM-SPEC-STATS
+    prefix: G-KNLG
+    domain: knowledge
+    file: knowledge/brian_system/spec/spec_stats.yaml
+  - id: G-KNLG-BRIAN-SYSTEM-TESTING
+    prefix: G-KNLG
+    domain: knowledge
+    file: knowledge/brian_system/_index.yaml
+  - id: G-KNLG-BRIAN-SYSTEM-SPEC-STATS-MD
+    prefix: G-KNLG
+    domain: knowledge
+    file: knowledge/brian_system/_index.yaml
+
+  # --- skill ---
+  - id: SKL-INFRA-DOCKER-SANDBOX
+    prefix: SKL
+    domain: skill
+    file: skill/docker/definition.yaml
+  - id: SKILL-FSM-SUITE
+    prefix: SKILL
+    domain: skill
+    file: skill/fsm/definition.yaml
+  - id: SKILL-FILE-OPS
+    prefix: SKILL
+    domain: skill
+    file: skill/file_ops.yaml
+  - id: SKILL-GIT-OPS
+    prefix: SKILL
+    domain: skill
+    file: skill/git_ops.yaml
+  - id: INT-TELEGRAM-BOT
+    prefix: INT
+    domain: skill
+    file: skill/telegram/_index.yaml
+  - id: INT-TELEGRAM-BOT-API
+    prefix: INT
+    domain: skill
+    file: skill/telegram/api.yaml
+  - id: agent-coordination
+    prefix: ""
+    domain: skill
+    file: skill/agent-coordination/definition.yaml
+    note: "旧格式，缺少前缀，待迁移"
+  - id: validate-brain-app-alignment
+    prefix: ""
+    domain: skill
+    file: skill/validate-alignment/definition.yaml
+    note: "旧格式，缺少前缀，待迁移"
+
+  # --- type profile 分类 ---
+  - id: TP-CAT-GENERAL
+    prefix: TP-CAT
+    domain: spec/templates/agent
+    file: spec/templates/agent/type_profiles/index.yaml
+  - id: TP-CAT-SOFTWARE-DEV
+    prefix: TP-CAT
+    domain: spec/templates/agent
+    file: spec/templates/agent/type_profiles/index.yaml
+  - id: TP-CAT-QUANT-TRADING
+    prefix: TP-CAT
+    domain: spec/templates/agent
+    file: spec/templates/agent/type_profiles/index.yaml
+  - id: TP-CAT-VIDEO-PRODUCTION
+    prefix: TP-CAT
+    domain: spec/templates/agent
+    file: spec/templates/agent/type_profiles/index.yaml
+  - id: TP-CAT-CONTENT-CREATION
+    prefix: TP-CAT
+    domain: spec/templates/agent
+    file: spec/templates/agent/type_profiles/index.yaml
+
+  # --- general profiles ---
+  - id: TP-ORCHESTRATOR-CLAUDE-SONNET
+    prefix: TP
+    domain: spec/templates/agent
+    file: spec/templates/agent/type_profiles/general.yaml
+  - id: TP-PMO-CLAUDE-HAIKU
+    prefix: TP
+    domain: spec/templates/agent
+    file: spec/templates/agent/type_profiles/general.yaml
+  - id: TP-FRONTDESK-CLAUDE-HAIKU
+    prefix: TP
+    domain: spec/templates/agent
+    file: spec/templates/agent/type_profiles/general.yaml
+
+  # --- software dev profiles ---
+  - id: TP-SD-ARCHITECT-CLAUDE-OPUS
+    prefix: TP-SD
+    domain: spec/templates/agent
+    file: spec/templates/agent/type_profiles/software_dev.yaml
+  - id: TP-SD-ARCHITECT-CODEX-OPUS
+    prefix: TP-SD
+    domain: spec/templates/agent
+    file: spec/templates/agent/type_profiles/software_dev.yaml
+  - id: TP-SD-DEV-CLAUDE-SONNET
+    prefix: TP-SD
+    domain: spec/templates/agent
+    file: spec/templates/agent/type_profiles/software_dev.yaml
+  - id: TP-SD-DEV-CODEX-OPENAI
+    prefix: TP-SD
+    domain: spec/templates/agent
+    file: spec/templates/agent/type_profiles/software_dev.yaml
+  - id: TP-SD-DEV-CLAUDE-MINIMAX
+    prefix: TP-SD
+    domain: spec/templates/agent
+    file: spec/templates/agent/type_profiles/software_dev.yaml
+  - id: TP-SD-DEVOPS-CLAUDE-SONNET
+    prefix: TP-SD
+    domain: spec/templates/agent
+    file: spec/templates/agent/type_profiles/software_dev.yaml
+  - id: TP-SD-QA-CODEX-MEDIUM
+    prefix: TP-SD
+    domain: spec/templates/agent
+    file: spec/templates/agent/type_profiles/software_dev.yaml
+  - id: TP-SD-QA-CODEX-HIGH
+    prefix: TP-SD
+    domain: spec/templates/agent
+    file: spec/templates/agent/type_profiles/software_dev.yaml
+  - id: TP-SD-RESEARCHER-CODEX-HIGH
+    prefix: TP-SD
+    domain: spec/templates/agent
+    file: spec/templates/agent/type_profiles/software_dev.yaml
+  - id: TP-SD-UI-CLAUDE-SONNET
+    prefix: TP-SD
+    domain: spec/templates/agent
+    file: spec/templates/agent/type_profiles/software_dev.yaml
+
+  # --- quant trading profiles ---
+  - id: TP-QT-STRATEGIST-CLAUDE-OPUS
+    prefix: TP-QT
+    domain: spec/templates/agent
+    file: spec/templates/agent/type_profiles/quant_trading.yaml
+  - id: TP-QT-DATA-ENG-CLAUDE-SONNET
+    prefix: TP-QT
+    domain: spec/templates/agent
+    file: spec/templates/agent/type_profiles/quant_trading.yaml
+  - id: TP-QT-BACKTESTER-CODEX-HIGH
+    prefix: TP-QT
+    domain: spec/templates/agent
+    file: spec/templates/agent/type_profiles/quant_trading.yaml
+  - id: TP-QT-RISK-CLAUDE-HAIKU
+    prefix: TP-QT
+    domain: spec/templates/agent
+    file: spec/templates/agent/type_profiles/quant_trading.yaml
+  - id: TP-QT-RESEARCHER-CODEX-HIGH
+    prefix: TP-QT
+    domain: spec/templates/agent
+    file: spec/templates/agent/type_profiles/quant_trading.yaml
+
+  # --- video production profiles ---
+  - id: TP-VP-SCRIPTWRITER-CLAUDE-OPUS
+    prefix: TP-VP
+    domain: spec/templates/agent
+    file: spec/templates/agent/type_profiles/video_production.yaml
+  - id: TP-VP-EDITOR-CLAUDE-SONNET
+    prefix: TP-VP
+    domain: spec/templates/agent
+    file: spec/templates/agent/type_profiles/video_production.yaml
+  - id: TP-VP-PUBLISHER-CLAUDE-HAIKU
+    prefix: TP-VP
+    domain: spec/templates/agent
+    file: spec/templates/agent/type_profiles/video_production.yaml
+  - id: TP-VP-ANALYST-CLAUDE-SONNET
+    prefix: TP-VP
+    domain: spec/templates/agent
+    file: spec/templates/agent/type_profiles/video_production.yaml
+
+  # --- content creation profiles ---
+  - id: TP-CC-PLANNER-CLAUDE-SONNET
+    prefix: TP-CC
+    domain: spec/templates/agent
+    file: spec/templates/agent/type_profiles/content_creation.yaml
+  - id: TP-CC-WRITER-CLAUDE-OPUS
+    prefix: TP-CC
+    domain: spec/templates/agent
+    file: spec/templates/agent/type_profiles/content_creation.yaml
+  - id: TP-CC-WRITER-CLAUDE-SONNET
+    prefix: TP-CC
+    domain: spec/templates/agent
+    file: spec/templates/agent/type_profiles/content_creation.yaml
+  - id: TP-CC-EDITOR-CLAUDE-SONNET
+    prefix: TP-CC
+    domain: spec/templates/agent
+    file: spec/templates/agent/type_profiles/content_creation.yaml
+  - id: TP-CC-SEO-CLAUDE-HAIKU
+    prefix: TP-CC
+    domain: spec/templates/agent
+    file: spec/templates/agent/type_profiles/content_creation.yaml
+  - id: TP-CC-DISTRIBUTOR-CLAUDE-HAIKU
+    prefix: TP-CC
+    domain: spec/templates/agent
+    file: spec/templates/agent/type_profiles/content_creation.yaml

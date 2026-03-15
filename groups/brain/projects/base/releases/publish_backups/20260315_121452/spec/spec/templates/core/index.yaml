@@ -1,0 +1,29 @@
+# Core Template Layer
+
+version: "1.0"
+status: "phase2_canonical"
+
+description: |
+  Core 层只承载系统级公共规则，不承载角色语义或行业 workflow。
+
+canonical_sources:
+  base_template:
+    current_path: /brain/base/spec/templates/core/base_template.md
+    legacy_path: /brain/base/spec/templates/agent/base_template.md
+    status: "canonical_with_legacy_fallback"
+
+owned_concerns:
+  - LEP gates / approval delegation
+  - IPC 共性协议
+  - 延迟任务通知要求
+  - 公共错误处理
+  - 公共健康检查框架
+
+excluded_concerns:
+  - 角色专属职责
+  - 行业特有产出格式
+  - 某个角色的特殊 SOP
+
+migration_notes:
+  - "config_generator 切换后，core/base_template.md 为主路径"
+  - "保留 legacy /agent/base_template.md 作为兼容回退"

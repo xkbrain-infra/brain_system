@@ -1,0 +1,14 @@
+# LEP Profile: runtime-ops
+gate_overrides:
+  G-GATE-ROLLBACK-READY:
+    priority: CRITICAL
+    note: "运行时和基础设施修改必须具备回滚路径。"
+  G-GATE-DB-BACKUP:
+    priority: CRITICAL
+    note: "数据库相关操作必须先备份。"
+  G-GATE-DOCKER-STD:
+    priority: HIGH
+    note: "部署链路必须遵循 Docker 标准。"
+  G-GATE-NONBLOCKING-CMDS:
+    priority: CRITICAL
+    note: "运维命令不得阻塞 agent 主循环。"

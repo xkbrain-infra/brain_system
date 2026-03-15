@@ -1,0 +1,72 @@
+gate_id: G-GATE-ROLLBACK-READY
+name: Rollback-Ready Modification
+applies_to: [write, delete, move]
+rule: |
+  修改任何文件前，必须确保可回滚。根据文件类型选择对应策略：
+
+  策略 A — Git 管理的代码/配置文件：
+    - 修改前先 git commit 当前状态（确保 working tree clean）
+    - 修改后可通过 git revert/checkout 回滚
+    - 适用于：已在 git 仓库中的源码、配置、spec 文件
+
+  策略 B — 非 Git 管理的文件（运行时文件、外部配置等）：
+    - 先 cp 原文件到副本（/xkagent_infra/runtime/tmp/drafts/ 或同目录 .bak）
+    - 在副本上修改完成
+    - 经用户同意后替换原文件
+    - 适用于：runtime 配置、部署文件、外部系统配置
+
+  一言以蔽之：修改文件，必须有回滚的能力。
+scope: "**"
+
+exception:
+  - /brain/**/memory/**
+  - /xkagent_infra/runtime/tmp/**
+  - /xkagent_infra/runtime/logs/**
+  - "**/node_modules/**"
+  - "**/__pycache__/**"
+  - "**/.git/**"
+
+enforcement:
+  stage: pre_tool_use
+  method: python_inline
+  priority: CRITICAL
+
+  triggers:
+    tools: [Write, Edit, Bash]
+
+  strategy_selection:
+    git_managed:
+      check: "git ls-files --error-unmatch {file_path} 2>/dev/null"
+      action: "确认 git status clean 或先 commit"
+    non_git:
+      action: "cp {file_path} /xkagent_infra/runtime/tmp/drafts/{basename}.bak"
+
+  block_message: |
+    🚫 修改文件需要回滚能力 (G-ROLLBACK-READY)
+
+    文件: {file_path}
+
+    ❌ 禁止在没有回滚能力的情况下修改文件
+
+    ✅ 策略 A（Git 管理的文件）：
+    1. 确认 git status clean（或先 commit 当前状态）
+    2. 修改文件
+    3. 需要回滚时: git checkout -- {file_path}
+
+    ✅ 策略 B（非 Git 文件）：
+    1. 复制: cp {file_path} /xkagent_infra/runtime/tmp/drafts/{basename}.bak
+    2. 修改副本，展示 diff 给用户
+    3. 用户确认后替换原文件
+
+    例外（无需回滚）：
+    - memory/（Agent 自管理）
+    - runtime/tmp/（临时文件）
+    - runtime/logs/（日志）
+
+    参考：/brain/base/spec/core/lep.yaml (G-ROLLBACK-READY)
+bindings:
+  hooks:
+    stage: pre_tool_use
+    trigger_tools: [Write, Edit, Bash]
+  mcp_tools: []
+  related_skills: []

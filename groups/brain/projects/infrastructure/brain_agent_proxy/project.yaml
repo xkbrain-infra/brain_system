@@ -1,0 +1,9 @@
+---
+project:
+  id: brain_agent_proxy
+  name: brain_agent_proxy
+  version: 1.2.2
+organization:
+  org: xkagent_infra
+  group: brain
+  type: infrastructure_service

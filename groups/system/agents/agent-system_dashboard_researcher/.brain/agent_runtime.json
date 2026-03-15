@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "agent_name": "agent-system_dashboard_researcher",
+  "skill_bindings": {
+    "source": "/xkagent_infra/brain/infrastructure/config/agentctl/skill_bindings.yaml",
+    "resolved_skills": [
+      "lep"
+    ],
+    "role_skills": [
+      "lep"
+    ],
+    "agent_skills": [],
+    "workflow_skills": []
+  },
+  "lep_bindings": {
+    "source": "/xkagent_infra/brain/infrastructure/config/agentctl/lep_bindings.yaml",
+    "resolved_lep_profiles": [],
+    "role_lep_profiles": [],
+    "agent_lep_profiles": [],
+    "workflow_lep_profiles": []
+  },
+  "runtime": {
+    "command": "codex",
+    "args": [],
+    "env": {
+      "IS_SANDBOX": "1",
+      "BRAIN_TRANSPORT_MODE": "proxy",
+      "CODEX_HOME": "/xkagent_infra/groups/system/agents/agent-system_dashboard_researcher/.codex",
+      "BRAIN_SKILL_BINDINGS_FILE": "/xkagent_infra/brain/infrastructure/config/agentctl/skill_bindings.yaml",
+      "BRAIN_ENABLED_SKILLS": "lep",
+      "BRAIN_ROLE_DEFAULT_SKILLS": "lep"
+    },
+    "agent_type": "codex",
+    "use_claude_cli": false
+  }
+}

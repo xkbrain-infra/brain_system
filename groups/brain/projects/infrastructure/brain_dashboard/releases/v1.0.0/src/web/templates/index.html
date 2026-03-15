@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agent Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <script src="https://unpkg.com/htmx.org/dist/ext/sse.js"></script>
+    <style>
+        .status-online { color: #22c55e; }
+        .status-offline { color: #ef4444; }
+        .pulse { animation: pulse 2s infinite; }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-100 min-h-screen">
+    <div class="container mx-auto px-4 py-8">
+        <!-- Header -->
+        <header class="mb-8">
+            <h1 class="text-3xl font-bold text-white mb-2">🤖 Agent Dashboard</h1>
+            <p class="text-gray-400">Brain System Agent Monitor</p>
+        </header>
+
+        <!-- Stats Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8" id="stats">
+            <div class="bg-gray-800 rounded-lg p-4">
+                <div class="text-gray-400 text-sm">Total Agents</div>
+                <div class="text-2xl font-bold" id="total-count">-</div>
+            </div>
+            <div class="bg-gray-800 rounded-lg p-4">
+                <div class="text-gray-400 text-sm">Online</div>
+                <div class="text-2xl font-bold text-green-500" id="online-count">-</div>
+            </div>
+            <div class="bg-gray-800 rounded-lg p-4">
+                <div class="text-gray-400 text-sm">Offline</div>
+                <div class="text-2xl font-bold text-red-500" id="offline-count">-</div>
+            </div>
+            <div class="bg-gray-800 rounded-lg p-4">
+                <div class="text-gray-400 text-sm">Last Update</div>
+                <div class="text-lg" id="last-update">-</div>
+            </div>
+        </div>
+
+        <!-- Agents Table -->
+        <div class="bg-gray-800 rounded-lg overflow-hidden mb-8">
+            <div class="px-4 py-3 border-b border-gray-700">
+                <h2 class="text-xl font-semibold">Agents</h2>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full">
+                    <thead class="bg-gray-700">
+                        <tr>
+                            <th class="px-4 py-3 text-left text-sm font-medium">Status</th>
+                            <th class="px-4 py-3 text-left text-sm font-medium">Agent</th>
+                            <th class="px-4 py-3 text-left text-sm font-medium">Instance ID</th>
+                            <th class="px-4 py-3 text-left text-sm font-medium">Uptime</th>
+                            <th class="px-4 py-3 text-left text-sm font-medium">Last Heartbeat</th>
+                            <th class="px-4 py-3 text-left text-sm font-medium">Session</th>
+                        </tr>
+                    </thead>
+                    <tbody id="agents-table" class="divide-y divide-gray-700">
+                        <tr>
+                            <td colspan="6" class="px-4 py-8 text-center text-gray-500">
+                                Loading...
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Alerts Section -->
+        <div class="bg-gray-800 rounded-lg overflow-hidden">
+            <div class="px-4 py-3 border-b border-gray-700 flex justify-between items-center">
+                <h2 class="text-xl font-semibold">Recent Alerts</h2>
+                <button onclick="sendTestAlert()"
+                        class="px-3 py-1 bg-blue-600 hover:bg-blue-700 rounded text-sm">
+                    Send Test Alert
+                </button>
+            </div>
+            <div id="alerts-container" class="p-4">
+                <p class="text-gray-500">Loading alerts...</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // SSE Connection
+        const evtSource = new EventSource('/api/sse');
+
+        evtSource.onmessage = function(event) {
+            const data = JSON.parse(event.data);
+            if (data.error) {
+                console.error('SSE Error:', data.error);
+                return;
+            }
+            updateDashboard(data);
+        };
+
+        evtSource.onerror = function(err) {
+            console.error('SSE connection error:', err);
+        };
+
+        function updateDashboard(data) {
+            // Update stats
+            document.getElementById('total-count').textContent = data.count || 0;
+            document.getElementById('online-count').textContent = data.online_count || 0;
+            document.getElementById('offline-count').textContent = (data.count - data.online_count) || 0;
+            document.getElementById('last-update').textContent = new Date(data.timestamp * 1000).toLocaleTimeString();
+
+            // Update agents table
+            const tbody = document.getElementById('agents-table');
+            if (data.agents && data.agents.length > 0) {
+                tbody.innerHTML = data.agents.map(agent => `
+                    <tr class="hover:bg-gray-750">
+                        <td class="px-4 py-3">
+                            <span class="${agent.online ? 'status-online' : 'status-offline'}">
+                                ${agent.online ? '🟢' : '🔴'}
+                            </span>
+                        </td>
+                        <td class="px-4 py-3 font-medium">${agent.name || '-'}</td>
+                        <td class="px-4 py-3 text-gray-400 text-sm font-mono">${agent.instance_id || '-'}</td>
+                        <td class="px-4 py-3">${formatDuration(agent.uptime_seconds)}</td>
+                        <td class="px-4 py-3">${formatDuration(agent.heartbeat_age_seconds)} ago</td>
+                        <td class="px-4 py-3 text-gray-400 text-sm">${agent.tmux_session || '-'}</td>
+                    </tr>
+                `).join('');
+            } else {
+                tbody.innerHTML = '<tr><td colspan="6" class="px-4 py-8 text-center text-gray-500">No agents found</td></tr>';
+            }
+        }
+
+        function formatDuration(seconds) {
+            if (!seconds || seconds < 0) return '-';
+            if (seconds < 60) return seconds + 's';
+            if (seconds < 3600) return Math.floor(seconds / 60) + 'm ' + (seconds % 60) + 's';
+            if (seconds < 86400) {
+                const h = Math.floor(seconds / 3600);
+                const m = Math.floor((seconds % 3600) / 60);
+                return h + 'h ' + m + 'm';
+            }
+            const d = Math.floor(seconds / 86400);
+            const h = Math.floor((seconds % 86400) / 3600);
+            return d + 'd ' + h + 'h';
+        }
+
+        async function loadAlerts() {
+            try {
+                const response = await fetch('/api/alerts?limit=10');
+                const data = await response.json();
+                const container = document.getElementById('alerts-container');
+
+                if (data.alerts && data.alerts.length > 0) {
+                    container.innerHTML = data.alerts.map(alert => `
+                        <div class="flex items-center gap-3 py-2 border-b border-gray-700 last:border-0">
+                            <span class="text-sm">${alert.message || alert.alert_type}</span>
+                            <span class="text-gray-500 text-xs">${new Date(alert.created_at * 1000).toLocaleString()}</span>
+                        </div>
+                    `).join('');
+                } else {
+                    container.innerHTML = '<p class="text-gray-500">No alerts</p>';
+                }
+            } catch (err) {
+                console.error('Failed to load alerts:', err);
+            }
+        }
+
+        async function sendTestAlert() {
+            try {
+                const response = await fetch('/api/alerts/test', { method: 'POST' });
+                const data = await response.json();
+                alert(data.status === 'ok' ? 'Test alert sent!' : 'Failed to send alert');
+                loadAlerts();
+            } catch (err) {
+                alert('Error: ' + err.message);
+            }
+        }
+
+        // Initial load
+        loadAlerts();
+        setInterval(loadAlerts, 30000); // Refresh alerts every 30s
+    </script>
+</body>
+</html>

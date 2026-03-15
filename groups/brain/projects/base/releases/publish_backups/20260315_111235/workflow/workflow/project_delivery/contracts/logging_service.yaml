@@ -1,0 +1,116 @@
+logging_service:
+  id: "MWF-LOG-001"
+  version: "0.1"
+  intent: "定义多项目、多容器架构下的统一日志服务能力"
+
+positioning:
+  role: "service"
+  description: "logging service 负责结构化记录、分类持久化、时间线重建与跨层同步，不替代 observability/watchdog"
+  local_runtime_role: "sandbox 内负责接收 orchestrator、task runtime、timer、worker 产生的日志并落盘"
+  global_role: "brain infra 侧负责接收项目摘要日志、关键告警日志与审计保全日志"
+
+goals:
+  - "为每一步操作保留结构化日志"
+  - "支持全局时间线与项目内时间线重建"
+  - "支持按任务完成度、状态变化、责任主体进行分类"
+  - "支持多维度检索与事件关联"
+  - "支持按项目组|项目分类持久化到本地"
+
+log_classes:
+  timeline:
+    description: "全局或项目级关键时刻日志"
+    typical_events:
+      - "project.created"
+      - "sandbox.ready"
+      - "planning.passed"
+      - "release.completed"
+      - "audit.completed"
+  workflow:
+    description: "workflow 步骤推进日志"
+    typical_events:
+      - "workflow.intake.entered"
+      - "workflow.bootstrap.passed"
+      - "workflow.execution.resumed"
+  task_progress:
+    description: "任务完成度、状态变化、督办和 handoff 日志"
+    typical_events:
+      - "task.progress.updated"
+      - "task.blocked"
+      - "task.review.requested"
+      - "task.done"
+  agent_activity:
+    description: "agent 接受任务、心跳、阻塞、产物提交日志"
+    typical_events:
+      - "agent.task.accepted"
+      - "agent.heartbeat"
+      - "agent.blocked"
+  service_runtime:
+    description: "orchestrator、task manager、timer、release manager、audit orchestrator 的服务运行日志"
+    typical_events:
+      - "timer.trigger.sent"
+      - "task_manager.record.updated"
+      - "orchestrator.dispatch.completed"
+  release:
+    description: "stage/prod gate、部署、smoke、rollback 日志"
+    typical_events:
+      - "release.stage.passed"
+      - "release.prod.started"
+      - "release.rollback.triggered"
+  audit:
+    description: "审计输入、复查发现、materialization 路由日志"
+    typical_events:
+      - "audit.started"
+      - "audit.finding.created"
+      - "audit.finding.materialized"
+
+severity_levels:
+  - "DEBUG"
+  - "INFO"
+  - "WARNING"
+  - "ERROR"
+  - "CRITICAL"
+
+write_sources:
+  direct:
+    - "project orchestrator"
+    - "local task runtime"
+    - "timer service"
+    - "task manager"
+    - "release manager"
+    - "audit orchestrator"
+  mediated:
+    worker_agents: "worker 可通过 orchestrator 或 runtime collector 写日志，不直接写 brain 全局日志"
+
+workflow_integration:
+  rules:
+    - "每个 workflow step enter/pass/hold/fail 必须有对应 workflow log"
+    - "每个 task 状态变更必须同时追加 task event 和 task_progress log"
+    - "每个 escalation、release gate、audit finding 必须有可追踪日志"
+    - "report 生成时必须引用 timeline/log bundle"
+
+sync_policy:
+  local_first: true
+  upstream_rules:
+    - "DEBUG 默认仅保留在 sandbox 本地"
+    - "INFO 的 timeline/workflow/task_progress 摘要需要同步到 brain"
+    - "WARNING/ERROR/CRITICAL 必须同步到 brain global logging service"
+    - "audit/release 相关日志必须同步并长期保留"
+
+query_dimensions:
+  - "group_id"
+  - "project_id"
+  - "sandbox_id"
+  - "workflow_stage"
+  - "task_id"
+  - "agent_id"
+  - "service_name"
+  - "severity"
+  - "log_class"
+  - "event_type"
+  - "correlation_id"
+
+storage_principles:
+  - "日志必须 append-only，不允许静默覆盖"
+  - "结构化字段优先，不允许只存纯文本"
+  - "本地日志与全局摘要日志都必须可通过 project_id 追溯"
+  - "日志与 report/audit bundle 之间必须能双向关联"

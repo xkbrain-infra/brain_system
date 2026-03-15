@@ -1,0 +1,112 @@
+architecture_overview:
+  id: "MWF-ARCH-001"
+  version: "0.1"
+  title: "Brain Multicore Workflow Architecture"
+  intent: "定义 brain infra、sandbox、orchestrator、manager、release、audit 的职责边界"
+
+layers:
+  brain_infra:
+    role: "control_plane"
+    ownership: "single_instance"
+    responsibilities:
+      - "维护 workflow/spec/knowledge/evolution SSOT"
+      - "管理 sandbox 生命周期"
+      - "运行 global task manager"
+      - "管理 control IPC 与 registry"
+      - "承接 manager / PMO 治理决策"
+      - "承接 release manager 与 audit orchestrator"
+    must_not:
+      - "不直接承担具体项目编码、测试、review、发布执行"
+      - "不直接替代 project orchestrator 做 task dispatch"
+
+  project_sandbox:
+    role: "isolated_execution_pattern"
+    cardinality: "one_or_more"
+    definition: "sandbox 是隔离执行环境模式；当前默认 provider 是 docker_container"
+    current_default_provider: "docker_container"
+    responsibilities:
+      - "承载单项目或单工作域 execution 环境"
+      - "隔离代码副本、依赖、agents、日志、运行状态"
+      - "从内置 provider template 实例化，再按项目做适配"
+      - "运行本地 orchestrator 与 worker agents"
+      - "执行 coding/test/review/release_prep"
+    isolation:
+      filesystem: true
+      process: true
+      dependency: true
+      agent_runtime: true
+      host_brain_non_pollution: true
+
+  project_orchestrator:
+    role: "project_owner"
+    location: "inside_project_sandbox"
+    responsibilities:
+      - "初始化项目 plan 和 tasks"
+      - "推进 task state machine"
+      - "分配 worker agents"
+      - "接收 task report / review / test result"
+      - "同步 project snapshot 到 global task manager"
+      - "触发 release candidate ready"
+    must_not:
+      - "不直接替代 worker 完成所有实现"
+      - "不直接在 brain infra 上修改全局 SSOT"
+
+  global_task_manager:
+    role: "global_state_aggregator"
+    location: "brain_infra"
+    responsibilities:
+      - "维护全局 project/task/agent/orchestrator 索引"
+      - "接收 project snapshot / heartbeat / task summary / key events"
+      - "提供 manager board 和治理视图"
+      - "驱动 watchdog 和 timeout 检查"
+    data_scope:
+      detailed_runtime_logs: "kept_in_sandbox"
+      project_level_snapshot: "mirrored_globally"
+      key_task_summary: "mirrored_globally"
+
+  release_manager:
+    role: "release_owner"
+    location: "brain_infra"
+    responsibilities:
+      - "管理 release candidate registry"
+      - "执行 stage/prod gate"
+      - "调度 deploy and smoke verification"
+      - "在失败时触发 rollback workflow"
+
+  audit_orchestrator:
+    role: "audit_owner"
+    location: "brain_infra"
+    responsibilities:
+      - "执行 runtime audit 和 post-project audit"
+      - "提取 root cause 与 recurring failures"
+      - "输出 improvement actions"
+      - "将结论回写 knowledge/workflow/evolution"
+
+interaction_model:
+  control_plane:
+    description: "brain infra <-> sandbox 的跨容器治理与同步通道"
+    channels:
+      - "sandbox bootstrap"
+      - "project snapshot"
+      - "escalation"
+      - "release approval"
+      - "audit submission"
+
+  execution_plane:
+    description: "sandbox 内 orchestrator <-> worker agents 的执行通道"
+    channels:
+      - "task assignment"
+      - "task report"
+      - "review handoff"
+      - "test result"
+      - "release prep result"
+
+topology:
+  principle: "single brain, many isolated execution cells"
+  flow:
+    - "manager submits project requirement to brain infra"
+    - "brain infra selects sandbox provider and template, then provisions sandbox"
+    - "sandbox project orchestrator executes project workflow"
+    - "orchestrator syncs status to global task manager"
+    - "release manager handles publish"
+    - "audit orchestrator closes feedback loop"

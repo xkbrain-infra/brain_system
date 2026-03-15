@@ -1,0 +1,56 @@
+# Dependency Errors - 依赖错误
+# 依赖缺失、导入错误问题
+
+category: "dependency_errors"
+version: "1.0"
+last_updated: "2026-01-17"
+
+problems:
+  - id: "DEP-001"
+    category: "dependency_errors"
+    keywords: ["import", "module", "not found", "missing"]
+    error_patterns:
+      - "ModuleNotFoundError"
+      - "ImportError"
+      - "No module named"
+    description: "Python module not found"
+
+    solutions:
+      - id: "DEP-001-SOL-A"
+        description: "Install missing dependency"
+        confidence: "high"
+        risk_level: "low"
+        reversible: true
+
+        prerequisites:
+          - "pip_available == true"
+          - "write_permission == true"
+
+        steps:
+          - "Extract module name from error"
+          - "Check if module is in requirements.txt"
+          - "Install using pip: pip install {module}"
+          - "Retry import"
+
+        code_example: |
+          # In Docker container
+          docker exec {container} pip install {module}
+
+          # With pipenv
+          docker exec {container} pipenv install {module}
+
+        expected_outcome: "Module imported successfully"
+
+      - id: "DEP-001-SOL-B"
+        description: "Notify user - may require requirements.txt update"
+        confidence: "medium"
+        risk_level: "low"
+        reversible: true
+        auto_applicable: false
+
+        steps:
+          - "Log missing dependency"
+          - "Check if it's a new requirement"
+          - "Notify user to update requirements.txt"
+
+        expected_outcome: "User updates project dependencies"

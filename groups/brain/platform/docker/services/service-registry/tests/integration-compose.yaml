@@ -1,0 +1,187 @@
+name: service-registry-integration-test
+
+networks:
+  integration-net:
+    name: integration-net
+    driver: bridge
+
+volumes:
+  registry-data:
+
+services:
+  # 服务注册中心
+  service-registry:
+    build:
+      context: ../
+      dockerfile: Dockerfile
+    image: service-registry:v1.0
+    container_name: integration-registry
+    hostname: service-registry
+    networks:
+      - integration-net
+    ports:
+      - "18500:8500"
+    volumes:
+      - registry-data:/data
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8500
+      - AUTH_REQUIRED=false
+      - LOG_LEVEL=INFO
+
+  # 动态网关（Python 版本，用于测试集成）
+  brain-gateway:
+    image: python:3.11-slim
+    container_name: integration-gateway
+    hostname: brain-gateway
+    networks:
+      - integration-net
+    ports:
+      - "18080:8080"
+    volumes:
+      - ../gateway_integration.py:/app/gateway.py
+      - ../storage.py:/app/storage.py
+    working_dir: /app
+    environment:
+      - REGISTRY_URL=http://service-registry:8500
+      - REGISTRY_CACHE_TTL=10
+      - HOST=0.0.0.0
+      - PORT=8080
+    command:
+      - /bin/bash
+      - -c
+      - |
+        pip install flask requests -q
+        python gateway.py
+    depends_on:
+      - service-registry
+
+  # 模拟后端服务 1: task-manager
+  mock-task-manager:
+    image: python:3.11-slim
+    container_name: mock-task-manager
+    hostname: mock-task-manager
+    networks:
+      - integration-net
+    environment:
+      - REGISTRY_URL=http://service-registry:8500
+    command:
+      - /bin/bash
+      - -c
+      - |
+        pip install flask requests -q
+        cat > /app.py << 'PYEOF'
+        from flask import Flask, jsonify
+        import requests
+        import threading
+        import time
+        import os
+
+        app = Flask(__name__)
+        REGISTRY = os.environ.get('REGISTRY_URL')
+
+        @app.route("/")
+        def root():
+            return jsonify({"service": "task-manager", "status": "ok"})
+
+        @app.route("/tasks")
+        def tasks():
+            return jsonify({"tasks": [{"id": 1, "name": "test"}]})
+
+        @app.route("/health")
+        def health():
+            return jsonify({"status": "healthy"})
+
+        def register():
+            time.sleep(3)
+            try:
+                resp = requests.post(f"{REGISTRY}/api/v1/registry/services", json={
+                    "service_id": "task-manager-01",
+                    "service_name": "task_manager",
+                    "service_type": "http",
+                    "version": "1.0.0",
+                    "endpoints": [{"protocol": "http", "host": "mock-task-manager", "port": 8080}],
+                    "ttl": 30
+                })
+                print(f"Registered: {resp.status_code}")
+
+                while True:
+                    time.sleep(15)
+                    try:
+                        requests.post(f"{REGISTRY}/api/v1/registry/services/task-manager-01/heartbeat")
+                    except:
+                        pass
+            except Exception as e:
+                print(f"Error: {e}")
+
+        threading.Thread(target=register, daemon=True).start()
+        app.run(host="0.0.0.0", port=8080)
+        PYEOF
+        python /app.py
+    depends_on:
+      - service-registry
+
+  # 模拟后端服务 2: data-processor
+  mock-data-processor:
+    image: python:3.11-slim
+    container_name: mock-data-processor
+    hostname: mock-data-processor
+    networks:
+      - integration-net
+    environment:
+      - REGISTRY_URL=http://service-registry:8500
+    command:
+      - /bin/bash
+      - -c
+      - |
+        pip install flask requests -q
+        cat > /app.py << 'PYEOF'
+        from flask import Flask, jsonify
+        import requests
+        import threading
+        import time
+        import os
+
+        app = Flask(__name__)
+        REGISTRY = os.environ.get('REGISTRY_URL')
+
+        @app.route("/")
+        def root():
+            return jsonify({"service": "data-processor", "status": "ok"})
+
+        @app.route("/process", methods=["POST"])
+        def process():
+            return jsonify({"result": "processed"})
+
+        @app.route("/health")
+        def health():
+            return jsonify({"status": "healthy"})
+
+        def register():
+            time.sleep(4)
+            try:
+                resp = requests.post(f"{REGISTRY}/api/v1/registry/services", json={
+                    "service_id": "data-processor-01",
+                    "service_name": "data_processor",
+                    "service_type": "http",
+                    "version": "1.0.0",
+                    "endpoints": [{"protocol": "http", "host": "mock-data-processor", "port": 8080}],
+                    "ttl": 30
+                })
+                print(f"Registered: {resp.status_code}")
+
+                while True:
+                    time.sleep(15)
+                    try:
+                        requests.post(f"{REGISTRY}/api/v1/registry/services/data-processor-01/heartbeat")
+                    except:
+                        pass
+            except Exception as e:
+                print(f"Error: {e}")
+
+        threading.Thread(target=register, daemon=True).start()
+        app.run(host="0.0.0.0", port=8080)
+        PYEOF
+        python /app.py
+    depends_on:
+      - service-registry

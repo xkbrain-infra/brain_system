@@ -1,0 +1,105 @@
+service_rollout_order:
+  id: "MWF-ROLLOUT-001"
+  version: "0.1"
+  intent: "定义 multicore 最小可上线 service 集合、依赖关系与推荐 rollout 顺序"
+
+principles:
+  - "先上控制面基础设施，再上执行器"
+  - "先上 registry/schema/contract，再上持续运行 service"
+  - "每一阶段必须形成可验证的最小闭环"
+  - "非核心服务失败应优先降级，而不是拖垮全局"
+
+minimum_viable_stack:
+  phase_0_foundation:
+    services:
+      - "brain manager publish service"
+      - "config registry service"
+      - "global task manager"
+    outcome:
+      - "runtime package 可发布"
+      - "配置/端口/注册控制面可用"
+      - "全局状态存储可用"
+
+  phase_1_execution_core:
+    services:
+      - "project orchestrator"
+      - "timer service"
+      - "sandbox local task runtime"
+    outcome:
+      - "sandbox 内可建 task graph、分发 task、处理 timer trigger"
+
+  phase_2_visibility:
+    services:
+      - "logging service"
+      - "global sync pipeline"
+      - "watchdog"
+    outcome:
+      - "timeline/task_progress/service logs 可落盘"
+      - "snapshot/event/log summary 可上卷"
+      - "卡死/失联/漏推进可发现"
+    degrade_mode:
+      - "logging unavailable -> local logging only"
+      - "watchdog unavailable -> execution continues in degraded monitoring mode"
+
+  phase_3_delivery:
+    services:
+      - "release manager"
+      - "audit orchestrator"
+    outcome:
+      - "release gate 和 audit/follow-up 闭环可运行"
+    degrade_mode:
+      - "release manager unavailable -> execution may continue, release blocked"
+      - "audit orchestrator unavailable -> delivery may complete, close blocked"
+
+dependency_graph:
+  - "brain manager publish service -> runtime package publication"
+  - "config registry service -> bootstrap / service startup / release config resolution"
+  - "global task manager -> orchestrator global sync / watchdog / audit input"
+  - "project orchestrator -> task modeling / execution / release candidate"
+  - "timer service -> orchestrator supervision and trigger handling"
+  - "logging service -> observability / report / audit traceability"
+  - "release manager -> project orchestrator + config registry + logging service"
+  - "audit orchestrator -> release manager + logging service + global task manager"
+
+recommended_order:
+  - step: 1
+    item: "publish runtime architecture package via brain manager"
+    depends_on: []
+  - step: 2
+    item: "bring up config registry service and runtime config schema"
+    depends_on: [1]
+  - step: 3
+    item: "align and extend global task manager state/project snapshot storage"
+    depends_on: [1]
+  - step: 4
+    item: "bring up project orchestrator skeleton"
+    depends_on: [2, 3]
+  - step: 5
+    item: "attach timer service to orchestrator trigger flow"
+    depends_on: [4]
+  - step: 6
+    item: "attach logging service and global sync/log rollup"
+    depends_on: [3, 4, 5]
+  - step: 7
+    item: "enable watchdog and escalation checks"
+    depends_on: [3, 5, 6]
+  - step: 8
+    item: "enable release manager and release gates"
+    depends_on: [2, 4, 6]
+  - step: 9
+    item: "enable audit orchestrator and feedback materialization"
+    depends_on: [3, 6, 8]
+
+milestone_alignment:
+  - "M1 + M12 -> step 1"
+  - "M11 -> step 2"
+  - "M2 + M3 -> step 3 and step 4"
+  - "M3 -> step 5"
+  - "M10 -> step 6"
+  - "M3 + M7 -> step 7"
+  - "M8 -> step 8"
+  - "M9 -> step 9"
+  - "M18 -> rollout degrade-mode acceptance"
+
+degrade_mode_reference:
+  - "48_rollout_degrade_modes.yaml"

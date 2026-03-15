@@ -1,0 +1,56 @@
+gate_id: G-GATE-NAWP
+name: No Action Without Plan
+applies_to: [write, delete, move, git]
+rule: 修改操作需要 Plan + PMO 批准
+exception: /brain/**/memory/**
+
+enforcement:
+  stage: pre_tool_use
+  method: plan_mode_check
+  priority: CRITICAL
+  note: "需要 Plan mode 集成 - 当前为推荐性检查"
+
+  triggers:
+    tools: [Write, Edit, Bash]
+    protected_areas:
+      - "/brain/base/spec/**"
+      - "/brain/base/workflow/**"
+      - "/brain/infrastructure/service/**"
+
+  exceptions:
+    - "/brain/**/memory/**"
+    - "/xkagent_infra/runtime/tmp/**"
+    - "/xkagent_infra/runtime/logs/**"
+
+  config:
+    check_plan_file: true
+    plan_dir: "/root/.claude/plans/"
+    require_pmo_approval: true
+
+  warn_message: |
+    💡 建议先创建 Plan (G-NAWP)
+
+    操作: {operation}
+    文件: {file_path}
+
+    修改核心系统需要先创建 Plan 并获得 PMO 批准：
+    1. 使用 EnterPlanMode 创建 Plan
+    2. 在 Plan 中详细描述修改内容
+    3. 使用 ExitPlanMode 提交 Plan
+    4. 等待 PMO 批准
+
+    保护区域：
+    - /brain/base/spec/** (核心规范)
+    - /brain/infrastructure/** (基础设施)
+
+    例外：memory/, tmp/, logs/ 目录不需要 Plan
+
+    这是推荐性检查（需要 Plan mode 集成）。
+
+    参考：/brain/base/spec/core/lep.yaml (G-NAWP)
+bindings:
+  hooks:
+    stage: pre_tool_use
+    trigger_tools: [Write, Edit, Bash]
+  mcp_tools: []
+  related_skills: []

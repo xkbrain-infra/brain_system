@@ -1,0 +1,95 @@
+# /brain/base/evolution/proposal.yaml
+# Upgrade Proposal 的 schema、生命周期和审批流程
+
+upgrade_proposal:
+  id: "EVO-PROPOSAL-001"
+  version: "0.1"
+  intent: "定义 Evolution 的核心产出物 — Upgrade Proposal 的格式与流转"
+
+# ============================================
+# Proposal Schema
+# ============================================
+schema:
+  required_fields:
+    - id              # UP-{group}-{seq} 如 UP-SYS-001
+    - title           # 简明标题
+    - category        # 分类
+    - priority        # 优先级
+    - status          # 生命周期状态
+    - summary         # 一句话描述改进目标
+    - current_state   # 当前状态评估 (问题/瓶颈/机会)
+    - proposed_change # 提议的变更 (具体到模块/接口/流程)
+    - expected_impact # 预期影响 (性能/质量/效率/成本)
+    - cost_assessment # 实现成本评估 (来自 dev)
+    - risk_assessment # 风险评估
+    - assessors       # 评估参与者列表
+    - created_at
+    - updated_at
+
+  optional_fields:
+    - affected_domains  # 影响的四域 [spec, workflow, knowledge, evolution]
+    - dependencies      # 依赖的其他提案或项目
+    - alternatives      # 备选方案 (为什么没选)
+    - knowledge_refs    # 关联的 knowledge 条目 (故障案例/经验)
+
+  category_enum:
+    - architecture_improvement   # 架构改进
+    - capability_extension       # 能力扩展
+    - automation_opportunity     # 自动化机会
+    - quality_improvement        # 质量提升
+    - tech_debt_reduction        # 技术债清理
+    - process_optimization       # 流程优化
+
+  priority_enum:
+    - critical    # 阻塞系统演进，必须立即处理
+    - high        # 显著改善，下一版本纳入
+    - medium      # 有价值，排入 roadmap
+    - low         # 锦上添花，放入 backlog
+
+# ============================================
+# 生命周期
+# ============================================
+lifecycle:
+  states: [DRAFT, REVIEW, APPROVED, SCHEDULED, IN_PROGRESS, ABSORBED, REJECTED, DEFERRED]
+  transitions:
+    - "DRAFT -> REVIEW: architect 完成提案初稿"
+    - "REVIEW -> APPROVED: Evolution 汇总会议审批通过"
+    - "REVIEW -> REJECTED: 评估后认为不可行或不必要"
+    - "REVIEW -> DEFERRED: 有价值但当前优先级不够，延后"
+    - "APPROVED -> SCHEDULED: PMO 纳入 roadmap，排入版本计划"
+    - "SCHEDULED -> IN_PROGRESS: 对应 spec 的 S1 已启动"
+    - "IN_PROGRESS -> ABSORBED: 对应 Project RELEASED，提案内容已落地"
+    - "DEFERRED -> REVIEW: 下次 evolution 评估时重新审视"
+
+  rules:
+    - "REJECTED 提案必须记录原因"
+    - "DEFERRED 提案必须在下次 evolution 周期中重新评审"
+    - "ABSORBED 后提案归档，关联的 Project ID 记录在案"
+
+# ============================================
+# 审批流程
+# ============================================
+approval:
+  principle: "PMO 是组内全权审批代理，负责评估流程和审批决策。PMO 可酌情上报 user，user 保留最终覆盖权。"
+  participants:
+    - role: "architect"
+      responsibility: "技术可行性评估"
+    - role: "dev"
+      responsibility: "实现成本评估"
+    - role: "qa"
+      responsibility: "质量影响评估"
+    - role: "pmo"
+      responsibility: "组织评估流程、汇总各方意见、审批决策（可酌情上报 user）"
+  decision_flow:
+    consensus: "各角色达成共识 → PMO 汇总报告 → PMO 审批决策"
+    conflict: "存在无法调和的分歧 → PMO 整理各方观点与理由 → PMO 裁决（可上报 user）"
+    rule: "PMO 是组内全权审批代理。user 保留最终覆盖权，可随时通过 frontdesk 介入。"
+
+# ============================================
+# 存储
+# ============================================
+storage:
+  active_proposals: "{group_root}/evolution/proposals/"
+  archived_proposals: "{group_root}/evolution/archive/"
+  roadmap: "{group_root}/evolution/roadmap.yaml"
+  naming: "UP-{GROUP}-{SEQ}.yaml"

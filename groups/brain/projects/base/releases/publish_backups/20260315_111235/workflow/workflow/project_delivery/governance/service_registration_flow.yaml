@@ -1,0 +1,40 @@
+service_registration_flow:
+  id: "MWF-CFG-002"
+  version: "0.1"
+  intent: "定义 sandbox bootstrap 与 service lifecycle 中的配置申请、注册与 supervisor 挂载流程"
+
+bootstrap_flow:
+  summary: "项目 sandbox 启动时必须先完成配置解析与服务注册"
+  steps:
+    - "bootstrap pipeline 请求 GET_ENV_BASELINE"
+    - "bootstrap pipeline 为待启动 service 申请 RESERVE_SERVICE_NAME"
+    - "bootstrap pipeline 为每个监听 service 调用 ALLOCATE_PORT"
+    - "bootstrap pipeline 生成 service config draft 并 PUT_CONFIG_VERSION"
+    - "bootstrap pipeline 调用 REGISTER_SUPERVISOR 挂载 supervisor spec"
+    - "service 启动后调用 REGISTER_ENDPOINT"
+    - "project orchestrator 调用 REGISTER_SERVICE 完成 service registry"
+
+runtime_update_flow:
+  summary: "运行中新增/变更 service 时必须复用同一控制面流程"
+  steps:
+    - "orchestrator 请求新 config 或 override"
+    - "config registry 校验 scope 和 environment compatibility"
+    - "如涉及监听端口，重新申请或扩容 port allocation"
+    - "如涉及托管进程，更新 supervisor spec version"
+    - "变更完成后刷新 active endpoint 和 config version refs"
+
+release_flow_integration:
+  rules:
+    - "stage/prod release 前必须解析目标环境 config version"
+    - "未登记 endpoint 的 service 不得进入 release candidate 依赖集合"
+    - "release report 必须记录 config version refs"
+
+failure_handling:
+  hold_conditions:
+    - "port allocation failed"
+    - "service_name conflict unresolved"
+    - "supervisor registration failed"
+    - "required config missing"
+  escalation:
+    - "bootstrap hold -> manager/PMO visibility"
+    - "runtime config drift -> audit + release hold"

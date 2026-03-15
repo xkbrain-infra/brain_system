@@ -1,0 +1,417 @@
+workflow_spec_checklist:
+  id: "MWF-SPEC-CHECKLIST-001"
+  version: "0.2"
+  intent: "定义 project_delivery workflow 单次执行的标准 checklist，总结一次 workflow 至少要完成多少个检查点"
+
+summary:
+  total_base_items: 72
+  stage_item_counts:
+    intake: 6
+    research: 8
+    bootstrap: 6
+    planning: 12
+    task_modeling: 8
+    execution: 12
+    release: 8
+    audit: 7
+    feedback: 5
+  severity_counts:
+    critical: 34
+    high: 32
+    medium: 6
+  rule:
+    - "这 72 个 item 是 workflow 基线，不得静默删除"
+    - "项目可以追加 extension items，但不能替代 base items"
+
+severity_model:
+  critical: "缺失会直接阻断阶段通过门或导致完成度声明不可信"
+  high: "缺失会显著降低交付质量、可验证性或可审计性"
+  medium: "缺失不会立即阻断流程，但会造成治理或追踪缺口"
+
+stages:
+  - stage: intake
+    required_items:
+      - item_id: "INT-001"
+        title: "确认 group 归属与 project root 位置"
+        severity: critical
+        done_when: "group_id、group_root、project_root 可解析且合法"
+        required_evidence: ["group_resolution_record", "project_root_path"]
+      - item_id: "INT-002"
+        title: "记录需求目标"
+        severity: critical
+        done_when: "目标已形成结构化输入"
+        required_evidence: ["goal_statement"]
+      - item_id: "INT-003"
+        title: "记录范围边界与非目标"
+        severity: high
+        done_when: "scope 和非目标已明确"
+        required_evidence: ["scope_statement", "non_goals"]
+      - item_id: "INT-004"
+        title: "定义成功标准"
+        severity: critical
+        done_when: "success_criteria 可用于后续验收"
+        required_evidence: ["success_criteria"]
+      - item_id: "INT-005"
+        title: "识别发起人、owner、关键干系人"
+        severity: medium
+        done_when: "owner 和关键干系人明确"
+        required_evidence: ["stakeholder_list"]
+      - item_id: "INT-006"
+        title: "确认立项最小条件成立"
+        severity: critical
+        done_when: "进入 research/planning 的前置条件明确"
+        required_evidence: ["intake_decision"]
+
+  - stage: research
+    required_items:
+      - item_id: "RES-001"
+        title: "识别关键技术约束"
+        severity: high
+        done_when: "关键技术约束已记录"
+        required_evidence: ["technical_constraints"]
+      - item_id: "RES-002"
+        title: "识别关键业务约束"
+        severity: high
+        done_when: "关键业务约束已记录"
+        required_evidence: ["business_constraints"]
+      - item_id: "RES-003"
+        title: "识别外部系统与集成约束"
+        severity: high
+        done_when: "外部依赖和集成边界已记录"
+        required_evidence: ["integration_constraints", "dependency_inventory"]
+      - item_id: "RES-004"
+        title: "识别现有资产与复用基线"
+        severity: medium
+        done_when: "可复用系统、代码、模板、流程已盘点"
+        required_evidence: ["baseline_asset_inventory"]
+      - item_id: "RES-005"
+        title: "形成候选方案列表"
+        severity: medium
+        done_when: "至少有推荐方案和备选方案"
+        required_evidence: ["solution_options"]
+      - item_id: "RES-006"
+        title: "给出推荐路径"
+        severity: critical
+        done_when: "形成推荐路径和选择理由"
+        required_evidence: ["recommended_path", "decision_rationale"]
+      - item_id: "RES-007"
+        title: "形成风险输入"
+        severity: critical
+        done_when: "主要风险已识别并分级"
+        required_evidence: ["risk_list"]
+      - item_id: "RES-008"
+        title: "输出可供 planning 消费的 research_report"
+        severity: critical
+        done_when: "research_report 可直接输入 planning"
+        required_evidence: ["research_report"]
+
+  - stage: bootstrap
+    required_items:
+      - item_id: "BTS-001"
+        title: "准备 sandbox 或执行环境"
+        severity: critical
+        done_when: "执行环境可用且来源合法"
+        required_evidence: ["environment_ready_record"]
+      - item_id: "BTS-002"
+        title: "确认环境模板或基线来源"
+        severity: high
+        done_when: "模板、镜像或基线来源明确"
+        required_evidence: ["baseline_source_ref"]
+      - item_id: "BTS-003"
+        title: "确认 runtime 与配置基线"
+        severity: high
+        done_when: "runtime/config baseline 明确"
+        required_evidence: ["runtime_baseline", "config_baseline"]
+      - item_id: "BTS-004"
+        title: "确认 service、port、dependency 边界"
+        severity: high
+        done_when: "service、port、dependency 边界明确"
+        required_evidence: ["service_dependency_inventory", "port_plan"]
+      - item_id: "BTS-005"
+        title: "确认 secrets、access、external prerequisites"
+        severity: high
+        done_when: "外部访问与凭据前置条件已满足或显式阻塞"
+        required_evidence: ["access_check", "secret_readiness"]
+      - item_id: "BTS-006"
+        title: "完成 bootstrap 验证"
+        severity: critical
+        done_when: "bootstrap_verification_report 已形成"
+        required_evidence: ["bootstrap_verification_report"]
+
+  - stage: planning
+    required_items:
+      - item_id: "PLN-001"
+        title: "定义完整交付目标"
+        severity: critical
+        done_when: "delivery_target_mode 和 deliverables 明确"
+        required_evidence: ["delivery_target_mode", "deliverables"]
+      - item_id: "PLN-002"
+        title: "定义非目标与交付边界"
+        severity: high
+        done_when: "边界和非目标明确"
+        required_evidence: ["scope_boundary", "non_goals"]
+      - item_id: "PLN-003"
+        title: "定义成功指标与完成判据"
+        severity: critical
+        done_when: "success criteria 可映射到验证"
+        required_evidence: ["success_criteria", "acceptance_mapping"]
+      - item_id: "PLN-004"
+        title: "定义实现语言与 runtime"
+        severity: high
+        done_when: "implementation_language 和 runtime_stack 完整"
+        required_evidence: ["implementation_language", "runtime_stack"]
+      - item_id: "PLN-005"
+        title: "定义工程规范与质量门"
+        severity: high
+        done_when: "engineering_standards 和 quality gates 完整"
+        required_evidence: ["engineering_standards", "quality_gates"]
+      - item_id: "PLN-006"
+        title: "定义目标架构"
+        severity: critical
+        done_when: "architecture_summary 完整"
+        required_evidence: ["architecture_summary"]
+      - item_id: "PLN-007"
+        title: "定义模块拆分"
+        severity: high
+        done_when: "modules 可支持 task 建模"
+        required_evidence: ["modules"]
+      - item_id: "PLN-008"
+        title: "定义接口与关键数据流"
+        severity: high
+        done_when: "interfaces 和关键数据流明确"
+        required_evidence: ["interfaces", "critical_path"]
+      - item_id: "PLN-009"
+        title: "定义复杂度与主要工作包估算"
+        severity: high
+        done_when: "complexity_estimate 和主要工作包估算完成"
+        required_evidence: ["complexity_estimate", "work_package_estimate"]
+      - item_id: "PLN-010"
+        title: "定义外部集成、依赖与并行策略"
+        severity: high
+        done_when: "integration_plan、dependency_strategy、parallelism_strategy 完整"
+        required_evidence: ["integration_plan", "dependency_strategy", "parallelism_strategy"]
+      - item_id: "PLN-011"
+        title: "定义里程碑、角色与资源假设"
+        severity: high
+        done_when: "milestones、role_roster、capacity assumptions 完整"
+        required_evidence: ["milestones", "role_roster", "capacity_plan"]
+      - item_id: "PLN-012"
+        title: "定义测试、QA、release、audit 路径"
+        severity: critical
+        done_when: "validation_path、test_plan、qa_plan、release_path、audit_checkpoints 完整"
+        required_evidence: ["test_plan", "qa_plan", "release_path", "audit_checkpoints"]
+
+  - stage: task_modeling
+    required_items:
+      - item_id: "TSK-001"
+        title: "deliverables 映射为 task graph"
+        severity: critical
+        done_when: "所有 deliverables 至少有一个 task 或 task group 覆盖"
+        required_evidence: ["deliverable_task_mapping", "task_graph"]
+      - item_id: "TSK-002"
+        title: "区分 task 与 todo"
+        severity: high
+        done_when: "没有把内部 todo 误建模为 task"
+        required_evidence: ["granularity_policy"]
+      - item_id: "TSK-003"
+        title: "校验 task 粒度"
+        severity: high
+        done_when: "task 不过粗也不过细"
+        required_evidence: ["task_granularity_review"]
+      - item_id: "TSK-004"
+        title: "明确 owner 与 participants"
+        severity: critical
+        done_when: "task_graph 的 owner/participants 分配可执行"
+        required_evidence: ["owner_assignment_rules", "task_graph"]
+      - item_id: "TSK-005"
+        title: "明确 reviewer 与 validation owner"
+        severity: high
+        done_when: "review/validation 责任明确"
+        required_evidence: ["reviewer_assignment_rules", "validation_ownership"]
+      - item_id: "TSK-006"
+        title: "明确 depends_on、trigger、conflict"
+        severity: critical
+        done_when: "依赖、触发和冲突关系可执行"
+        required_evidence: ["dependency_rules", "trigger_rules", "conflict_rules"]
+      - item_id: "TSK-007"
+        title: "定义 ready、deferred、blocked seed"
+        severity: medium
+        done_when: "初始 ready/deferred/blocked 集合可解释"
+        required_evidence: ["initial_ready_set", "deferred_set", "blocked_by_design_set"]
+      - item_id: "TSK-008"
+        title: "显式建模 verification、QA、release 前置任务"
+        severity: critical
+        done_when: "verification、QA、release 前置任务不能隐含在 notes 中"
+        required_evidence: ["verification_task_mapping", "task_design_report"]
+
+  - stage: execution
+    required_items:
+      - item_id: "EXE-001"
+        title: "装载已批准的 task graph"
+        severity: critical
+        done_when: "execution 使用的 task graph 来源明确且已批准"
+        required_evidence: ["approved_task_graph_ref"]
+      - item_id: "EXE-002"
+        title: "初始化 project snapshot 与 checklist baseline"
+        severity: high
+        done_when: "snapshot 与 checklist baseline 已装载"
+        required_evidence: ["project_snapshot", "spec_checklist_ref"]
+      - item_id: "EXE-003"
+        title: "计算 READY set"
+        severity: critical
+        done_when: "READY set 可解释且可重算"
+        required_evidence: ["ready_set_snapshot"]
+      - item_id: "EXE-004"
+        title: "持久化 assignment intent"
+        severity: critical
+        done_when: "派发前 assignment intent 已持久化"
+        required_evidence: ["assignment_record"]
+      - item_id: "EXE-005"
+        title: "执行任务派发"
+        severity: critical
+        done_when: "任务派发有 dispatch record 和 ack"
+        required_evidence: ["dispatch_record", "dispatch_ack"]
+      - item_id: "EXE-006"
+        title: "持久化状态变更与事件历史"
+        severity: critical
+        done_when: "关键状态变更进入 task manager/event history"
+        required_evidence: ["task_event_history"]
+      - item_id: "EXE-007"
+        title: "执行 review 流程"
+        severity: high
+        done_when: "需要 review 的任务未绕过 REVIEW"
+        required_evidence: ["review_records"]
+      - item_id: "EXE-008"
+        title: "执行 test 流程"
+        severity: high
+        done_when: "需要测试的任务具备 test evidence"
+        required_evidence: ["test_results"]
+      - item_id: "EXE-009"
+        title: "执行 QA 流程"
+        severity: high
+        done_when: "需要 QA 的任务具备 QA evidence"
+        required_evidence: ["qa_records"]
+      - item_id: "EXE-010"
+        title: "处理 blocked、retry、rework"
+        severity: high
+        done_when: "blocked/retry/rework 有明确记录和处理动作"
+        required_evidence: ["blocker_history", "rework_records"]
+      - item_id: "EXE-011"
+        title: "更新里程碑进度与项目跟踪"
+        severity: medium
+        done_when: "里程碑状态和 tracking summary 已更新"
+        required_evidence: ["milestone_summary", "tracking_update"]
+      - item_id: "EXE-012"
+        title: "沉淀关键 deliverable evidence"
+        severity: critical
+        done_when: "artifact_refs、event history、测试结果可追溯"
+        required_evidence: ["artifact_refs", "evidence_bundle"]
+
+  - stage: release
+    required_items:
+      - item_id: "REL-001"
+        title: "形成 release candidate"
+        severity: critical
+        done_when: "candidate 记录已生成"
+        required_evidence: ["release_candidate_record"]
+      - item_id: "REL-002"
+        title: "完成 build 汇总"
+        severity: high
+        done_when: "build_summary 完整"
+        required_evidence: ["build_summary"]
+      - item_id: "REL-003"
+        title: "完成 review 汇总"
+        severity: high
+        done_when: "review_summary 完整"
+        required_evidence: ["review_summary"]
+      - item_id: "REL-004"
+        title: "完成 test 汇总"
+        severity: high
+        done_when: "test_summary 完整"
+        required_evidence: ["test_summary"]
+      - item_id: "REL-005"
+        title: "完成 stage gate"
+        severity: critical
+        done_when: "stage gate 结果明确"
+        required_evidence: ["stage_gate_result"]
+      - item_id: "REL-006"
+        title: "完成生产发布决策"
+        severity: critical
+        done_when: "production deployment decision 明确"
+        required_evidence: ["approval_chain", "production_decision"]
+      - item_id: "REL-007"
+        title: "完成 prod smoke 与 rollback 准备"
+        severity: critical
+        done_when: "prod smoke 和 rollback 路径明确"
+        required_evidence: ["prod_smoke_result", "rollback_plan"]
+      - item_id: "REL-008"
+        title: "形成 release_report"
+        severity: critical
+        done_when: "release_report 字段完整并可审计"
+        required_evidence: ["release_report"]
+
+  - stage: audit
+    required_items:
+      - item_id: "AUD-001"
+        title: "收集 timeline 与 snapshot"
+        severity: high
+        done_when: "timeline、snapshot history 齐全"
+        required_evidence: ["timeline_log_ref", "project_snapshot_history_ref"]
+      - item_id: "AUD-002"
+        title: "收集 task history 与 delivery/release report"
+        severity: critical
+        done_when: "task history、delivery report、release report 齐全"
+        required_evidence: ["task_event_history_ref", "delivery_report_ref", "release_report_ref"]
+      - item_id: "AUD-003"
+        title: "比对标准 checklist 与实际执行证据"
+        severity: critical
+        done_when: "workflow checklist、project checklist、execution evidence 已对比"
+        required_evidence: ["spec_checklist_ref", "checklist_history_ref", "evidence_crosscheck"]
+      - item_id: "AUD-004"
+        title: "识别并分类 findings"
+        severity: critical
+        done_when: "major findings 已分类"
+        required_evidence: ["finding_list", "severity_summary"]
+      - item_id: "AUD-005"
+        title: "完成 root cause 分析"
+        severity: critical
+        done_when: "高优先级 findings 有 root cause"
+        required_evidence: ["root_causes"]
+      - item_id: "AUD-006"
+        title: "完成 coverage gap 分析"
+        severity: high
+        done_when: "漏项、伪完成、缺证据完成已识别"
+        required_evidence: ["checklist_coverage_assessment"]
+      - item_id: "AUD-007"
+        title: "materialize follow-up actions"
+        severity: critical
+        done_when: "高优先级问题已转成 follow-up item 或正式 patch proposal"
+        required_evidence: ["improvement_actions", "materialized_followups"]
+
+  - stage: feedback
+    required_items:
+      - item_id: "FDB-001"
+        title: "将改进项路由到目标域"
+        severity: high
+        done_when: "knowledge/workflow/spec/evolution 目标域明确"
+        required_evidence: ["target_domains"]
+      - item_id: "FDB-002"
+        title: "明确 follow-up owner 与后续路径"
+        severity: high
+        done_when: "每条 follow-up 都有 owner 和处理路径"
+        required_evidence: ["followup_owner_map"]
+      - item_id: "FDB-003"
+        title: "将 follow-up 挂到可见 board 或 backlog"
+        severity: high
+        done_when: "follow-up item 在 board/backlog 可见"
+        required_evidence: ["board_visibility_record"]
+      - item_id: "FDB-004"
+        title: "完成项目关闭前闭环确认"
+        severity: critical
+        done_when: "没有未解释的 required open items"
+        required_evidence: ["closure_gate_check"]
+      - item_id: "FDB-005"
+        title: "归档完成度与改进结果"
+        severity: medium
+        done_when: "项目关闭记录可回溯完成度和后续动作"
+        required_evidence: ["closure_record", "archive_ref"]

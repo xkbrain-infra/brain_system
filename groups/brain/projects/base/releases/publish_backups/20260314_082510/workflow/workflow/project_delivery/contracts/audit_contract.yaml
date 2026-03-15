@@ -1,0 +1,84 @@
+audit_contract:
+  id: "MWF-AUDIT-001"
+  version: "0.1"
+  intent: "细化 audit 阶段的输入、检查维度、根因分析、改进项与 materialization gate"
+
+audit_positioning:
+  role: "post_execution_and_post_release_review_phase"
+  description: "audit 负责对执行、发布和治理链做复查，并将问题 materialize 为可追踪改进行动"
+
+required_inputs:
+  - audit_input_bundle
+  - delivery_report
+  - release_report
+  - spec_checklist
+  - spec_checklist_history
+  - task_event_history
+  - project_snapshot_history
+  - blocker_history
+  - escalation_history
+
+audit_dimensions:
+  execution_quality:
+    checks:
+      - "task 是否按状态机推进"
+      - "handoff 是否清晰"
+      - "是否出现异常 rework/retry"
+  planning_quality:
+    checks:
+      - "planning 是否低估模块/接口/联调复杂度"
+      - "计划与实际偏差是否可解释"
+  spec_coverage_quality:
+    checks:
+      - "workflow 要求点是否都进入 spec checklist"
+      - "完成项是否都有足够 evidence"
+      - "是否存在静默漏项、伪完成或未审批 waive"
+  release_quality:
+    checks:
+      - "release gate 是否完整"
+      - "stage/prod smoke 是否充分"
+      - "rollback 准备是否到位"
+  supervision_quality:
+    checks:
+      - "timer/watchdog 是否及时触发"
+      - "orchestrator 是否及时处理 stale/block"
+  environment_quality:
+    checks:
+      - "dev/stage/prod 环境是否满足设计"
+      - "环境差异是否引发问题"
+
+root_cause_rules:
+  required_outputs:
+    - finding
+    - root_cause
+    - evidence_refs
+    - severity
+    - recommended_action
+  rule:
+    - "每个高优先级 finding 必须有 root cause，不允许只有表象"
+
+materialization_gate:
+  id: "AUDIT_MATERIALIZED"
+  rule: "高优先级和重复性问题必须转成 follow-up task/project 或正式 patch proposal"
+  required_checks:
+    followups_created:
+      description: "高优先级 findings 已生成 follow-up item"
+    target_domains_defined:
+      description: "每个改进项已分配 knowledge/workflow/spec/evolution 目标域"
+    owners_defined:
+      description: "每个改进项已明确 owner"
+    board_visible:
+      description: "follow-up item 在 manager board 上可见"
+    checklist_gaps_materialized:
+      description: "漏项、伪完成和缺证据完成已转成 follow-up item 或规则修补"
+
+outcomes:
+  completed:
+    status: DONE
+    conditions:
+      - "audit report completed"
+      - "required follow-ups materialized"
+  incomplete:
+    status: ACTIONS_DRAFTED
+    conditions:
+      - "report exists but materialization incomplete"

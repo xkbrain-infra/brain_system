@@ -1,0 +1,49 @@
+smoke_test_report:
+  project_id: brain-dashboard-2026-03-11
+  version: 2.0.0
+  status: PASS
+  completed_at: "2026-03-12"
+
+  tests:
+    - name: Health Check
+      endpoint: http://localhost:8080/health
+      result: ✅ PASS
+      response: '{"status":"ok","version":"2.0.0"}'
+
+    - name: Registry API
+      endpoint: http://localhost:8080/api/v2/registry/health
+      result: ✅ PASS
+      response: '{"total_agents":10,"active_count":10,"group_count":2}'
+
+    - name: Dashboard UI
+      endpoint: http://localhost:8080/
+      result: ✅ PASS
+      note: HTML page loads successfully
+
+    - name: Proxy Stats API
+      endpoint: http://localhost:8080/api/v2/proxy/stats
+      result: ✅ PASS
+      note: Returns traffic stats from brain_gateway (4 messages, 0 errors)
+
+    - name: Proxy Routes API
+      endpoint: http://localhost:8080/api/v2/proxy/routes
+      result: ✅ PASS
+      note: Returns routing configuration
+
+  deployment_info:
+    path: /brain/sandbox/brain_dashboard_20260311/
+    port: 8080
+    pid: $(pgrep -f "uvicorn" | head -1)
+
+    - name: Service Registry API
+      endpoint: http://localhost:8080/api/v2/registry/services
+      result: ✅ PASS
+      response: '{"count":3,"services":[...]}'
+
+  release_status: COMPLETED
+  notes:
+    - Proxy Dashboard now displays real data from brain_gateway
+    - Fixed proxy.py to use /api/v1/stats endpoint
+    - Fixed index.html missing <script> tag causing no data display
+    - Fixed registry.py services API to read from nested structure (services/infrastructure)
+    - All Registry tabs working: Services(3), Agents(10), Groups(2)

@@ -1,0 +1,45 @@
+---
+# Brain Dashboard Project Sandbox Configuration
+# Created: 2026-03-15
+
+sandbox:
+  mode: full_sandbox
+  evaluated_at: "2026-03-15T10:30:00Z"
+  evaluated_by: agent-brain_manager
+  confidence: high
+  project_root: /xkagent_infra/groups/brain/projects/infrastructure/brain_dashboard
+
+  # Level 1: Full container isolation required for core infrastructure
+  container:
+    image: brain/dashboard-dev:latest
+    status: pending_bootstrap
+    dockerfile: ./deploy/Dockerfile.dev
+    compose_file: ./deploy/compose.dev.yaml
+
+  # Constraints for core infrastructure project
+  constraints:
+    allowed_write_paths:
+      - "${PROJECT_ROOT}/**"
+      - "/xkagent_infra/brain/infrastructure/service/brain_dashboard/**"
+    blocked_paths:
+      - "/brain/base/spec/**"        # Require base upgrade process
+      - "/brain/base/hooks/**"       # Require base upgrade process
+      - "/etc/**"                    # System config
+      - "/usr/**"                    # System binaries
+    require_approval_for:
+      - modify_core_spec             # G-GATE-NAWP
+      - upgrade_base_system          # G-GATE-NAWP
+
+  # Upgrade tracking
+  upgrade_history:
+    - from: "worktree_sandbox"
+      to: "full_sandbox"
+      reason: "Core infrastructure modification - proxy flow visualization upgrade"
+      timestamp: "2026-03-15T10:30:00Z"
+      approved_by: agent-brain_manager
+
+  # Feature flags
+  features:
+    traffic_flow_viz: pending       # Target feature for this upgrade
+    real_time_topology: pending
+    request_tracing: pending

@@ -1,0 +1,65 @@
+# Brain Base Publish Policy
+
+policy:
+  id: "POLICY-BRAIN-BASE-PUBLISH"
+  version: "1.0"
+  status: "Active"
+  owner: "brain"
+
+intent:
+  summary: "定义 Brain Base 的开发源、发布目标、运行时刷新边界和标准发布流程。"
+  source_root: "/xkagent_infra/groups/brain/projects/base"
+  publish_target: "/xkagent_infra/brain/base"
+  runtime_config_root: "/xkagent_infra/brain/infrastructure/config/agentctl"
+
+principles:
+  - "project 源负责开发，brain/base 负责发布态"
+  - "base 发布与 runtime 配置刷新分离"
+  - "发布前必须 dry-run"
+  - "影响 agent 运行态的变更发布后必须 apply-config + restart"
+
+base_publish:
+  script: "/xkagent_infra/groups/brain/projects/base/scripts/publish_base.sh"
+  supported_domains:
+    - evolution
+    - hooks
+    - knowledge
+    - mcp
+    - skill
+    - spec
+    - workflow
+  backup_root: "/xkagent_infra/groups/brain/projects/base/releases/publish_backups"
+
+runtime_configs:
+  root: "/xkagent_infra/brain/infrastructure/config/agentctl"
+  examples:
+    - "agents_registry.yaml"
+    - "skill_bindings.yaml"
+    - "lep_bindings.yaml"
+  activation:
+    - "agentctl apply-config <agents...> --apply"
+    - "agentctl restart <agents...> --apply"
+
+roles:
+  manager:
+    responsibilities:
+      - "确认本次变更属于 base 发布还是 runtime 配置刷新"
+      - "审查发布域和受影响 agent 范围"
+      - "决定是否进入正式发布"
+  devops:
+    responsibilities:
+      - "执行 dry-run 和正式发布"
+      - "执行 apply-config / restart"
+      - "验证 hooks、settings.local.json、runtime manifest、生效状态"
+
+validation:
+  required_checks:
+    - "publish 目标文件存在且可读"
+    - "受影响 registry/spec/guide 路径一致"
+    - "受影响 agent 的 settings.local.json 已刷新"
+    - "受影响 agent 的 agent_runtime.json 已刷新"
+    - "受影响 agent 重启后在线"
+
+non_goals:
+  - "不允许直接把 brain/base 当开发源"
+  - "不允许用 publish_base.sh 覆盖 runtime config 目录"

@@ -1,0 +1,11 @@
+compose_file: /xkagent_infra/groups/brain/platform/sandbox/instances/dev-0kr4u3/0kr4u3.yaml
+container_name: brain-test-development-0kr4u3
+created_at: '2026-03-15T12:51:40.966558'
+group: brain
+host_ports:
+  app: 19092
+  debug: 19093
+instance_id: 0kr4u3
+project: test
+status: running
+type: development

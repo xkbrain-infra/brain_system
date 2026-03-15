@@ -1,0 +1,693 @@
+registry:
+  meta:
+    domain: knlg
+    version: '1.0'
+    last_updated: '2026-02-22'
+    total_documents: 25
+  documents:
+    G-KNLG-ARCHITECTURE-PROCESS-MANAGEMENT:
+      id: G-KNLG-ARCHITECTURE-PROCESS-MANAGEMENT
+      scope: G
+      title: 进程管理架构
+      path: /brain/base/knowledge/architecture/process_management.md
+      category: ARCHITECTURE
+      tags:
+      - general
+      size_bytes: 4269
+      line_count: 112
+      last_modified: '2026-02-12'
+      description: 进程管理架构 - KNLG 域文档
+      load_triggers:
+      - process_management
+    G-KNLG-ARCHITECTURE-CONTAINER:
+      id: G-KNLG-ARCHITECTURE-CONTAINER
+      scope: G
+      title: Agent Brain 容器架构
+      path: /brain/base/knowledge/architecture/container.md
+      category: ARCHITECTURE
+      tags:
+      - docker
+      - container
+      - infrastructure
+      last_modified: '2026-02-15'
+      description: 容器基本信息、Volume Mounts、Supervisor 服务、宿主机目录映射
+      load_triggers:
+      - container
+      - docker
+      - compose
+      - supervisor
+      - volume
+    G-KNLG-ARCHITECTURE-IPC-GUIDE:
+      id: G-KNLG-ARCHITECTURE-IPC-GUIDE
+      scope: G
+      title: IPC 通信系统使用指南
+      path: /brain/base/knowledge/architecture/ipc_guide.md
+      category: ARCHITECTURE
+      tags:
+      - ipc
+      - guide
+      size_bytes: 15617
+      line_count: 528
+      last_modified: '2026-02-09'
+      description: IPC 通信系统使用指南 - KNLG 域文档
+      load_triggers:
+      - ipc_guide
+    G-KNLG-TROUBLESHOOT-DEPENDENCY-ERRORS:
+      id: G-KNLG-TROUBLESHOOT-DEPENDENCY-ERRORS
+      scope: G
+      title: Dependency Errors - 依赖错误
+      path: /brain/base/knowledge/troubleshooting/dependency_errors.yaml
+      category: TROUBLESHOOT
+      tags:
+      - troubleshoot
+      size_bytes: 1554
+      line_count: 56
+      last_modified: '2026-01-17'
+      description: Dependency Errors - 依赖错误 - KNLG 域文档
+      load_triggers:
+      - dependency_errors
+    G-KNLG-TROUBLESHOOT-CONFIGURATION-ERRORS:
+      id: G-KNLG-TROUBLESHOOT-CONFIGURATION-ERRORS
+      scope: G
+      title: Configuration Errors - 配置错误
+      path: /brain/base/knowledge/troubleshooting/configuration_errors.yaml
+      category: TROUBLESHOOT
+      tags:
+      - troubleshoot
+      size_bytes: 1714
+      line_count: 58
+      last_modified: '2026-01-17'
+      description: Configuration Errors - 配置错误 - KNLG 域文档
+      load_triggers:
+      - configuration_errors
+    G-KNLG-TROUBLESHOOT-IPC-TROUBLESHOOTING:
+      id: G-KNLG-TROUBLESHOOT-IPC-TROUBLESHOOTING
+      scope: G
+      title: IPC Troubleshooting SOP
+      path: /brain/base/knowledge/troubleshooting/ipc_troubleshooting.yaml
+      category: TROUBLESHOOT
+      tags:
+      - ipc
+      - troubleshoot
+      size_bytes: 17884
+      line_count: 423
+      last_modified: '2026-02-14'
+      description: IPC Troubleshooting SOP - KNLG 域文档
+      load_triggers:
+      - ipc_troubleshooting
+    G-KNLG-TROUBLESHOOT-NETWORK-ERRORS:
+      id: G-KNLG-TROUBLESHOOT-NETWORK-ERRORS
+      scope: G
+      title: Network Errors - 网络错误
+      path: /brain/base/knowledge/troubleshooting/network_errors.yaml
+      category: TROUBLESHOOT
+      tags:
+      - troubleshoot
+      size_bytes: 4162
+      line_count: 135
+      last_modified: '2026-01-17'
+      description: Network Errors - 网络错误 - KNLG 域文档
+      load_triggers:
+      - network_errors
+    G-KNLG-TROUBLESHOOT-AUTHENTICATION-ERRORS:
+      id: G-KNLG-TROUBLESHOOT-AUTHENTICATION-ERRORS
+      scope: G
+      title: Authentication Errors - 认证错误
+      path: /brain/base/knowledge/troubleshooting/authentication_errors.yaml
+      category: TROUBLESHOOT
+      tags:
+      - troubleshoot
+      size_bytes: 1634
+      line_count: 58
+      last_modified: '2026-02-03'
+      description: Authentication Errors - 认证错误 - KNLG 域文档
+      load_triggers:
+      - authentication_errors
+    G-KNLG-TROUBLESHOOT-RESOURCE-ERRORS:
+      id: G-KNLG-TROUBLESHOOT-RESOURCE-ERRORS
+      scope: G
+      title: Resource Errors - 资源错误
+      path: /brain/base/knowledge/troubleshooting/resource_errors.yaml
+      category: TROUBLESHOOT
+      tags:
+      - troubleshoot
+      size_bytes: 1819
+      line_count: 64
+      last_modified: '2026-02-02'
+      description: Resource Errors - 资源错误 - KNLG 域文档
+      load_triggers:
+      - resource_errors
+    G-KNLG-TROUBLESHOOT-DATA-ERRORS:
+      id: G-KNLG-TROUBLESHOOT-DATA-ERRORS
+      scope: G
+      title: Data Errors - 数据错误
+      path: /brain/base/knowledge/troubleshooting/data_errors.yaml
+      category: TROUBLESHOOT
+      tags:
+      - troubleshoot
+      size_bytes: 3298
+      line_count: 112
+      last_modified: '2026-01-17'
+      description: Data Errors - 数据错误 - KNLG 域文档
+      load_triggers:
+      - data_errors
+    G-KNLG-GUIDE-SETUP-KIMI-AGENT-SIMPLE:
+      id: G-KNLG-GUIDE-SETUP-KIMI-AGENT-SIMPLE
+      scope: G
+      title: 使用 KIMI 的 Agent - 简化方案
+      path: /brain/base/knowledge/guides/llm/setup_kimi_agent_simple.md
+      category: GUIDE
+      tags:
+      - agent
+      - guide
+      size_bytes: 7646
+      line_count: 320
+      last_modified: '2026-02-14'
+      description: 使用 KIMI 的 Agent - 简化方案 - KNLG 域文档
+      load_triggers:
+      - setup_kimi_agent_simple
+    G-KNLG-GUIDE-KIMI-AGENT-QUICKSTART:
+      id: G-KNLG-GUIDE-KIMI-AGENT-QUICKSTART
+      scope: G
+      title: KIMI Agent 快速创建指南
+      path: /brain/base/knowledge/guides/llm/kimi_agent_quickstart.md
+      category: GUIDE
+      tags:
+      - agent
+      - guide
+      size_bytes: 6661
+      line_count: 265
+      last_modified: '2026-02-13'
+      description: KIMI Agent 快速创建指南 - KNLG 域文档
+      load_triggers:
+      - kimi_agent_quickstart
+    G-KNLG-GUIDE-SETUP-KIMI-AGENT:
+      id: G-KNLG-GUIDE-SETUP-KIMI-AGENT
+      scope: G
+      title: 创建使用 KIMI API 的 Agent 完整指南
+      path: /brain/base/knowledge/guides/llm/setup_kimi_agent.md
+      category: GUIDE
+      tags:
+      - agent
+      - guide
+      size_bytes: 12445
+      line_count: 567
+      last_modified: '2026-02-13'
+      description: 创建使用 KIMI API 的 Agent 完整指南 - KNLG 域文档
+      load_triggers:
+      - setup_kimi_agent
+    G-KNLG-GUIDE-HOOKS-DEPLOYMENT:
+      id: G-KNLG-GUIDE-HOOKS-DEPLOYMENT
+      scope: G
+      title: Hooks 系统部署指南
+      path: /brain/base/knowledge/guides/hooks/deployment.md
+      category: GUIDE
+      tags:
+      - hooks
+      - deployment
+      - guide
+      - release
+      - role_scope
+      last_modified: '2026-02-15'
+      description: Hooks 系统部署指南 - 架构、角色作用域、Release 快照发布、版本锁定、灰度发布、故障排查
+      load_triggers:
+      - hooks_deployment
+      - hooks_guide
+      - hooks_release
+      - hooks_role
+      - lep_deployment
+    G-KNLG-GUIDE-BRAIN-BASE-PUBLISH:
+      id: G-KNLG-GUIDE-BRAIN-BASE-PUBLISH
+      scope: G
+      title: Brain Base 发布指南
+      path: /brain/base/knowledge/guides/publish/base_publish.md
+      category: GUIDE
+      tags:
+      - publish
+      - release
+      - base
+      - deployment
+      last_modified: '2026-03-14'
+      description: Brain Base 开发源、发布态、运行时刷新边界和标准发布流程
+      load_triggers:
+      - brain_publish
+      - base_publish
+      - publish_base
+      - release_flow
+    G-KNLG-GUIDE-SPEC-BUILD:
+      id: G-KNLG-GUIDE-SPEC-BUILD
+      scope: G
+      title: Spec 编译系统操作指南
+      path: /brain/base/knowledge/guides/spec/spec_build_guide.md
+      category: GUIDE
+      tags:
+      - spec
+      - guide
+      - build
+      last_modified: '2026-02-15'
+      description: Spec 编译系统操作指南 - src 编辑、校验、发布到 base/spec
+      load_triggers:
+      - spec_build
+      - spec_guide
+    G-KNLG-GUIDE-LLM-THIRD-PARTY-SETUP:
+      id: G-KNLG-GUIDE-LLM-THIRD-PARTY-SETUP
+      scope: G
+      title: 第三方 LLM Agent 配置指南
+      path: /brain/base/knowledge/guides/llm/third_party_setup.yaml
+      category: GUIDE
+      tags:
+      - llm
+      - agent
+      - guide
+      last_modified: '2026-02-14'
+      description: 第三方 LLM Agent 配置指南（从 spec/standards 移入）
+      load_triggers:
+      - third_party_llm
+      - third_party_setup
+    G-KNLG-GUIDE-AGENT-VECTORDB:
+      id: G-KNLG-GUIDE-AGENT-VECTORDB
+      scope: G
+      title: 文档数据库 (agent_vectordb) 使用指南
+      path: /brain/base/knowledge/guides/agent_vectordb_guide.md
+      category: GUIDE
+      tags:
+      - database
+      - mcp
+      - guide
+      - pgvector
+      - search
+      last_modified: '2026-02-15'
+      description: agent_vectordb 系统使用指南 - MCP Tools、查询方式、数据同步、网络依赖
+      load_triggers:
+      - agent_vectordb
+      - doc_database
+      - doc_search
+      - brain_docs
+    G-KNLG-BRIAN-SYSTEM-SPEC-STATS:
+      id: G-KNLG-BRIAN-SYSTEM-SPEC-STATS
+      scope: G
+      title: Spec / LEP / Hooks 覆盖统计索引
+      path: /brain/base/knowledge/brian_system/spec/spec_stats.md
+      category: GUIDE
+      tags:
+      - spec
+      - lep
+      - hooks
+      - stats
+      - auto_generated
+      last_modified: '2026-02-21'
+      description: 由 build stats 自动生成 — spec 文档分类数、LEP gates 分布、hooks 覆盖率
+      load_triggers:
+      - spec统计
+      - lep覆盖
+      - hooks覆盖
+      - spec_stats
+    G-KNLG-BRIAN-SYSTEM:
+      id: G-KNLG-BRIAN-SYSTEM
+      scope: G
+      title: Brain System 运行时知识库（目录规范定义）
+      path: /brain/base/knowledge/brian_system/spec.yaml
+      category: GUIDE
+      tags:
+      - brain_system
+      - spec
+      - directory
+      last_modified: '2026-02-21'
+      description: 定义 knowledge/brian_system/ 目录的用途、组织模式和内容规范
+      load_triggers:
+      - brain_system
+    G-KNLG-GUIDE-AGENT-ABILITIES-BUILD:
+      id: G-KNLG-GUIDE-AGENT-ABILITIES-BUILD
+      scope: G
+      title: agent_abilities 构建系统使用指南
+      path: /brain/base/knowledge/guides/agent_abilities_build.md
+      category: GUIDE
+      tags:
+      - build
+      - agent_abilities
+      - stats
+      - deploy
+      - guide
+      last_modified: '2026-02-23'
+      description: 构建系统操作指南：标准流水线、build targets、stats 格式、build gate 机制、常见问题
+      load_triggers:
+      - build指南
+      - agent_abilities构建
+      - 怎么build
+      - build操作
+      - build命令
+      - 怎么deploy
+      - 怎么发布
+      - build失败
+      - deploy失败
+      - build_gate
+      - releases/current错误
+      - bin/current不存在
+    G-KNLG-GUIDE-ALIGNMENT:
+      id: G-KNLG-GUIDE-ALIGNMENT
+      scope: G
+      title: Alignment 阶段指南
+      path: /brain/base/knowledge/guides/workflow/project/alignment/alignment_guide.md
+      category: GUIDE
+      tags:
+      - workflow
+      - alignment
+      - project
+      - S1
+      last_modified: '2026-02-23'
+      description: S1 Alignment 阶段填写指南 - 8 个对齐维度、type_profiles Agent 分配、集成验证、填写示例、检查清单
+      load_triggers:
+      - alignment
+      - alignment_guide
+      - S1
+      - 对齐
+      - agent分配
+      - type_profiles
+    G-KNLG-ARCHITECTURE-INFRA-REFERENCE:
+      id: G-KNLG-ARCHITECTURE-INFRA-REFERENCE
+      scope: G
+      title: Brain System Infrastructure Reference
+      path: /brain/base/knowledge/architecture/infrastructure_reference.md
+      category: ARCHITECTURE
+      tags:
+      - infrastructure
+      - service
+      - mcp
+      - ipc
+      - reference
+      last_modified: '2026-02-22'
+      description: 基础设施总索引 - 所有服务清单、MCP Server 清单、技能清单、端口/Socket 总表、架构拓扑、新服务开发指南
+      load_triggers:
+      - infrastructure_reference
+      - service_list
+      - mcp_list
+      - port_list
+      - 有哪些服务
+      - 有哪些mcp
+      - 新服务开发
+    G-KNLG-ARCHITECTURE-IPC-WIRE-PROTOCOL:
+      id: G-KNLG-ARCHITECTURE-IPC-WIRE-PROTOCOL
+      scope: G
+      title: IPC Daemon Wire Protocol Reference
+      path: /brain/base/knowledge/architecture/ipc_wire_protocol.md
+      category: ARCHITECTURE
+      tags:
+      - ipc
+      - protocol
+      - socket
+      - wire_format
+      last_modified: '2026-02-22'
+      description: brain_ipc daemon 完整 wire protocol - 所有 action 列表、请求/响应格式、notify socket 推送协议、常量定义
+      load_triggers:
+      - ipc_wire_protocol
+      - ipc_protocol
+      - socket_protocol
+      - wire_format
+      - daemon_protocol
+    G-KNLG-ARCHITECTURE-PYTHON-IPC-CLIENT:
+      id: G-KNLG-ARCHITECTURE-PYTHON-IPC-CLIENT
+      scope: G
+      title: Python 服务接入 IPC 指南
+      path: /brain/base/knowledge/architecture/python_ipc_client.md
+      category: ARCHITECTURE
+      tags:
+      - python
+      - ipc
+      - service
+      - daemon_client
+      - guide
+      last_modified: '2026-02-22'
+      description: 独立 Python 服务接入 IPC daemon 的完整指南 - DaemonClient/NotifyClient 用法、事件驱动模板、常见错误、supervisord 配置
+      load_triggers:
+      - python_ipc
+      - daemon_client
+      - notify_client
+      - python_service
+      - 怎么连ipc
+  categories:
+    ARCHITECTURE:
+      count: 6
+      documents:
+      - G-KNLG-ARCHITECTURE-PROCESS-MANAGEMENT
+      - G-KNLG-ARCHITECTURE-IPC-GUIDE
+      - G-KNLG-ARCHITECTURE-CONTAINER
+      - G-KNLG-ARCHITECTURE-INFRA-REFERENCE
+      - G-KNLG-ARCHITECTURE-IPC-WIRE-PROTOCOL
+      - G-KNLG-ARCHITECTURE-PYTHON-IPC-CLIENT
+    TROUBLESHOOT:
+      count: 7
+      documents:
+      - G-KNLG-TROUBLESHOOT-DEPENDENCY-ERRORS
+      - G-KNLG-TROUBLESHOOT-CONFIGURATION-ERRORS
+      - G-KNLG-TROUBLESHOOT-IPC-TROUBLESHOOTING
+      - G-KNLG-TROUBLESHOOT-NETWORK-ERRORS
+      - G-KNLG-TROUBLESHOOT-AUTHENTICATION-ERRORS
+      - G-KNLG-TROUBLESHOOT-RESOURCE-ERRORS
+      - G-KNLG-TROUBLESHOOT-DATA-ERRORS
+    GUIDE:
+      count: 9
+      documents:
+      - G-KNLG-GUIDE-SETUP-KIMI-AGENT-SIMPLE
+      - G-KNLG-GUIDE-KIMI-AGENT-QUICKSTART
+      - G-KNLG-GUIDE-SETUP-KIMI-AGENT
+      - G-KNLG-GUIDE-HOOKS-DEPLOYMENT
+      - G-KNLG-GUIDE-SPEC-BUILD
+      - G-KNLG-GUIDE-LLM-THIRD-PARTY-SETUP
+      - G-KNLG-GUIDE-AGENT-VECTORDB
+      - G-KNLG-GUIDE-ALIGNMENT
+      - G-KNLG-GUIDE-AGENT-ABILITIES-BUILD
+  tags_index:
+    docker:
+    - G-KNLG-ARCHITECTURE-CONTAINER
+    container:
+    - G-KNLG-ARCHITECTURE-CONTAINER
+    infrastructure:
+    - G-KNLG-ARCHITECTURE-CONTAINER
+    general:
+    - G-KNLG-ARCHITECTURE-PROCESS-MANAGEMENT
+    ipc:
+    - G-KNLG-ARCHITECTURE-IPC-GUIDE
+    - G-KNLG-TROUBLESHOOT-IPC-TROUBLESHOOTING
+    workflow:
+    - G-KNLG-GUIDE-ALIGNMENT
+    alignment:
+    - G-KNLG-GUIDE-ALIGNMENT
+    project:
+    - G-KNLG-GUIDE-ALIGNMENT
+    S1:
+    - G-KNLG-GUIDE-ALIGNMENT
+    guide:
+    - G-KNLG-ARCHITECTURE-IPC-GUIDE
+    - G-KNLG-GUIDE-SETUP-KIMI-AGENT-SIMPLE
+    - G-KNLG-GUIDE-KIMI-AGENT-QUICKSTART
+    - G-KNLG-GUIDE-SETUP-KIMI-AGENT
+    - G-KNLG-GUIDE-HOOKS-DEPLOYMENT
+    - G-KNLG-GUIDE-AGENT-VECTORDB
+    - G-KNLG-GUIDE-ALIGNMENT
+    database:
+    - G-KNLG-GUIDE-AGENT-VECTORDB
+    mcp:
+    - G-KNLG-GUIDE-AGENT-VECTORDB
+    pgvector:
+    - G-KNLG-GUIDE-AGENT-VECTORDB
+    search:
+    - G-KNLG-GUIDE-AGENT-VECTORDB
+    workflow:
+    - G-KNLG-GUIDE-ALIGNMENT
+    alignment:
+    - G-KNLG-GUIDE-ALIGNMENT
+    project:
+    - G-KNLG-GUIDE-ALIGNMENT
+    S1:
+    - G-KNLG-GUIDE-ALIGNMENT
+    spec:
+    - G-KNLG-GUIDE-SPEC-BUILD
+    build:
+    - G-KNLG-GUIDE-SPEC-BUILD
+    hooks:
+    - G-KNLG-GUIDE-HOOKS-DEPLOYMENT
+    deployment:
+    - G-KNLG-GUIDE-HOOKS-DEPLOYMENT
+    troubleshoot:
+    - G-KNLG-TROUBLESHOOT-DEPENDENCY-ERRORS
+    - G-KNLG-TROUBLESHOOT-CONFIGURATION-ERRORS
+    - G-KNLG-TROUBLESHOOT-IPC-TROUBLESHOOTING
+    - G-KNLG-TROUBLESHOOT-NETWORK-ERRORS
+    - G-KNLG-TROUBLESHOOT-AUTHENTICATION-ERRORS
+    - G-KNLG-TROUBLESHOOT-RESOURCE-ERRORS
+    - G-KNLG-TROUBLESHOOT-DATA-ERRORS
+    agent:
+    - G-KNLG-GUIDE-SETUP-KIMI-AGENT-SIMPLE
+    - G-KNLG-GUIDE-KIMI-AGENT-QUICKSTART
+    - G-KNLG-GUIDE-SETUP-KIMI-AGENT
+  quick_lookup:
+    container:
+    - G-KNLG-ARCHITECTURE-CONTAINER
+    docker:
+    - G-KNLG-ARCHITECTURE-CONTAINER
+    compose:
+    - G-KNLG-ARCHITECTURE-CONTAINER
+    supervisor:
+    - G-KNLG-ARCHITECTURE-CONTAINER
+    volume:
+    - G-KNLG-ARCHITECTURE-CONTAINER
+    general:
+    - G-KNLG-ARCHITECTURE-PROCESS-MANAGEMENT
+    architecture:
+    - G-KNLG-ARCHITECTURE-PROCESS-MANAGEMENT
+    - G-KNLG-ARCHITECTURE-IPC-GUIDE
+    process:
+    - G-KNLG-ARCHITECTURE-PROCESS-MANAGEMENT
+    management:
+    - G-KNLG-ARCHITECTURE-PROCESS-MANAGEMENT
+    process_management:
+    - G-KNLG-ARCHITECTURE-PROCESS-MANAGEMENT
+    guide:
+    - G-KNLG-ARCHITECTURE-IPC-GUIDE
+    - G-KNLG-GUIDE-SETUP-KIMI-AGENT-SIMPLE
+    - G-KNLG-GUIDE-KIMI-AGENT-QUICKSTART
+    - G-KNLG-GUIDE-SETUP-KIMI-AGENT
+    ipc_guide:
+    - G-KNLG-ARCHITECTURE-IPC-GUIDE
+    ipc:
+    - G-KNLG-ARCHITECTURE-IPC-GUIDE
+    - G-KNLG-TROUBLESHOOT-IPC-TROUBLESHOOTING
+    dependency:
+    - G-KNLG-TROUBLESHOOT-DEPENDENCY-ERRORS
+    errors:
+    - G-KNLG-TROUBLESHOOT-DEPENDENCY-ERRORS
+    - G-KNLG-TROUBLESHOOT-CONFIGURATION-ERRORS
+    - G-KNLG-TROUBLESHOOT-NETWORK-ERRORS
+    - G-KNLG-TROUBLESHOOT-AUTHENTICATION-ERRORS
+    - G-KNLG-TROUBLESHOOT-RESOURCE-ERRORS
+    - G-KNLG-TROUBLESHOOT-DATA-ERRORS
+    troubleshoot:
+    - G-KNLG-TROUBLESHOOT-DEPENDENCY-ERRORS
+    - G-KNLG-TROUBLESHOOT-CONFIGURATION-ERRORS
+    - G-KNLG-TROUBLESHOOT-IPC-TROUBLESHOOTING
+    - G-KNLG-TROUBLESHOOT-NETWORK-ERRORS
+    - G-KNLG-TROUBLESHOOT-AUTHENTICATION-ERRORS
+    - G-KNLG-TROUBLESHOOT-RESOURCE-ERRORS
+    - G-KNLG-TROUBLESHOOT-DATA-ERRORS
+    dependency_errors:
+    - G-KNLG-TROUBLESHOOT-DEPENDENCY-ERRORS
+    configuration_errors:
+    - G-KNLG-TROUBLESHOOT-CONFIGURATION-ERRORS
+    configuration:
+    - G-KNLG-TROUBLESHOOT-CONFIGURATION-ERRORS
+    troubleshooting:
+    - G-KNLG-TROUBLESHOOT-IPC-TROUBLESHOOTING
+    ipc_troubleshooting:
+    - G-KNLG-TROUBLESHOOT-IPC-TROUBLESHOOTING
+    network:
+    - G-KNLG-TROUBLESHOOT-NETWORK-ERRORS
+    network_errors:
+    - G-KNLG-TROUBLESHOOT-NETWORK-ERRORS
+    authentication_errors:
+    - G-KNLG-TROUBLESHOOT-AUTHENTICATION-ERRORS
+    authentication:
+    - G-KNLG-TROUBLESHOOT-AUTHENTICATION-ERRORS
+    resource:
+    - G-KNLG-TROUBLESHOOT-RESOURCE-ERRORS
+    resource_errors:
+    - G-KNLG-TROUBLESHOOT-RESOURCE-ERRORS
+    data:
+    - G-KNLG-TROUBLESHOOT-DATA-ERRORS
+    data_errors:
+    - G-KNLG-TROUBLESHOOT-DATA-ERRORS
+    setup_kimi_agent_simple:
+    - G-KNLG-GUIDE-SETUP-KIMI-AGENT-SIMPLE
+    kimi:
+    - G-KNLG-GUIDE-SETUP-KIMI-AGENT-SIMPLE
+    - G-KNLG-GUIDE-KIMI-AGENT-QUICKSTART
+    - G-KNLG-GUIDE-SETUP-KIMI-AGENT
+    agent:
+    - G-KNLG-GUIDE-SETUP-KIMI-AGENT-SIMPLE
+    - G-KNLG-GUIDE-KIMI-AGENT-QUICKSTART
+    - G-KNLG-GUIDE-SETUP-KIMI-AGENT
+    setup:
+    - G-KNLG-GUIDE-SETUP-KIMI-AGENT-SIMPLE
+    - G-KNLG-GUIDE-SETUP-KIMI-AGENT
+    simple:
+    - G-KNLG-GUIDE-SETUP-KIMI-AGENT-SIMPLE
+    quickstart:
+    - G-KNLG-GUIDE-KIMI-AGENT-QUICKSTART
+    kimi_agent_quickstart:
+    - G-KNLG-GUIDE-KIMI-AGENT-QUICKSTART
+    setup_kimi_agent:
+    - G-KNLG-GUIDE-SETUP-KIMI-AGENT
+    spec_build:
+    - G-KNLG-GUIDE-SPEC-BUILD
+    spec_guide:
+    - G-KNLG-GUIDE-SPEC-BUILD
+    hooks:
+    - G-KNLG-GUIDE-HOOKS-DEPLOYMENT
+    hooks_deployment:
+    - G-KNLG-GUIDE-HOOKS-DEPLOYMENT
+    hooks_guide:
+    - G-KNLG-GUIDE-HOOKS-DEPLOYMENT
+    hooks_release:
+    - G-KNLG-GUIDE-HOOKS-DEPLOYMENT
+    hooks_role:
+    - G-KNLG-GUIDE-HOOKS-DEPLOYMENT
+    role_scope:
+    - G-KNLG-GUIDE-HOOKS-DEPLOYMENT
+    lep_deployment:
+    - G-KNLG-GUIDE-HOOKS-DEPLOYMENT
+    deployment:
+    - G-KNLG-GUIDE-HOOKS-DEPLOYMENT
+    llm:
+    - G-KNLG-GUIDE-LLM-THIRD-PARTY-SETUP
+    - G-KNLG-GUIDE-SETUP-KIMI-AGENT-SIMPLE
+    - G-KNLG-GUIDE-KIMI-AGENT-QUICKSTART
+    - G-KNLG-GUIDE-SETUP-KIMI-AGENT
+    third_party_llm:
+    - G-KNLG-GUIDE-LLM-THIRD-PARTY-SETUP
+    third_party_setup:
+    - G-KNLG-GUIDE-LLM-THIRD-PARTY-SETUP
+    agent_vectordb:
+    - G-KNLG-GUIDE-AGENT-VECTORDB
+    doc_database:
+    - G-KNLG-GUIDE-AGENT-VECTORDB
+    doc_search:
+    - G-KNLG-GUIDE-AGENT-VECTORDB
+    brain_docs:
+    - G-KNLG-GUIDE-AGENT-VECTORDB
+    database:
+    - G-KNLG-GUIDE-AGENT-VECTORDB
+    mcp:
+    - G-KNLG-GUIDE-AGENT-VECTORDB
+    pgvector:
+    - G-KNLG-GUIDE-AGENT-VECTORDB
+    search:
+    - G-KNLG-GUIDE-AGENT-VECTORDB
+    alignment:
+    - G-KNLG-GUIDE-ALIGNMENT
+    alignment_guide:
+    - G-KNLG-GUIDE-ALIGNMENT
+    S1:
+    - G-KNLG-GUIDE-ALIGNMENT
+    对齐:
+    - G-KNLG-GUIDE-ALIGNMENT
+    agent分配:
+    - G-KNLG-GUIDE-ALIGNMENT
+    type_profiles:
+    - G-KNLG-GUIDE-ALIGNMENT
+    build指南:
+    - G-KNLG-GUIDE-AGENT-ABILITIES-BUILD
+    agent_abilities构建:
+    - G-KNLG-GUIDE-AGENT-ABILITIES-BUILD
+    怎么build:
+    - G-KNLG-GUIDE-AGENT-ABILITIES-BUILD
+    build操作:
+    - G-KNLG-GUIDE-AGENT-ABILITIES-BUILD
+    build命令:
+    - G-KNLG-GUIDE-AGENT-ABILITIES-BUILD
+    怎么deploy:
+    - G-KNLG-GUIDE-AGENT-ABILITIES-BUILD
+    怎么发布:
+    - G-KNLG-GUIDE-AGENT-ABILITIES-BUILD
+    build失败:
+    - G-KNLG-GUIDE-AGENT-ABILITIES-BUILD
+    deploy失败:
+    - G-KNLG-GUIDE-AGENT-ABILITIES-BUILD

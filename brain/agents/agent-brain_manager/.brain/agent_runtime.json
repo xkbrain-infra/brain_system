@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "agent_name": "agent-brain_manager",
+  "skill_bindings": {
+    "source": "/xkagent_infra/brain/infrastructure/config/agentctl/skill_bindings.yaml",
+    "resolved_skills": [
+      "validate-alignment",
+      "preset",
+      "brain-publish",
+      "lep",
+      "agentctl",
+      "ipc",
+      "sandbox"
+    ],
+    "role_skills": [
+      "preset",
+      "brain-publish",
+      "lep",
+      "agentctl",
+      "ipc",
+      "sandbox"
+    ],
+    "agent_skills": [
+      "validate-alignment"
+    ],
+    "workflow_skills": []
+  },
+  "lep_bindings": {
+    "source": "/xkagent_infra/brain/infrastructure/config/agentctl/lep_bindings.yaml",
+    "resolved_lep_profiles": [
+      "brain-manager-elevated",
+      "manager-governance"
+    ],
+    "role_lep_profiles": [
+      "manager-governance"
+    ],
+    "agent_lep_profiles": [
+      "brain-manager-elevated"
+    ],
+    "workflow_lep_profiles": []
+  },
+  "runtime": {
+    "command": "claude",
+    "args": [
+      "--model",
+      "alibaba/kimi-k2.5",
+      "[Brain Skill Bindings]\nEnabled skills: validate-alignment, preset, brain-publish, lep, agentctl, ipc, sandbox.\nWhen a task matches these skills or the bound workflow, load and follow the corresponding skill before execution.\nAgent-specific additions: validate-alignment.\nRole defaults: preset, brain-publish, lep, agentctl, ipc, sandbox.\n\n[Brain LEP Profiles]\nEnabled LEP profiles: brain-manager-elevated, manager-governance.\nThese LEP profiles tighten hook enforcement and should be treated as mandatory operating constraints.\nAgent-specific additions: brain-manager-elevated.\nRole defaults: manager-governance."
+    ],
+    "env": {
+      "IS_SANDBOX": "1",
+      "BRAIN_AGENT_NAME": "agent-brain_manager",
+      "BRAIN_TRANSPORT_MODE": "proxy",
+      "BRAIN_SKILL_BINDINGS_FILE": "/xkagent_infra/brain/infrastructure/config/agentctl/skill_bindings.yaml",
+      "BRAIN_ENABLED_SKILLS": "validate-alignment,preset,brain-publish,lep,agentctl,ipc,sandbox",
+      "BRAIN_ROLE_DEFAULT_SKILLS": "preset,brain-publish,lep,agentctl,ipc,sandbox",
+      "BRAIN_AGENT_EXTRA_SKILLS": "validate-alignment",
+      "BRAIN_LEP_BINDINGS_FILE": "/xkagent_infra/brain/infrastructure/config/agentctl/lep_bindings.yaml",
+      "BRAIN_ENABLED_LEP_PROFILES": "brain-manager-elevated,manager-governance",
+      "BRAIN_ROLE_DEFAULT_LEP_PROFILES": "manager-governance",
+      "BRAIN_AGENT_EXTRA_LEP_PROFILES": "brain-manager-elevated"
+    },
+    "agent_type": "alibaba",
+    "use_claude_cli": true
+  }
+}

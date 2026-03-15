@@ -1,0 +1,56 @@
+registry:
+  meta:
+    domain: evo
+    version: '1.0'
+    last_updated: '2026-02-14'
+    total_documents: 2
+  documents:
+    G-EVO-CORE-CYCLE:
+      id: G-EVO-CORE-CYCLE
+      scope: G
+      title: /brain/base/evolution/cycle.yaml
+      path: /brain/base/evolution/cycle.yaml
+      category: CORE
+      tags:
+      - general
+      size_bytes: 5977
+      line_count: 156
+      last_modified: '2026-02-09'
+      description: /brain/base/evolution/cycle.yaml - EVO 域文档
+      load_triggers:
+      - cycle
+    G-EVO-CORE-PROPOSAL:
+      id: G-EVO-CORE-PROPOSAL
+      scope: G
+      title: /brain/base/evolution/proposal.yaml
+      path: /brain/base/evolution/proposal.yaml
+      category: CORE
+      tags:
+      - general
+      size_bytes: 4026
+      line_count: 95
+      last_modified: '2026-02-09'
+      description: /brain/base/evolution/proposal.yaml - EVO 域文档
+      load_triggers:
+      - proposal
+  categories:
+    CORE:
+      count: 2
+      documents:
+      - G-EVO-CORE-CYCLE
+      - G-EVO-CORE-PROPOSAL
+  tags_index:
+    general:
+    - G-EVO-CORE-CYCLE
+    - G-EVO-CORE-PROPOSAL
+  quick_lookup:
+    cycle:
+    - G-EVO-CORE-CYCLE
+    core:
+    - G-EVO-CORE-CYCLE
+    - G-EVO-CORE-PROPOSAL
+    general:
+    - G-EVO-CORE-CYCLE
+    - G-EVO-CORE-PROPOSAL
+    proposal:
+    - G-EVO-CORE-PROPOSAL

@@ -1,0 +1,423 @@
+---
+id: G-KNLG-GUIDE-ALIGNMENT
+title: Alignment 阶段指南
+category: GUIDE
+tags: [workflow, alignment, project, S1]
+---
+
+# Alignment 阶段指南
+
+> 适用于 Agent 基础设施/平台类项目的 S1 Alignment 填写参考。
+>
+> - Schema: `/brain/base/spec/templates/spec/spec_dsl.yaml#alignment`
+> - 流程: `/brain/base/workflow/lifecycle/project.yaml#S1`
+
+---
+
+## 什么是 Alignment
+
+Alignment 的核心不是"同步信息"，而是把**关键假设与决策**在关键人之间**锁死**，减少返工。
+
+产出：一份所有参与者对目标、范围、取舍达成共识的文档。
+
+---
+
+## 8 个对齐维度
+
+### 1. 目标对齐
+
+- 这项目服务哪个业务目标？
+- 优先级：与其他项目冲突时，谁优先？
+- **交付**: 一句话目标 + 可量化指标
+
+### 2. 范围与边界对齐
+
+- "必须做" vs "最好有" vs "不做"
+- MVP 定义：第一版必须交付哪些最小闭环能力？
+- **交付**: in_scope / out_scope 列表 + MVP 定义
+
+### 3. 需求与用户对齐
+
+- 目标用户是谁？核心场景是什么？
+- 需求来源与权重（用户、运营、内部效率等）
+- **交付**: must-have 列表（至少 1 条有明确验收标准）
+
+### 4. 方案与取舍对齐
+
+- 关键技术路线、架构取舍
+- Trade-off：成本/体验/性能/交付周期之间怎么选？
+- **交付**: 关键取舍点 + 选择理由
+
+### 5. 资源与 Agent 分配对齐
+
+- **Agent 分配模版**: `/brain/base/spec/templates/agent/type_profiles/`
+- 分配流程：
+  1. 确定 Group 的行业分类（参照 `type_profiles/index.yaml` 的 categories）
+  2. 通用角色自动包含（TP-CAT-GENERAL: orchestrator, pmo, frontdesk）
+  3. 从对应行业 profiles 中选择项目所需角色及 variant
+  4. 用 `agentctl add --profile <PROFILE_ID>` 创建 agent
+- 选型原则：
+  - 需要 IPC/MCP 工具调用 → agent_type: claude
+  - 需要修改 infrastructure/ 受保护路径 → agent_type: codex
+  - 成本敏感/轻量任务 → 优先 haiku/medium
+  - 深度推理/创作 → 优先 opus/high
+- 关键节点日期是否可承诺？
+- **交付**: agent 角色列表（含 profile ID） + 里程碑日期
+
+### 6. 风险与依赖对齐
+
+- 外部依赖（服务、接口、数据）是否确认负责人和时间？
+- 风险共识：出现问题时的预案与升级路径
+- **交付**: Top 风险 + 缓解措施
+
+### 7. 决策机制对齐
+
+- 谁是最终拍板人（DRI / Approver）？
+- 争议怎么解决？什么时候必须做决策？
+- **交付**: DRI + 决策窗口
+
+### 8. 集成与基础设施对齐
+
+- 项目依赖哪些 Brain 系统服务？（IPC daemon、MCP server、timer、dashboard 等）
+- 通信方式是什么？（daemon socket、MCP 工具、HTTP、stdio）
+- 这些假设是否已验证？（查阅文档 or 实际测试）
+- **必读文档**:
+  - `/brain/base/knowledge/architecture/infrastructure_reference.md` — 服务总览
+  - `/brain/base/knowledge/architecture/python_ipc_client.md` — Python 服务 IPC 接入
+  - `/brain/base/knowledge/architecture/ipc_wire_protocol.md` — IPC 协议细节
+- **交付**: `integration_points` 列表（每项含 service + communication + verified + reference）
+
+> **为什么需要这个维度？**
+>
+> BS-025 项目教训：alignment 阶段假设"MCP 工具可以从 Python 进程调用"，
+> 但实际上 MCP 工具仅在 agent CLI 会话内可用（通过 stdio JSON-RPC），
+> 独立 Python 服务必须直接连接 daemon socket。这个假设错误导致整个
+> task_manager_runtime 实现方向错误，浪费了大量返工。
+>
+> **集成假设必须在 S1 验证，不能留到 S5/S6 才发现不可行。**
+
+---
+
+## 填写示例
+
+### background
+
+写清楚 3 点：
+
+1. 当前痛点（现状 → 问题）
+2. 为什么现在要解决（紧迫性/机会窗口）
+3. 如果不做会怎样
+
+### goal
+
+一句话目标 + 可量化指标。
+
+| 好的 | 坏的 |
+|------|------|
+| hooks 能实际拦截 agent 对受保护路径的写入，拦截成功率 100% | 改善 hooks 功能 |
+| 构建系统 publish all 一键完成，0 手动步骤 | 优化构建流程 |
+
+### in_scope / out_scope
+
+越具体越好：
+
+```yaml
+in_scope:
+  - "修改 io_helper.py output_block() 格式"
+  - "更新集成测试断言"
+  - "部署到所有 16 个 agents"
+
+out_scope:
+  - "不改 hooks 架构"
+  - "不增加新 checker"
+```
+
+### agents
+
+从 type_profiles 选择项目所需的 agent 配置：
+
+```yaml
+agents:
+  - role: architect
+    profile: TP-SD-ARCHITECT-CLAUDE-OPUS
+    reason: "需要架构设计"
+  - role: developer
+    profile: TP-SD-DEV-CLAUDE-SONNET
+    count: 2
+    reason: "两个并行开发任务"
+  - role: qa
+    profile: TP-SD-QA-CODEX-MEDIUM
+    reason: "测试验证"
+```
+
+### integration_points
+
+列出项目依赖的每个外部服务/组件：
+
+```yaml
+integration_points:
+  - id: BS-026-INT1
+    service: "brain_ipc daemon"
+    communication: "socket (/tmp/brain_ipc.sock)"
+    verified: true
+    reference: "/brain/base/knowledge/architecture/ipc_wire_protocol.md"
+  - id: BS-026-INT2
+    service: "timer service"
+    communication: "IPC message (via daemon)"
+    verified: true
+    reference: "/brain/base/knowledge/architecture/infrastructure_reference.md#timer"
+  - id: BS-026-INT3
+    service: "brain_ipc_c MCP Server"
+    communication: "MCP (stdio JSON-RPC, agent session only)"
+    verified: true
+    reference: "/brain/base/knowledge/architecture/infrastructure_reference.md#mcp-servers"
+```
+
+### success_criteria
+
+每条必须有 metric + target：
+
+```yaml
+success_criteria:
+  - id: SC1
+    text: "hooks 拦截受保护路径写入"
+    metric: "agent 尝试写 /brain/base/spec/ 时的拦截率"
+    target: "100%"
+  - id: SC2
+    text: "合法路径不误拦截"
+    metric: "agent 写 /brain/groups/ 时的通过率"
+    target: "100%"
+```
+
+### risks
+
+至少列 1 条：
+
+```yaml
+risks:
+  - id: R1
+    description: "修改 output 格式可能导致旧版本 Claude Code 不兼容"
+    probability: 低
+    impact: 高
+    mitigation: "同时保留 exit code 2 作为兜底机制"
+```
+
+### mvp
+
+MVP 是 in_scope 的**核心子集**，不是全部：
+
+```yaml
+mvp:
+  definition: "output_block() 格式修复 + 部署到 brain_system 组的 agents"
+  # 其余 agents 可在后续迭代中覆盖
+```
+
+---
+
+## 对齐检查清单
+
+评审前过一遍：
+
+- [ ] 目标一句话能说清，且有可量化指标
+- [ ] in_scope / out_scope 明确，MVP 明确
+- [ ] 关键取舍点写出来了（不只是"我们要做XX"）
+- [ ] agents 列表已从 type_profiles 选定，含 profile ID
+- [ ] 里程碑日期能 commit，关键依赖有 owner + 截止日期
+- [ ] 风险 Top N 有缓解/预案
+- [ ] 验收标准明确（上线 ≠ 完成）
+- [ ] DRI 是谁、争议怎么裁决清楚
+- [ ] integration_points 已填写，每项 verified=true 或有明确验证计划
+
+---
+
+## 常见反模式
+
+| 反模式 | 修正 |
+|--------|------|
+| 目标写成"改善XX功能" | 必须有量化指标：改善什么、从多少到多少 |
+| 没有 out_scope | 没有排除项 = 范围无限，必须明确不做什么 |
+| agents 没指定 profile | 必须从 type_profiles 选定，不能"先创建再说" |
+| success_criteria 没有 metric | 无法度量 = 无法验收，每条标准必须有测量方式 |
+| 风险清单为空 | 没有风险 = 没想过，至少列 1 条技术风险 |
+| MVP = 全部 in_scope | MVP 应该是 in_scope 的核心子集，不是全部 |
+| integration_points 为空 | 假设"调用XX服务"但没验证 → S5/S6 才发现不可行 |
+| verified=false 但没验证计划 | 未验证的集成假设必须有明确的验证步骤和截止日期 |
+
+---
+
+## S5 集成可行性验证（integration_proof）
+
+> **这是 S5 方案阶段的强制卡点。** Architect 设计方案时，必须对 S1 声明的每个 integration_point 做实际 PoC 验证。没有跑通的集成路径，方案不能定稿，不能进入 S6 任务拆解。
+
+### 为什么需要
+
+BS-025 教训：S1 声明了「使用 mcp-brain_ipc_c 发送 IPC」，S3-S5 基于此设计了完整方案，S6 拆了 12 个任务开始实现。直到开发阶段才发现 **MCP 工具只能在 agent CLI 会话中调用，独立 Python 进程根本用不了**。整个项目方向错误，做了白搭。
+
+如果 architect 在 S5 花 10 分钟写个 PoC 脚本验证「Python 进程能否调用 ipc_send」，当场就能发现问题，改用 daemon socket 方案。
+
+### 填写示例
+
+```yaml
+integration_proof:
+  items:
+    - id: BS-026-IP1
+      integration_point: BS-026-INT1   # 引用 S1 的集成点
+      what_to_verify: "Python 守护进程能否通过 daemon socket 收发 IPC 消息"
+      poc_method: |
+        写 10 行脚本：连接 /tmp/brain_ipc.sock，
+        发送 {"action":"send","to":"tmp_claude","payload":{"content":"ping"}}，
+        检查返回 {"status":"ok"}
+      poc_result: "连接成功，send 返回 ok，recv 正常收到消息"
+      verdict: PASS
+      evidence: "staging/poc/test_ipc_socket.py"
+      fallback: ""
+
+    - id: BS-026-IP2
+      integration_point: BS-026-INT3
+      what_to_verify: "MCP 工具能否从独立 Python 进程调用"
+      poc_method: "尝试在 subprocess 中调用 brain_ipc_c_mcp_server"
+      poc_result: "失败：MCP server 通过 stdio JSON-RPC 通信，需要 agent CLI 宿主进程"
+      verdict: FAIL
+      evidence: "staging/poc/test_mcp_from_python.py"
+      fallback: "改用 daemon socket 直连方案（已由 IP1 验证通过）"
+```
+
+### Gate 规则
+
+- 所有 `integration_proof.items` 必须有 `verdict`（不能为空）
+- 任何 `FAIL` 项必须有 `fallback`，且 fallback 本身已验证通过
+- 全部 `BLOCKED` 的方案**不可进入 S6**
+- Architect 提交 S5 时，PMO 检查此 gate
+
+---
+
+## S5 接口设计（interfaces）
+
+> **Architect 必填。** 方案必须包含完整的接口定义，这是 S6 任务拆解和 QA 测试设计的基础。
+
+### 为什么需要
+
+接口设计是方案从"概念"变成"可实现"的关键步骤。没有明确的接口定义：
+- 开发者不知道模块间怎么通信
+- QA 无法提前设计测试用例（只能等代码写完再补，即 BS-025-ISS005）
+- 多人并行开发时接口不对齐，集成阶段大量返工
+
+### 填写要点
+
+每个接口必须定义：
+- **type**: API / IPC / CLI / Event / Hook / Socket
+- **protocol**: HTTP/REST / JSON-RPC / protobuf / YAML / shell
+- **provider / consumer**: 谁提供、谁消费
+- **request / response fields**: 每个字段的名称、类型、是否必填、说明
+- **errors**: 错误码和描述
+
+### 填写示例
+
+```yaml
+interfaces:
+  - id: BS-026-IF1
+    name: "task_status_query"
+    type: IPC
+    protocol: JSON-RPC
+    provider: "task_manager"
+    consumer: "pmo_agent"
+    request:
+      fields:
+        - name: task_id
+          type: string
+          required: true
+          description: "任务 ID（如 BS-026-T1）"
+    response:
+      fields:
+        - name: status
+          type: string
+          description: "Todo | InProgress | Done | Blocked"
+        - name: progress
+          type: number
+          description: "完成百分比 0-100"
+    errors:
+      - code: "TASK_NOT_FOUND"
+        description: "任务 ID 不存在"
+    notes: "幂等查询，无副作用"
+```
+
+---
+
+## S5 依赖清单（dependencies）
+
+> **Architect 必填。** 区分内部依赖（已有，需验证）和外部依赖（需新开发）。
+
+### 内部依赖
+
+已有的服务/组件，必须通过 `integration_proof` 验证可行性。
+
+```yaml
+dependencies:
+  internal:
+    - id: BS-026-DEP-I1
+      service: "brain_ipc daemon"
+      usage: "通过 socket 发送/接收任务状态变更消息"
+      verified: true
+      proof_ref: "BS-026-IP1"    # 对应 integration_proof
+```
+
+### 外部依赖
+
+需要本项目新开发的组件，必须关联接口定义和负责人。
+
+```yaml
+  external:
+    - id: BS-026-DEP-E1
+      component: "task_state_store"
+      owner: "developer"
+      interface_ref: "BS-026-IF1"
+      status: "Todo"
+```
+
+---
+
+## S5 测试用例设计（test_design）
+
+> **QA 必填。** 根据 `interfaces` 在代码编写前设计文字版测试用例。
+
+### 为什么需要
+
+BS-025-ISS005 教训：测试用例在代码写完后才补写，导致：
+- 测试"顺着代码写"，只验证 happy path
+- 边界条件和错误处理覆盖不足
+- QA 在开发阶段无事可做，验证阶段来不及
+
+**正确做法**：Architect 完成接口设计 → QA 立即基于接口写测试用例 → 开发和测试并行。
+
+### 填写示例
+
+```yaml
+test_design:
+  owner: "agent_bs026_qa"
+  cases:
+    - id: BS-026-TD1
+      interface_ref: BS-026-IF1
+      scenario: "查询存在的任务状态"
+      precondition: "task_manager 已启动，存在任务 BS-026-T1"
+      steps:
+        - "发送 task_status_query 请求，task_id=BS-026-T1"
+        - "检查返回的 status 和 progress 字段"
+      expected_result: "返回 status=InProgress, progress=50"
+      category: happy_path
+
+    - id: BS-026-TD2
+      interface_ref: BS-026-IF1
+      scenario: "查询不存在的任务"
+      precondition: "task_manager 已启动"
+      steps:
+        - "发送 task_status_query 请求，task_id=NONEXISTENT"
+      expected_result: "返回错误码 TASK_NOT_FOUND"
+      category: error_handling
+```
+
+### Gate 规则
+
+- 所有 `interfaces` 必须至少有 1 条 `test_design.case` 覆盖
+- `happy_path` + `error_handling` 两个 category 必须覆盖
+- QA 完成 test_design 后方可进入 S6
+- PMO 检查此 gate

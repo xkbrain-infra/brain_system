@@ -1,0 +1,30 @@
+gate_id: G-GATE-UNRECOVERABLE
+name: Halt on Unrecoverable Error
+applies_to: [all]
+rule: 不可恢复错误立即停止
+errors: [404, 403, 401, disk_full, data_corruption]
+on_trigger: halt_and_notify_pmo
+
+enforcement:
+  stage: post_tool_use
+  method: python_inline
+  priority: CRITICAL
+
+  triggers:
+    error_codes: [404, 403, 401]
+    error_types: [disk_full, data_corruption, permission_denied]
+
+  rules:
+    halt_on_unrecoverable:
+      description: "检测到不可恢复错误时立即停止"
+      actions:
+        - "停止当前操作"
+        - "记录错误详情"
+        - "通知 PMO"
+        - "等待人工介入"
+bindings:
+  hooks:
+    stage: pre_tool_use
+    trigger_tools: [Write, Edit, Bash]
+  mcp_tools: []
+  related_skills: []

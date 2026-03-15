@@ -1,0 +1,72 @@
+gate_id: G-GATE-AGENT-LIFECYCLE
+name: Agent Lifecycle via Orchestrator Only
+applies_to: [agent_start, agent_stop, agent_restart, agent_autostart]
+rule: |
+  所有 Agent 生命周期操作必须且只能通过 brain-agentctl 执行：
+  - 启动 (start)
+  - 停止 (stop)
+  - 重启 (restart)
+  - 开启/关闭自启动 (autostart)
+  禁止任何 agent 直接操作其他 agent 的 tmux session 或进程。
+allowed:
+  - "ipc_send(to='brain-agentctl', message='请启动 {agent_name}')"
+  - "ipc_send(to='brain-agentctl', message='请停止 {agent_name}')"
+  - "ipc_send(to='brain-agentctl', message='请重启 {agent_name}')"
+  - "ipc_send(to='brain-agentctl', message='开启自启动 {agent_name}')"
+  - "ipc_send(to='brain-agentctl', message='关闭自启动 {agent_name}')"
+forbidden:
+  - "tmux send-keys ... /exit | C-c | exit"
+  - "tmux kill-session -t {agent_session}"
+  - "tmux new-session -s {agent_session}"
+  - "kill / kill -9 <agent_pid>"
+  - "直接在 tmux pane 中启动 claude/codex 命令"
+reason: |
+  Orchestrator 是 agent 生命周期的唯一管理者，负责：
+  1. 写入正确的 .mcp.json（MCP server 路径）
+  2. 设置环境变量（BRAIN_AGENT_NAME 等）
+  3. 注册 agent 到 daemon
+  4. 配置 tmux session 参数（auto-restart 等）
+  绕过 orchestrator 会导致 MCP 配置丢失、环境变量缺失、agent 注册状态不一致。
+
+enforcement:
+  stage: pre_tool_use
+  method: python_inline
+  priority: CRITICAL
+
+  triggers:
+    tools: [Bash]
+
+  patterns:
+    agent_tmux_operations:
+      - pattern: "tmux\\s+(kill-session|send-keys|new-session).*(?:agent_|codex_)"
+        message: "检测到 tmux 操作 agent session"
+      - pattern: "(?:agent_|codex_).*tmux\\s+(kill-session|send-keys|new-session)"
+        message: "检测到 tmux 操作 agent session"
+    tmux_direct_write:
+      - pattern: "tmux\\s+(kill-session|kill-server|send-keys|new-session|kill-pane|kill-window)"
+        message: "检测到直接 tmux 写操作，必须通过 brain_tmux_api"
+        exclude_prefix: "brain_tmux_api"
+
+  block_message: |
+    🚫 Agent 生命周期操作被拦截 (G-AGENT-LIFECYCLE)
+
+    {message}
+
+    ❌ 禁止直接使用 tmux 命令操作 agent
+    ✅ 正确方式：使用 brain-agentctl
+
+    示例：
+      agentctl start --apply agent_name
+      agentctl stop --apply agent_name
+      agentctl restart --apply agent_name
+
+    原因：agentctl 启动时会正确配置 MCP，直接用 tmux 会导致配置缺失。
+
+    参考：/brain/base/spec/core/lep.yaml (G-AGENT-LIFECYCLE)
+bindings:
+  hooks:
+    stage: pre_tool_use
+    trigger_tools: [Bash]
+    patterns: [tmux_new_session, tmux_kill_session, tmux_send_keys, kill_pid]
+  mcp_tools: []
+  related_skills: ['agentctl']

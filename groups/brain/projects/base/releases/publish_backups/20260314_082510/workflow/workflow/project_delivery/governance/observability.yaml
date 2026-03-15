@@ -1,0 +1,111 @@
+observability:
+  id: "MWF-OBS-001"
+  version: "0.1"
+  intent: "定义心跳、快照、watchdog、超时规则以及与 logging service 的协作"
+
+heartbeats:
+  agent:
+    interval_s: 30
+    stale_after_s: 90
+    on_stale: "agent state -> OFFLINE, raise event"
+  orchestrator:
+    interval_s: 20
+    stale_after_s: 60
+    on_stale: "project marked degraded, raise escalation"
+  sandbox:
+    interval_s: 30
+    stale_after_s: 120
+    on_stale: "sandbox state -> DEGRADED"
+
+snapshots:
+  project_snapshot_interval_s: 30
+  max_staleness_s: 90
+  required_fields:
+    - project_id
+    - sandbox_id
+    - orchestrator_id
+    - workflow_stage
+    - project_status
+    - progress_pct
+    - active_tasks
+    - ready_tasks
+    - blocked_tasks
+    - pending_reviews
+    - parallelism_width
+    - role_utilization
+    - release_candidate_status
+    - snapshot_version
+    - updated_at
+
+watchdogs:
+  task_watchdog:
+    checks:
+      - "ACTIVE too long without progress"
+      - "REVIEW timeout"
+      - "BLOCKED unresolved beyond threshold"
+      - "dependency done but downstream task not activated"
+  agent_watchdog:
+    checks:
+      - "heartbeat timeout"
+      - "WORKING without task progress events"
+      - "IDLE while still owning active task"
+  orchestrator_watchdog:
+    checks:
+      - "missing project snapshot"
+      - "missing heartbeat"
+      - "too many blocked tasks without escalation"
+  release_watchdog:
+    checks:
+      - "candidate stuck in gate"
+      - "staged deployed but no verification"
+      - "prod released without smoke result"
+
+principles:
+  - "must use push + pull, not push-only"
+  - "must preserve audit trail for watchdog-triggered actions"
+  - "timer service is an active IPC trigger source, but all business decisions stay in orchestrator"
+  - "watchdog/escalation/release/audit 动作必须同时写 event history 和 structured logs"
+  - "watchdog must suppress false positives caused by transient sync loss"
+  - "timer-triggered actions must use task version checks before escalation"
+
+concurrency_controls:
+  task_update_model: "optimistic_locking"
+  required_fields:
+    - "task version"
+    - "last transition source"
+  rules:
+    - "timer stale check must re-read current task version before escalating"
+    - "worker update beats stale escalation if CAS fails"
+
+false_positive_mitigation:
+  snapshot_watchdog:
+    consecutive_miss_before_stale: 2
+  heartbeat_watchdog:
+    recent_activity_grace_s: 30
+  reference: "45_sync_and_watchdog_contract.yaml"
+
+timer_integration:
+  registration_owner: "orchestrator"
+  timer_service_role: "send scheduled IPC based on registered trigger policy"
+  expected_flow:
+    - "orchestrator writes trigger metadata into task records"
+    - "orchestrator registers triggers to timer service"
+    - "timer service sends IPC to orchestrator or target agent at due time"
+    - "orchestrator queries task manager and applies state changes if needed"
+
+logging_integration:
+  local_logging_service: "sandbox runtime logging service"
+  global_logging_service: "brain infra global logging service"
+  required_log_classes:
+    - "timeline"
+    - "workflow"
+    - "task_progress"
+    - "service_runtime"
+  rules:
+    - "heartbeat stale, snapshot stale, watchdog hit 必须落 WARNING 或更高等级日志"
+    - "watchdog 触发的 reminder/reassign/escalation 必须追加 task_progress log"
+    - "WARNING/ERROR/CRITICAL 日志必须同步到 brain"
+
+archive_dependency:
+  rule: "destroy or archive transition requires local runtime/log dump completion"
+  reference: "47_sandbox_archive_contract.yaml"

@@ -269,6 +269,13 @@ def _start_session(spec: AgentSpec, *, apply: bool, config_gen: bool = True, for
                 if val:
                     shell_parts.append(f"export {target_var}={val}")
 
+    # Inject explicit env vars from registry spec (for all agent types).
+    # Needed for vars like IS_SANDBOX that must be set before claude starts.
+    raw_env = raw.get("env") or {}
+    if isinstance(raw_env, dict):
+        for env_key, env_val in raw_env.items():
+            shell_parts.append(f"export {env_key}={shlex.quote(str(env_val))}")
+
     shell_parts.append(spec.start_cmd)
 
     cmd += [" && ".join(shell_parts)]

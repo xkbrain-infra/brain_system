@@ -1,0 +1,9 @@
+---
+project:
+  id: brain_task_manager
+  name: brain_task_manager
+  version: 1.0.0
+organization:
+  org: xkagent_infra
+  group: brain
+  type: infrastructure_service

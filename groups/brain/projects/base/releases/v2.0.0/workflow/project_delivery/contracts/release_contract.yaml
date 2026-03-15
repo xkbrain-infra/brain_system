@@ -1,0 +1,95 @@
+release_contract:
+  id: "MWF-REL-001"
+  version: "0.1"
+  intent: "细化 release 阶段的审批链、gate、部署、回滚与证据要求"
+
+release_positioning:
+  role: "delivery_to_production_control_phase"
+  description: "release 负责把 execution 产物转成受控发布结果，不允许以 execution done 替代 release done"
+
+approval_chain:
+  staging_gate:
+    required_approvers:
+      - release_manager
+    optional_reviewers:
+      - qa
+      - devops
+  production_gate:
+    required_approvers:
+      - manager_or_pmo
+      - release_manager
+    optional_reviewers:
+      - qa
+      - devops
+  rules:
+    - "未通过 staging gate 不得进入 production gate"
+    - "未通过 production approval 不得进入 prod deploy"
+
+stage_gate:
+  required_checks:
+    - build_artifact_frozen
+    - required_tests_passed
+    - required_reviews_passed
+    - audit_or_security_gate_passed_if_applicable
+    - stage_environment_available
+    - stage_validation_plan_present
+  pass_condition: "全部 required_checks 通过 + stage verification evidence 完整"
+
+production_gate:
+  required_checks:
+    - stage_passed
+    - prod_approval_recorded
+    - rollback_path_ready
+    - smoke_plan_present
+    - deployment_window_valid_if_applicable
+  pass_condition: "全部 required_checks 通过 + production approval complete"
+
+deployment_rules:
+  staging:
+    steps:
+      - "deploy frozen candidate to stage"
+      - "run QA/integration/regression verification"
+      - "record stage verification evidence"
+  production:
+    steps:
+      - "deploy approved candidate to prod"
+      - "run smoke checks"
+      - "record production verification evidence"
+
+rollback_rules:
+  triggers:
+    - "stage verification failed"
+    - "production smoke failed"
+    - "critical incident detected immediately after release"
+    - "required post-release checks missing beyond threshold"
+  requirements:
+    - "rollback target revision must be known before prod deploy"
+    - "rollback owner must be declared"
+    - "rollback result must be recorded in release report"
+
+evidence_requirements:
+  required_artifacts:
+    - build_artifact_refs
+    - test_evidence_refs
+    - review_evidence_refs
+    - stage_verification_refs
+    - prod_smoke_refs
+    - rollback_refs_if_any
+  rules:
+    - "没有 evidence 的 gate 不算通过"
+
+release_outcomes:
+  success:
+    status: RELEASED
+    conditions:
+      - "prod deploy succeeded"
+      - "smoke passed"
+      - "evidence complete"
+  rollback:
+    status: ROLLED_BACK
+    conditions:
+      - "rollback executed and verified"
+  rejected:
+    status: REJECTED
+    conditions:
+      - "approval gate rejected candidate"

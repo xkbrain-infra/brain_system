@@ -1,0 +1,10 @@
+version: v1.0.0
+created: 2026-02-15T14:19:07+08:00
+source_commit: a24021cb
+binary_hash: 211881be3b7bccb382c4e97c76b02fdcec40818553358d3de49cd88df96eda9a
+src_files:
+  service_task_manager.c: 923df920921b12902f36281ff62a47aa7028deb2a575a1d248e3c36bda2b411a
+  spec_store.c: afc8a602d2a821137ccb5dd552d5142603dacef1e9abfdaa09972505151e52f3
+  task_manager.h: d5b06a4ce503499e51e2da07db13241c20a266a930a48b7f7ca6a952865dd00e
+  task_store.c: 7a64ecd7e83b4db86e7285de6f31e1537ca85b3e1e5797f64ec833ddc7160aee
+  validator.c: 023df3586c1e7b2160e7c0cc1225b48ae3621844e581ccbcc0270b2c1b7389f2

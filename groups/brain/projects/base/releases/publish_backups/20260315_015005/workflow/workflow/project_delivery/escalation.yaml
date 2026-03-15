@@ -1,0 +1,129 @@
+workflow:
+  id: "MWF-WF-ESC-001"
+  name: "Escalation Workflow"
+  owner: "project_orchestrator + manager"
+  trigger:
+    - "task blocked beyond threshold"
+    - "agent offline"
+    - "sandbox degraded"
+    - "scope changed"
+    - "critical release risk"
+    - "sandbox_upgrade_required"  # 新增触发条件
+  steps:
+    - "orchestrator emits escalation request with context and options"
+    - "global task manager records escalation"
+    - "manager or PMO reviews risk and chooses action"
+    - "response can approve replan, add resources, pause, rollback, reject scope drift, or approve sandbox_upgrade"
+    - "orchestrator applies decision and updates project state"
+  outputs:
+    - escalation decision
+    - replan or recovery action
+    - audit trail
+
+# ========== Sandbox Upgrade Escalation ==========
+sandbox_upgrade_escalation:
+  description: "Sandbox 级别升级流程，当当前隔离级别不足以支持任务时触发"
+  trigger_conditions:
+    - "执行中发现需要写入 project_root 外文件"
+    - "需要容器化测试环境"
+    - "需要服务依赖（db/redis 等）"
+    - "build/test 失败因环境隔离不足"
+    - "检测到复杂环境依赖"
+    - "需要修改 brain base 本身"
+
+  upgrade_paths:
+    level_3_to_2:  # read_only → worktree_sandbox
+      description: "只读模式升级到 Worktree Sandbox"
+      steps:
+        - "暂停当前任务"
+        - "记录升级原因和已完成工作"
+        - "创建 git worktree"
+        - "安装 scope guard hooks"
+        - "配置 skill 写入限制"
+        - "迁移已完成工作到 worktree"
+        - "更新 project state 为 worktree_sandbox"
+        - "恢复任务执行"
+      audit_required: true
+      pmo_notification: true
+
+    level_2_to_1:  # worktree_sandbox → full_sandbox
+      description: "Worktree Sandbox 升级到 Full Sandbox"
+      steps:
+        - "暂停当前任务"
+        - "记录升级原因和已完成工作"
+        - "打包 worktree 内容"
+        - "启动 Docker container"
+        - "执行完整 bootstrap 流程"
+        - "迁移打包内容到 container"
+        - "安装完整 toolchain 和依赖"
+        - "验证 container 环境"
+        - "更新 project state 为 full_sandbox"
+        - "恢复任务执行"
+      audit_required: true
+      pmo_notification: true
+      re_bootstrap: true
+
+    level_3_to_1:  # read_only → full_sandbox (跳过 level 2)
+      description: "只读模式直接升级到 Full Sandbox"
+      steps:
+        - "暂停当前任务"
+        - "记录升级原因"
+        - "启动 Docker container"
+        - "执行完整 bootstrap 流程"
+        - "迁移已完成分析结果"
+        - "更新 project state 为 full_sandbox"
+        - "恢复任务执行"
+      audit_required: true
+      pmo_notification: true
+      re_bootstrap: true
+
+  audit_requirements:
+    fields:
+      - upgrade_id
+      - project_id
+      - from_mode
+      - to_mode
+      - upgrade_reason
+      - trigger_event
+      - original_evaluation_id
+      - evaluation_gap_analysis
+      - completed_work_snapshot
+      - migration_status
+      - time_cost
+      - recommendation_for_future
+
+    evaluation_gap_analysis:
+      description: "分析原始评估为何未能预见升级需求"
+      template:
+        original_factors: "原始决策因素"
+        missed_signals: "被忽视的信号"
+        confidence_assessment: "置信度评估偏差"
+        recommendation: "未来同类项目建议"
+
+  auto_trigger_rules:
+    read_only:
+      - tool: Write
+        action: "block_and_suggest_upgrade"
+      - tool: Edit
+        action: "block_and_suggest_upgrade"
+      - tool: Bash
+        condition: "command_writes_outside_project"
+        action: "block_and_suggest_upgrade"
+
+    worktree_sandbox:
+      - tool: Write
+        condition: "path_outside_project_root"
+        action: "block_and_offer_upgrade"
+      - tool: Bash
+        condition: "requires_service_dependency"
+        action: "block_and_offer_upgrade"
+      - event: build_failed
+        condition: "missing_system_dependency"
+        action: "suggest_upgrade"
+      - event: test_failed
+        condition: "requires_containerized_environment"
+        action: "suggest_upgrade"
+
+  downgrade_policy:
+    allowed: false
+    reason: "安全考虑，不支持降级。如需降级，应重新创建项目"

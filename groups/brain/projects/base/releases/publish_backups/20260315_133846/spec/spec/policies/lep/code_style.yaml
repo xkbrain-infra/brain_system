@@ -1,0 +1,48 @@
+gate_id: G-GATE-CODE-STYLE
+name: Code Style
+applies_to: [write, git]
+rule: 代码遵循项目规范
+block: false
+
+enforcement:
+  stage: pre_tool_use
+  method: linter
+  priority: LOW
+  note: "当前为推荐性检查，不强制阻塞"
+
+  linters:
+    python:
+      - tool: black
+        auto_fix: false
+      - tool: pylint
+        auto_fix: false
+
+    javascript:
+      - tool: prettier
+        auto_fix: false
+      - tool: eslint
+        auto_fix: false
+
+    c:
+      - tool: clang-format
+        auto_fix: false
+
+  config:
+    block_on_failure: false
+    show_warnings: true
+
+  warn_message: |
+    ℹ️ 代码风格建议 (G-CODE-STYLE)
+
+    建议运行代码格式化工具：
+    - Python: black {file_path}
+    - JavaScript: prettier --write {file_path}
+    - C/C++: clang-format -i {file_path}
+
+    参考：/brain/base/spec/standards/coding/
+bindings:
+  hooks:
+    stage: pre_tool_use
+    trigger_tools: [Write, Edit]
+  mcp_tools: []
+  related_skills: []

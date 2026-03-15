@@ -1,0 +1,268 @@
+workflow:
+  id: "MWF-WF-SANDBOX-EVAL-001"
+  name: "Sandbox Evaluation Workflow"
+  description: "在项目 intake 阶段评估 sandbox 需求，决定隔离级别"
+  owner: "brain_infra + manager"
+  trigger: "intake_record created, before RESEARCH phase"
+  position: "between INTAKE and RESEARCH"
+
+inputs:
+  - intake_record
+  - project_goal
+  - scope_in
+  - scope_out
+  - initial_requirements
+  - requested_roles
+  - group_context
+  - baseline_image_info
+
+steps:
+  - name: "analyze_environment_dependency"
+    description: "分析项目环境依赖复杂度"
+    inputs:
+      - project_goal
+      - scope_in
+      - requested_roles
+    outputs:
+      - environment_dependency_level  # high/medium/low/none
+    criteria:
+      high:
+        - "需要特定语言 runtime 版本（如 Python 3.12 + Node 20）"
+        - "需要数据库服务（PostgreSQL, MySQL, Redis 等）"
+        - "需要消息队列（RabbitMQ, Kafka 等）"
+        - "需要特定 OS/内核特性"
+        - "需要编译工具链（GCC, LLVM 等）"
+        - "可能修改系统级配置"
+      medium:
+        - "需要标准开发工具（Python, Node 等）"
+        - "需要 git 操作"
+        - "需要简单 shell 脚本"
+      low:
+        - "仅需文本编辑器"
+        - "仅需文件读写"
+      none:
+        - "仅需文件读取"
+        - "仅需查询分析"
+
+  - name: "analyze_write_scope"
+    description: "分析项目需要的写入范围"
+    inputs:
+      - scope_in
+      - project_goal
+    outputs:
+      - write_scope_requirement  # unrestricted/project_only/none
+    criteria:
+      unrestricted:
+        - "需要安装系统包"
+        - "需要写入 /etc, /usr 等系统目录"
+        - "需要修改 brain base 本身"
+        - "需要跨 project 写入"
+      project_only:
+        - "仅在 project_root 内创建/修改文件"
+        - "git clone/pull/push 操作"
+        - "临时文件可放在项目目录内"
+      none:
+        - "纯分析任务"
+        - "不需要任何写入"
+
+  - name: "assess_pollution_risk"
+    description: "评估对 Brain 环境的污染风险"
+    inputs:
+      - environment_dependency
+      - write_scope_requirement
+      - project_goal
+    outputs:
+      - risk_level  # high/medium/low/none
+    criteria:
+      high:
+        - "修改 brain base 代码"
+        - "修改 infrastructure 配置"
+        - "修改全局服务配置"
+        - "可能破坏其他项目"
+      medium:
+        - "修改 shared library"
+        - "修改 common utilities"
+      low:
+        - "仅修改项目自身代码"
+      none:
+        - "只读操作"
+
+  - name: "determine_btr_requirement"
+    description: "判断是否需要完整的 Build-Test-Release 链"
+    inputs:
+      - project_goal
+      - scope_in
+    outputs:
+      - btr_required  # true/false
+    criteria:
+      true:
+        - "需要编译/构建"
+        - "需要单元测试/集成测试"
+        - "需要发布到生产环境"
+        - "需要版本管理"
+      false:
+        - "一次性脚本"
+        - "文档任务"
+        - "简单配置修改"
+
+  - name: "assess_complexity"
+    description: "评估项目复杂度"
+    inputs:
+      - scope_in
+      - scope_out
+      - estimated_tasks
+    outputs:
+      - complexity_level  # high/medium/low/trivial
+    criteria:
+      high:
+        - "涉及多个服务/模块"
+        - "需要架构设计"
+        - "预计工期 > 1 周"
+      medium:
+        - "单个服务/模块"
+        - "需要详细设计"
+        - "预计工期 2-5 天"
+      low:
+        - "简单功能添加"
+        - "Bug 修复"
+        - "预计工期 < 2 天"
+      trivial:
+        - "单文件修改"
+        - "配置调整"
+        - "预计工期 < 4 小时"
+
+  - name: "apply_decision_matrix"
+    description: "应用决策矩阵得出 sandbox 模式建议"
+    inputs:
+      - environment_dependency_level
+      - write_scope_requirement
+      - risk_level
+      - btr_required
+      - complexity_level
+    outputs:
+      - recommended_mode  # full_sandbox/worktree_sandbox/read_only
+      - confidence_level  # high/medium/low
+      - upgrade_risk_assessment
+    decision_rules:
+      # 最高优先级：风险
+      - if: "risk_level == high"
+        then: "full_sandbox"
+        confidence: "high"
+
+      # 次优先级：环境依赖
+      - if: "environment_dependency == high"
+        then: "full_sandbox"
+        confidence: "high"
+      - if: "environment_dependency == medium"
+        then: "worktree_sandbox"
+        confidence: "medium"
+
+      # 第三优先级：写入范围
+      - if: "write_scope_requirement == unrestricted"
+        then: "full_sandbox"
+        confidence: "high"
+      - if: "write_scope_requirement == none"
+        then: "read_only"
+        confidence: "high"
+
+      # 第四优先级：BTR 链
+      - if: "btr_required == true"
+        then: "full_sandbox"
+        confidence: "medium"
+
+      # 第五优先级：复杂度
+      - if: "complexity_level == high"
+        then: "full_sandbox"
+        confidence: "medium"
+      - if: "complexity_level == trivial"
+        then: "read_only"
+        confidence: "high"
+
+      # 默认
+      - default: "worktree_sandbox"
+        confidence: "medium"
+
+  - name: "manager_review"
+    description: "Manager 审核评估结果"
+    inputs:
+      - recommended_mode
+      - confidence_level
+      - upgrade_risk_assessment
+    outputs:
+      - approved_mode
+      - review_notes
+    actions:
+      - "确认推荐模式"
+      - "或手动调整模式（需说明理由）"
+      - "标记需关注的风险点"
+
+  - name: "record_evaluation"
+    description: "记录评估结果"
+    outputs:
+      - sandbox_evaluation_record
+
+outputs:
+  - sandbox_evaluation_record:
+      required_fields:
+        - project_id
+        - evaluation_timestamp
+        - evaluated_by  # algorithm/manager_override
+        - decision_factors:
+            - environment_dependency
+            - write_scope_requirement
+            - risk_level
+            - btr_required
+            - complexity_level
+        - recommended_mode
+        - approved_mode
+        - confidence_level
+        - upgrade_risk_assessment
+        - review_notes
+        - evaluation_version  # 决策矩阵版本
+
+pass_gate:
+  id: "SANDBOX_EVAL_PASS"
+  rule: "sandbox 模式已确定并记录，可进入 RESEARCH"
+  required_checks:
+    evaluation_complete:
+      description: "所有决策因素已分析"
+    mode_selected:
+      description: "已选择 sandbox 模式"
+    record_created:
+      description: "评估记录已创建"
+
+fail_gate:
+  id: "SANDBOX_EVAL_HOLD"
+  rule: "信息不足无法决策，需要澄清"
+  typical_reasons:
+    - "环境依赖无法确定"
+    - "写入范围模糊不清"
+    - "风险等级无法评估"
+  resolution:
+    - "补充需求信息"
+    - "或保守选择高一级别 sandbox"
+
+post_evaluation_flow:
+  full_sandbox:
+    - "进入 RESEARCH 阶段"
+    - "准备 bootstrap 参数"
+    - "规划 container 资源"
+
+  worktree_sandbox:
+    - "进入 RESEARCH 阶段"
+    - "准备 worktree 创建"
+    - "配置 scope guard hooks"
+
+  read_only:
+    - "进入 RESEARCH 阶段（轻量）"
+    - "配置 read-only hooks"
+    - "跳过 bootstrap"
+
+upgrade_tracking:
+  enabled: true
+  audit_required: true
+  fields:
+    - upgrade_count
+    - upgrade_reasons
+    - original_evaluation_gap
+    - recommendation_for_future

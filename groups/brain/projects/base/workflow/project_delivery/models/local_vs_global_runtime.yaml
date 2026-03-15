@@ -1,0 +1,107 @@
+local_vs_global_runtime:
+  id: "MWF-LAYER-001"
+  version: "0.1"
+  intent: "定义 sandbox 本地执行层与 brain 全局同步层的边界"
+
+local_execution_layer:
+  location: "inside project sandbox"
+  components:
+    - project_orchestrator
+    - local_task_runtime
+    - worker_agents
+    - timer_registration_context
+  responsibilities:
+    - "维护 task graph 与 READY set"
+    - "维护 task participants / todo_list / handoff 关系"
+    - "执行任务分配与状态推进"
+    - "接收 timer IPC 并做项目语义判断"
+    - "保存细粒度 execution trace"
+  data_scope:
+    includes:
+      - detailed task records
+      - local artifacts
+      - review/test handoff
+      - per-agent execution details
+    excludes:
+      - cross-project global board
+      - global governance state
+
+global_sync_layer:
+  location: "brain infra"
+  components:
+    - global_task_manager
+    - manager_board
+    - release_manager
+    - audit_orchestrator
+  responsibilities:
+    - "汇聚各 sandbox 的 project snapshot"
+    - "记录 task summary 与关键状态事件"
+    - "记录 orchestrator/agent heartbeat 摘要"
+    - "提供治理、发布、审计的全局查询面"
+  data_scope:
+    includes:
+      - project snapshots
+      - task summaries
+      - heartbeat indexes
+      - escalation and release records
+      - audit materialization records
+    excludes:
+      - sandbox 内所有细粒度执行上下文原文
+
+synchronization_model:
+  source_of_truth:
+    local_execution: "project orchestrator + local task runtime"
+    global_visibility: "global task manager"
+  sync_direction:
+    - "sandbox -> brain for snapshots/events/summaries"
+    - "brain -> sandbox for approvals/escalations/release decisions"
+
+sync_payloads:
+  project_snapshot:
+    fields:
+      - project_id
+      - sandbox_id
+      - orchestrator_id
+      - project_status
+      - workflow_stage
+      - progress_pct
+      - active_tasks
+      - ready_tasks
+      - blocked_tasks
+      - pending_reviews
+      - parallelism_width
+      - updated_at
+  task_summary:
+    fields:
+      - task_id
+      - project_id
+      - owner
+      - status
+      - kind
+      - artifact_refs
+      - updated_at
+  event_summary:
+    fields:
+      - event_id
+      - event_type
+      - project_id
+      - task_id
+      - severity
+      - summary
+      - ts
+
+timer_and_task_flow:
+  local:
+    - "orchestrator writes trigger_policy into local task runtime"
+    - "orchestrator registers trigger to timer service"
+    - "timer service sends IPC to orchestrator or agent"
+    - "orchestrator queries local task runtime and applies state logic"
+  global:
+    - "orchestrator publishes resulting state change and snapshot delta to global task manager"
+    - "brain infra does not replay every local timer event, only meaningful outcomes"
+
+design_rules:
+  - "task 的细粒度执行状态先落 local task runtime"
+  - "brain 只接收足够支撑治理、发布、审计的摘要"
+  - "orchestrator 是 local -> global 同步的唯一主要出口"
+  - "worker agents 不应直接绕过 orchestrator 向 brain 写全局语义"

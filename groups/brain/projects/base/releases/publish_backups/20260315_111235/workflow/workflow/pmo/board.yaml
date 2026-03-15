@@ -1,0 +1,3 @@
+board:
+  status: draft
+  note: "PMO board 占位文件，后续由 workflow runtime/治理流程写入。"

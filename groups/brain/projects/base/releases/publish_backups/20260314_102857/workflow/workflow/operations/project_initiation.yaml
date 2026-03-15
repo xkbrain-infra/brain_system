@@ -1,0 +1,123 @@
+id: WF-OPS-PROJECT-INIT
+title: 项目立项流程
+version: 2.0
+domain: workflow/operations
+
+description: |
+  定义 project_delivery 项目从 intake 到 sandbox bootstrap 请求就绪的立项流程。
+  立项的职责是确认 group/project_root、写项目骨架、生成 sandbox/bootstrap 请求；
+  不是直接在 host 上开始开发，更不是绕回旧的 /brain/groups/**/spec/projects/** 路径。
+
+trigger:
+  message_prefix: "[PROJECT_INIT]"
+  sender: any
+  receiver: agent_brain_manager
+
+roles:
+  brain_manager:
+  project_orchestrator:
+  pmo:
+  sender:
+
+steps:
+  - id: step1_read_intake
+    actor: brain_manager
+    action: "读取 intake_record / project request，解析 group_id、project_id、requested_roles、sandbox_strategy、acceptance"
+    output: "group_root, project_root, requested_roles, sandbox_request"
+
+  - id: step2_ack
+    actor: brain_manager
+    action: 'ipc_send(to=sender, "[brain-manager] 立项确认，开始创建 project_root 和 sandbox bootstrap 请求")'
+    timing: immediate
+
+  - id: step3_resolve_project_root
+    actor: brain_manager
+    action: |
+      先确认 group_root，再在 {group_root}/projects/{project_id}/ 创建项目主目录。
+      project_root 是 SSOT，sandbox 只是执行副本。
+      禁止把 /brain/groups/**/spec/projects/** 当作 project_root fallback。
+    outputs:
+      - project_root
+      - project_root_record
+
+  - id: step4_create_project_scaffold
+    actor: brain_manager
+    action: |
+      在 {group_root}/projects/{project_id}/ 下创建标准目录：
+        references/
+        spec/06_tasks/{assigned,review,done,events,dispatch}/
+        spec/07_verification/{cases,defects,reports}/
+        journal/{issues,audit}/
+        memory/
+        config/agents/
+      写 index.yaml，并初始化：
+        - spec/06_tasks/plan.yaml
+        - spec/06_tasks/backlog.yaml
+        - spec/06_tasks/task_manager.yaml
+      允许在 project_root/spec/ 下写 intake/research/planning/task 文档。
+
+  - id: step5_prepare_project_agent_manifests
+    actor: brain_manager
+    action: |
+      根据 requested_roles 生成 project-scoped agent manifest：
+        - config/agents/roster.yaml
+        - config/agents/template_map.yaml
+        - config/agents/provision_plan.yaml
+      此时只生成 manifest，不在 host 上直接创建 worker runtime。
+      project-scoped runtime agents 必须等 sandbox bootstrap 成功后在容器内创建。
+
+  - id: step6_prepare_sandbox_request
+    actor: brain_manager
+    action: |
+      生成 sandbox bootstrap 请求：
+        - sandbox_strategy
+        - sandbox_provider
+        - sandbox_template_profile
+        - brain_runtime_version_ref
+        - project_payload_package request
+      对 brain 域项目，默认优先 docker runtime clone。
+    outputs:
+      - sandbox_request
+      - bootstrap_request
+
+  - id: step7_apply_host_write_lock
+    actor: brain_manager
+    action: |
+      在 BOOTSTRAP_PASS 前，禁止直接修改 host 上的项目实现代码路径，
+      包括 /brain/infrastructure/service/**、/xkagent_infra/brain/infrastructure/service/**、
+      以及任何被 project_delivery 声明为 sandbox execution 的路径。
+      仅允许：
+        - project_root 下的 intake/research/planning/spec/task 文档
+        - pending/ 下的 workflow/contract/model 变更
+      未创建 sandbox 或 bootstrap 未通过时，不得进入实现阶段。
+
+  - id: step8_trigger_bootstrap
+    actor: brain_manager
+    action: |
+      将 project_root、sandbox_request、project agent manifest 交给 bootstrap 流程。
+      只有在 BOOTSTRAP_PASS 后，project_orchestrator 才能在 sandbox 内创建 runtime agents 并启动实现。
+
+  - id: step9_report
+    actor: brain_manager
+    action: |
+      ipc_send(to=sender, "[brain-manager] PROJECT_INIT_RESULT:
+               项目 {project_id} 已完成立项
+               project_root: {group_root}/projects/{project_id}/
+               sandbox_request: prepared
+               next_step: BOOTSTRAP")
+      ipc_send(to=pmo_agent, "[brain-manager] 项目 {project_id} 已完成立项，
+               project_root 和 sandbox bootstrap request 已准备，
+               BOOTSTRAP_PASS 前不得开始 host implementation。")
+
+constraints:
+  - "PROJECT_INIT 不触发 brain_base_deploy MCP，不修改 /brain/base/"
+  - "project_root 必须先于 sandbox 创建"
+  - "project delivery 文档必须写在 group_root/projects/{project}/spec/ 下"
+  - "禁止将 /brain/groups/**/spec/projects/** 作为 project spec fallback"
+  - "禁止在 BOOTSTRAP_PASS 前直接修改 host implementation 路径"
+  - "project-scoped runtime agents 只能在 sandbox 内创建"
+
+related_workflows:
+  - "WF-OPS-UPDATE-BRAIN-001"
+  - "MWF-WF-INTAKE-001"
+  - "MWF-WF-BOOTSTRAP-001"

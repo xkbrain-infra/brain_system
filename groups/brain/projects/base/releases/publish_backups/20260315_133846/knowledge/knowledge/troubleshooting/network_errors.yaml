@@ -1,0 +1,135 @@
+# Network Errors - 网络错误
+# 网络连接、超时、HTTP错误相关问题
+
+category: "network_errors"
+version: "1.0"
+last_updated: "2026-01-17"
+
+problems:
+  - id: "NET-001"
+    category: "network_errors"
+    keywords: ["timeout", "connection", "slow", "network"]
+    error_patterns:
+      - "ReadTimeout"
+      - "ConnectionTimeout"
+      - "requests.exceptions.Timeout"
+    description: "Network request timeout due to slow response"
+
+    solutions:
+      - id: "NET-001-SOL-A"
+        description: "Increase timeout and add retry with exponential backoff"
+        confidence: "high"
+        risk_level: "low"
+        reversible: true
+
+        prerequisites:
+          - "network_connectivity == true"
+          - "retry_count < max_retries"
+
+        steps:
+          - "Increase request timeout (e.g., from 30s to 120s)"
+          - "Implement exponential backoff: 5s, 10s, 20s, 40s, 80s"
+          - "Add jitter to prevent thundering herd"
+          - "Retry the request"
+
+        code_example: |
+          from tenacity import retry, stop_after_attempt, wait_exponential
+
+          @retry(
+              stop=stop_after_attempt(5),
+              wait=wait_exponential(multiplier=5, min=5, max=80)
+          )
+          def download_with_retry(url, timeout=120):
+              response = requests.get(url, timeout=timeout)
+              return response
+
+        expected_outcome: "Request succeeds within retry attempts"
+
+        validation:
+          - "response.status_code == 200"
+          - "response.content length > 0"
+
+  - id: "NET-002"
+    category: "network_errors"
+    keywords: ["connection", "refused", "reset", "broken"]
+    error_patterns:
+      - "ConnectionRefusedError"
+      - "ConnectionResetError"
+      - "BrokenPipeError"
+    description: "Connection refused or reset by remote server"
+
+    solutions:
+      - id: "NET-002-SOL-A"
+        description: "Retry with connection pooling and keep-alive"
+        confidence: "high"
+        risk_level: "low"
+        reversible: true
+
+        steps:
+          - "Use connection pooling (requests.Session)"
+          - "Enable keep-alive headers"
+          - "Add retry logic for connection errors"
+          - "Add delay between retries (5-10 seconds)"
+
+        code_example: |
+          session = requests.Session()
+          adapter = requests.adapters.HTTPAdapter(
+              max_retries=3,
+              pool_connections=10,
+              pool_maxsize=20
+          )
+          session.mount('http://', adapter)
+          session.mount('https://', adapter)
+
+        expected_outcome: "Connection establishes successfully"
+
+  - id: "NET-003"
+    category: "network_errors"
+    keywords: ["404", "not found", "missing"]
+    error_patterns:
+      - "404"
+      - "Not Found"
+      - "HTTPError: 404"
+    description: "Resource not found (HTTP 404)"
+
+    solutions:
+      - id: "NET-003-SOL-A"
+        description: "HALT and notify user - unrecoverable error"
+        confidence: "high"
+        risk_level: "low"
+        reversible: true
+        auto_applicable: false
+
+        steps:
+          - "Log the 404 error with full context"
+          - "DO NOT retry (404 is permanent)"
+          - "Trigger G-UNRECOVERABLE-ERROR-HALT gate"
+          - "Notify user via Telegram"
+          - "Await user decision"
+
+        expected_outcome: "User is notified and makes decision"
+
+  - id: "NET-004"
+    category: "network_errors"
+    keywords: ["captcha", "verification", "blocked", "bot detection"]
+    error_patterns:
+      - "captcha"
+      - "verification required"
+      - "bot detection"
+    description: "CAPTCHA or bot detection blocking automated access"
+
+    solutions:
+      - id: "NET-004-SOL-A"
+        description: "Notify user - requires manual intervention or alternative source"
+        confidence: "high"
+        risk_level: "low"
+        reversible: true
+        auto_applicable: false
+
+        steps:
+          - "Log CAPTCHA detection"
+          - "DO NOT attempt to bypass CAPTCHA"
+          - "Notify user via Telegram"
+          - "Suggest alternatives: manual download, different data source, paid API"
+
+        expected_outcome: "User provides alternative approach"

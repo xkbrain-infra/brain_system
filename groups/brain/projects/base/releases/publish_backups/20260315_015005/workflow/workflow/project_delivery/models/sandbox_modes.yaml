@@ -1,0 +1,174 @@
+sandbox_modes:
+  id: "MWF-SANDBOX-MODE-001"
+  version: "0.1"
+  intent: "定义项目交付中的三种 sandbox 隔离级别，根据环境依赖和风险评估选择"
+
+modes:
+  full_sandbox:
+    level: 1
+    name: "完整 Sandbox"
+    description: "Docker 容器完全隔离，适用复杂环境依赖项目"
+    isolation:
+      type: container
+      mechanism: docker_container
+      provider: brain_base_docker_template
+    workspace:
+      type: full_clone
+      brain_baseline: complete_copy
+      project_payload: imported
+    write_scope:
+      restriction: unrestricted_in_container
+      container_boundary: strict
+    capabilities:
+      - full_build_test_release_chain
+      - service_dependencies
+      - network_isolation
+      - complete_environment_control
+    upgrade_from: []  # 无法降级，只能重新走 workflow
+    downgrade_to: []
+    applicable_when:
+      - environment_dependency == high
+      - risk_of_brain_pollution == high
+      - build_test_release_required == true
+      - complexity == high
+    examples:
+      - "Brain 自身开发"
+      - "Service 开发需要数据库/缓存依赖"
+      - "需要特定 OS/内核版本"
+      - "可能破坏宿主环境的操作"
+
+  worktree_sandbox:
+    level: 2
+    name: "Worktree 轻量 Sandbox"
+    description: "Git worktree + hooks + skill 限制，适用简单项目"
+    isolation:
+      type: git_worktree
+      mechanism: worktree_directory + scope_guard_hooks + skill_constraints
+      enforcement: pre_tool_use_hooks
+    workspace:
+      type: worktree_directory
+      location: "{group_root}/.worktrees/{project_id}"
+      brain_baseline: reference_only  # 通过 .brain 或环境变量引用
+      project_payload: direct_reference
+    write_scope:
+      restriction: project_root_only
+      enforcement: path_checker_hook
+      allowed_paths:
+        - "{project_root}/**"
+        - "{project_root}/../.worktrees/{project_id}/**"
+      blocked_paths:
+        - "{brain_base}/**"
+        - "{other_projects}/**"
+        - "/etc/**"
+        - "/usr/**"
+    capabilities:
+      - local_file_operations
+      - git_operations
+      - simple_script_execution
+      - constrained_shell_commands
+    upgrade_to: full_sandbox
+    upgrade_trigger:
+      - "执行中发现需要写入 project_root 外"
+      - "需要容器化测试环境"
+      - "需要服务依赖（db/redis 等）"
+      - "build/test 失败因环境隔离不足"
+      - "检测到复杂环境依赖"
+    downgrade_to: []
+    applicable_when:
+      - environment_dependency == low
+      - write_scope_requirement == project_only
+      - risk_of_brain_pollution == low
+      - build_test_release_required == false
+      - complexity == low
+    examples:
+      - "简单脚本开发"
+      - "配置文件编辑"
+      - "文档写作"
+      - "单文件工具开发"
+      - "无外部依赖的代码"
+
+  read_only:
+    level: 3
+    name: "只读模式"
+    description: "无 workspace，hooks 拦截所有写入，纯分析查询"
+    isolation:
+      type: none
+      mechanism: hooks_blocking
+      enforcement: pre_tool_use_hooks
+    workspace:
+      type: none
+      location: n/a
+      brain_baseline: direct_access
+      project_payload: n/a
+    write_scope:
+      restriction: read_only
+      enforcement: strict_blocking
+    capabilities:
+      - file_reading
+      - code_analysis
+      - documentation_query
+      - log_analysis
+      - dependency_inspection
+    upgrade_to: worktree_sandbox
+    upgrade_trigger:
+      - "需要写入操作"
+      - "任务 scope 扩大涉及修改"
+      - "分析结果需要落地为代码"
+    downgrade_to: []
+    applicable_when:
+      - write_scope_requirement == none
+      - risk_of_brain_pollution == none
+      - task_type == analysis_or_query
+    examples:
+      - "代码审查"
+      - "架构分析"
+      - "依赖检查"
+      - "日志查询分析"
+      - "文档搜索"
+      - "Bug 定位分析"
+
+decision_matrix:
+  primary_factors:
+    environment_dependency:
+      high: full_sandbox
+      medium: worktree_sandbox
+      low: worktree_sandbox
+      none: read_only
+
+    write_scope_requirement:
+      unrestricted: full_sandbox
+      project_only: worktree_sandbox
+      none: read_only
+
+    risk_of_brain_pollution:
+      high: full_sandbox
+      medium: worktree_sandbox
+      low: worktree_sandbox
+      none: read_only
+
+  secondary_factors:
+    build_test_release_required:
+      "true": 优先 full_sandbox
+      "false": 按其他因素
+
+    estimated_complexity:
+      high: full_sandbox
+      medium: worktree_sandbox
+      low: worktree_sandbox
+      trivial: read_only
+
+    estimated_duration:
+      long_term: full_sandbox
+      short_term: worktree_sandbox
+      one_shot: read_only
+
+confidence_assessment:
+  high: "所有因素明确，无需升级风险"
+  medium: "主要因素明确，次要因素有不确定性"
+  low: "因素冲突或信息不足，建议保守选择高一级别"
+
+upgrade_policy:
+  always_allowed: true
+  audit_required: true
+  pmo_notification: true
+  re_evaluation: "触发 upgrade 时，原始评估必须 audit"

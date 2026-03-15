@@ -1,0 +1,100 @@
+workflow:
+  id: "MWF-WF-INTAKE-001"
+  name: "Project Intake Workflow"
+  note: "intake = requirement/project entry gate，负责入口受理与立项前最小条件检查，不负责 research、planning 或 execution"
+  owner: "brain_infra + manager"
+  trigger: "new requirement submitted"
+  inputs:
+    - group_id
+    - project_goal
+    - scope
+    - acceptance
+    - constraints
+    - priority
+  steps:
+    - "manager creates project intake record"
+    - "brain infra validates minimum startup information"
+    - "brain infra resolves group ownership and validates group_root"
+    - "brain infra assigns workflow profile and priority"
+    - "brain infra allocates project_id and creates project_root under group_root/projects/"
+    - "brain infra reserves sandbox request metadata without replacing project_root"
+    - "**SANDBOX_EVALUATION: 执行 sandbox 必要性评估**"
+    - "**└─ 分析环境依赖、写入范围、污染风险、BTR需求、复杂度**"
+    - "**└─ 应用决策矩阵确定 sandbox 模式**"
+    - "**└─ manager 审核并确认 sandbox 模式**"
+    - "manager confirms sponsor, requested roles, and baseline feasibility"
+    - "intake decision marks project ready for research and conditional bootstrap"
+  outputs:
+    - intake_record
+    - project record
+    - project_root_record
+    - sandbox_request
+    - sandbox_evaluation_record  # 新增：评估记录
+    - initial_open_questions
+    - initial plan seed
+  failure_handling:
+    - "missing startup information -> project stays in INTAKE_HOLD until clarified"
+
+entry_criteria:
+  - "requirement source is identified"
+  - "request has at least a draft goal or problem statement"
+
+pass_gate:
+  id: "INTAKE_PASS"
+  rule: "只有满足最小启动信息集，项目才可从 INTAKE 进入 RESEARCHING，并为后续 BOOTSTRAPPING 做准备"
+  required_checks:
+    goal_defined:
+      description: "项目目标清晰，可描述交付对象与目的"
+    acceptance_defined:
+      description: "至少存在最小验收标准"
+    scope_defined:
+      description: "明确 scope_in / scope_out，避免隐式扩张"
+    group_owned:
+      description: "项目已归属到合法 group，group_root 可解析"
+    project_root_defined:
+      description: "project_root 已在 group_root/projects/ 下创建或预留"
+    profile_selected:
+      description: "已选择 workflow profile，当前默认 software_dev"
+    constraints_minimum_ready:
+      description: "deadline / dependency / environment / risk 至少具备最小描述"
+    bootstrap_feasible:
+      description: "已知可用 baseline image/环境，不存在阻断性缺信息"
+    sponsor_defined:
+      description: "manager/PMO sponsor 已明确"
+    sandbox_evaluated:  # 新增检查
+      description: "sandbox 模式已评估并记录 (full_sandbox/worktree_sandbox/read_only)"
+
+fail_gate:
+  id: "INTAKE_HOLD"
+  rule: "任何 pass_gate required_checks 不满足时，项目不得启动 sandbox"
+  typical_reasons:
+    - "goal ambiguous"
+    - "acceptance missing"
+    - "scope missing"
+    - "group ownership unresolved"
+    - "project root not under group/projects"
+    - "profile not selected"
+    - "environment baseline unknown"
+    - "critical dependency unknown"
+
+required_record:
+  name: "intake_record"
+  required_fields:
+    - group_id
+    - group_root
+    - project_id
+    - project_root
+    - profile
+    - project_goal
+    - scope_in
+    - scope_out
+    - acceptance
+    - constraints
+    - priority
+    - sponsor
+    - requested_roles
+    - baseline_image
+    - intake_decision
+    - sandbox_request
+    - initial_open_questions
+  note: "没有完整 intake_record，或 project_root 不在 group/projects/ 下的项目，不得进入 RESEARCHING 或 BOOTSTRAPPING"

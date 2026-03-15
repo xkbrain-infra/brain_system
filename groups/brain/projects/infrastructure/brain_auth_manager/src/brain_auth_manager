@@ -1,0 +1,368 @@
+#!/opt/venv/bin/python3
+"""brain_auth_manager: unified auth manager for Claude/Codex/Gemini CLI."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import shutil
+import subprocess
+import sys
+from dataclasses import dataclass
+from pathlib import Path
+
+
+@dataclass(frozen=True)
+class AgentAuthSpec:
+    name: str
+    required_home_files: tuple[str, ...]
+    secrets_to_home: tuple[tuple[str, str], ...]  # (secret_rel_path, home_path)
+    login_cmd: tuple[str, ...]
+    login_hint: str
+
+
+SPECS: dict[str, AgentAuthSpec] = {
+    "claude": AgentAuthSpec(
+        name="claude",
+        required_home_files=("~/.claude.json",),
+        secrets_to_home=(("claude/.claude.json", "~/.claude.json"),),
+        login_cmd=("claude", "setup-token"),
+        login_hint="Use Claude setup-token flow and paste token in terminal to finish login.",
+    ),
+    "codex": AgentAuthSpec(
+        name="codex",
+        required_home_files=("~/.codex/auth.json",),
+        secrets_to_home=(("codex/auth.json", "~/.codex/auth.json"),),
+        login_cmd=("codex", "login", "--device-auth"),
+        login_hint="Follow Codex CLI device-auth prompts and paste the verification code on the page.",
+    ),
+    "gemini": AgentAuthSpec(
+        name="gemini",
+        required_home_files=(
+            "~/.gemini/oauth_creds.json",
+            "~/.gemini/google_accounts.json",
+            "~/.gemini/installation_id",
+            "~/.gemini/state.json",
+        ),
+        secrets_to_home=(
+            ("gemini/oauth_creds.json", "~/.gemini/oauth_creds.json"),
+            ("gemini/google_accounts.json", "~/.gemini/google_accounts.json"),
+            ("gemini/installation_id", "~/.gemini/installation_id"),
+            ("gemini/state.json", "~/.gemini/state.json"),
+        ),
+        login_cmd=("gemini",),
+        login_hint="Run Gemini once and complete the web/device flow shown in terminal.",
+    ),
+}
+
+
+def _expand(path_expr: str) -> Path:
+    return Path(path_expr).expanduser()
+
+
+def _default_brain_root() -> str:
+    return os.environ.get("BRAIN_ROOT", "/xkagent_infra/brain")
+
+
+def _secrets_root(brain_root: Path) -> Path:
+    return brain_root / "secrets" / "system" / "agents" / "auth"
+
+
+def _validate_brain_root(brain_root: Path) -> None:
+    if not brain_root.exists():
+        raise SystemExit(f"ERROR: brain root not found: {brain_root}")
+
+
+def _check_agent(spec: AgentAuthSpec, brain_root: Path) -> dict:
+    required = []
+    missing = []
+    for p in spec.required_home_files:
+        target = _expand(p)
+        ok = target.is_file()
+        required.append({"path": str(target), "exists": ok})
+        if not ok:
+            missing.append(str(target))
+
+    secrets = []
+    missing_secret_files = []
+    for secret_rel, _home in spec.secrets_to_home:
+        secret_path = _secrets_root(brain_root) / secret_rel
+        secret_exists = secret_path.is_file()
+        secrets.append({"path": str(secret_path), "exists": secret_exists})
+        if not secret_exists:
+            missing_secret_files.append(str(secret_path))
+
+    cli = shutil.which(spec.login_cmd[0]) is not None
+    status = "ok" if not missing and cli else "missing_auth" if missing else "missing_cli"
+    return {
+        "agent": spec.name,
+        "status": status,
+        "cli_available": cli,
+        "required_files": required,
+        "secrets_files": secrets,
+        "missing_secret_files": missing_secret_files,
+        "missing_files": missing,
+        "login_command": " ".join(spec.login_cmd),
+        "login_hint": spec.login_hint,
+    }
+
+
+def _check_all(brain_root: Path, agents: list[str] | None = None) -> dict:
+    targets = agents if agents else list(SPECS.keys())
+    report = {name: _check_agent(SPECS[name], brain_root) for name in targets}
+    missing_auth = sum(1 for r in report.values() if r["status"] == "missing_auth")
+    missing_cli = sum(1 for r in report.values() if not r["cli_available"])
+    missing_secret_backup = sum(1 for r in report.values() if len(r["missing_secret_files"]) > 0)
+    if missing_auth == 0 and missing_cli == 0:
+        overall = "degraded" if missing_secret_backup > 0 else "healthy"
+    elif missing_cli == len(report):
+        overall = "unhealthy"
+    else:
+        overall = "degraded"
+    return {
+        "overall_status": overall,
+        "brain_root": str(brain_root),
+        "secrets_auth_root": str(_secrets_root(brain_root)),
+        "summary": {
+            "missing_auth_agents": missing_auth,
+            "missing_cli_agents": missing_cli,
+            "missing_secret_backup_agents": missing_secret_backup,
+        },
+        "agents": report,
+    }
+
+
+def _copy_one(src: Path, dst: Path) -> bool:
+    if not src.is_file():
+        return False
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(src, dst)
+    return True
+
+
+def _sync_from_secrets(brain_root: Path, agents: list[str] | None = None) -> dict:
+    targets = agents if agents else list(SPECS.keys())
+    copied = []
+    skipped = []
+    for name in targets:
+        spec = SPECS[name]
+        for secret_rel, home_expr in spec.secrets_to_home:
+            src = _secrets_root(brain_root) / secret_rel
+            dst = _expand(home_expr)
+            if _copy_one(src, dst):
+                copied.append({"agent": name, "from": str(src), "to": str(dst)})
+            else:
+                skipped.append({"agent": name, "from": str(src), "to": str(dst)})
+    return {"copied": copied, "skipped": skipped}
+
+
+def _sync_to_secrets(brain_root: Path, agents: list[str] | None = None) -> dict:
+    targets = agents if agents else list(SPECS.keys())
+    copied = []
+    skipped = []
+    for name in targets:
+        spec = SPECS[name]
+        for secret_rel, home_expr in spec.secrets_to_home:
+            src = _expand(home_expr)
+            dst = _secrets_root(brain_root) / secret_rel
+            if _copy_one(src, dst):
+                copied.append({"agent": name, "from": str(src), "to": str(dst)})
+            else:
+                skipped.append({"agent": name, "from": str(src), "to": str(dst)})
+    return {"copied": copied, "skipped": skipped}
+
+
+def _parse_agents(value: str | None) -> list[str] | None:
+    if value is None:
+        return None
+    value = value.strip().lower()
+    if value in ("", "all"):
+        return None
+    names = [x.strip() for x in value.split(",") if x.strip()]
+    invalid = [n for n in names if n not in SPECS]
+    if invalid:
+        raise SystemExit(f"ERROR: unsupported agents: {','.join(invalid)}")
+    return names
+
+
+def _print_human(report: dict) -> None:
+    print(f"overall_status={report['overall_status']}")
+    print(f"brain_root={report['brain_root']}")
+    print(f"secrets_auth_root={report['secrets_auth_root']}")
+    summary = report.get("summary", {})
+    if summary:
+        print(
+            "summary="
+            f"missing_auth_agents={summary.get('missing_auth_agents', 0)} "
+            f"missing_cli_agents={summary.get('missing_cli_agents', 0)} "
+            f"missing_secret_backup_agents={summary.get('missing_secret_backup_agents', 0)}"
+        )
+    for name in sorted(report["agents"].keys()):
+        item = report["agents"][name]
+        print(f"[{name}] status={item['status']} cli_available={item['cli_available']}")
+        for rf in item["required_files"]:
+            tag = "ok" if rf["exists"] else "missing"
+            print(f"  - required {tag}: {rf['path']}")
+        for sf in item["secrets_files"]:
+            tag = "ok" if sf["exists"] else "missing"
+            print(f"  - secret {tag}: {sf['path']}")
+
+
+def _run_login(spec: AgentAuthSpec, auto_yes: bool) -> int:
+    cmd_txt = " ".join(spec.login_cmd)
+    print(f"[{spec.name}] login command: {cmd_txt}")
+    print(f"[{spec.name}] hint: {spec.login_hint}")
+    print(f"[{spec.name}] complete login in browser/device page, then return to this terminal.")
+    if not auto_yes:
+        reply = input(f"[{spec.name}] run now? [Y/n]: ").strip().lower()
+        if reply in ("n", "no"):
+            return 130
+    try:
+        return subprocess.run(spec.login_cmd, check=False).returncode
+    except FileNotFoundError:
+        print(f"[{spec.name}] command not found: {spec.login_cmd[0]}")
+        return 127
+
+
+def cmd_status(args: argparse.Namespace) -> int:
+    brain_root = Path(args.brain_root)
+    _validate_brain_root(brain_root)
+    report = _check_all(brain_root, _parse_agents(args.agents))
+    if args.json:
+        print(json.dumps(report, ensure_ascii=True, indent=2))
+    else:
+        _print_human(report)
+    has_missing = any(v["status"] != "ok" for v in report["agents"].values())
+    if args.fail_on_missing and has_missing:
+        return 2
+    return 0
+
+
+def cmd_sync_from_secrets(args: argparse.Namespace) -> int:
+    brain_root = Path(args.brain_root)
+    _validate_brain_root(brain_root)
+    result = _sync_from_secrets(brain_root, _parse_agents(args.agents))
+    print(json.dumps(result, ensure_ascii=True, indent=2))
+    return 0
+
+
+def cmd_sync_to_secrets(args: argparse.Namespace) -> int:
+    brain_root = Path(args.brain_root)
+    _validate_brain_root(brain_root)
+    result = _sync_to_secrets(brain_root, _parse_agents(args.agents))
+    print(json.dumps(result, ensure_ascii=True, indent=2))
+    return 0
+
+
+def cmd_guide(args: argparse.Namespace) -> int:
+    brain_root = Path(args.brain_root)
+    _validate_brain_root(brain_root)
+    agents = _parse_agents(args.agents)
+
+    if not args.skip_sync_from_secrets:
+        print("[guide] syncing auth files from secrets first...")
+        _sync_from_secrets(brain_root, agents)
+
+    report = _check_all(brain_root, agents)
+    missing_agents = [name for name, item in report["agents"].items() if item["status"] != "ok"]
+    if not missing_agents:
+        print("[guide] all auth files already present.")
+        return 0
+
+    for name in missing_agents:
+        spec = SPECS[name]
+        item = _check_agent(spec, brain_root)
+        if not item["cli_available"]:
+            print(f"[guide] skip {name}: cli not available ({spec.login_cmd[0]})")
+            continue
+
+        if args.non_interactive:
+            print(f"[guide] {name} missing auth. run: {' '.join(spec.login_cmd)}")
+            continue
+
+        rc = _run_login(spec, auto_yes=args.yes)
+        if rc not in (0, 130):
+            print(f"[guide] {name} login command exited with rc={rc}")
+
+        item_after = _check_agent(spec, brain_root)
+        if item_after["status"] == "ok":
+            print(f"[guide] {name} auth check passed.")
+        else:
+            print(f"[guide] {name} still missing required files:")
+            for p in item_after["missing_files"]:
+                print(f"  - {p}")
+
+    if args.sync_to_secrets:
+        print("[guide] syncing local auth files back to secrets...")
+        _sync_to_secrets(brain_root, agents)
+
+    final_report = _check_all(brain_root, agents)
+    unresolved = [name for name, item in final_report["agents"].items() if item["status"] != "ok"]
+    if unresolved:
+        print(f"[guide] unresolved agents: {','.join(unresolved)}")
+        return 2
+    print("[guide] auth completed for all requested agents.")
+    return 0
+
+
+def build_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(
+        prog="brain_auth_manager",
+        description="Manage Claude/Codex/Gemini CLI auth status for brain agents.",
+    )
+    p.add_argument(
+        "--brain-root",
+        default=_default_brain_root(),
+        help="Brain root path (default: $BRAIN_ROOT or /xkagent_infra/brain)",
+    )
+    sub = p.add_subparsers(dest="command")
+
+    def add_common(sub_parser: argparse.ArgumentParser) -> None:
+        sub_parser.add_argument("--agents", default="all", help="Agent set: all or comma list (claude,codex,gemini)")
+
+    s_status = sub.add_parser("status", help="Show auth status")
+    add_common(s_status)
+    s_status.add_argument("--json", action="store_true", help="Print JSON")
+    s_status.add_argument("--fail-on-missing", action="store_true", help="Exit non-zero when auth is missing")
+    s_status.set_defaults(func=cmd_status)
+
+    s_health = sub.add_parser("health-check", help="Health check for auth and login CLIs")
+    add_common(s_health)
+    s_health.add_argument("--json", action="store_true", help="Print JSON")
+    s_health.add_argument("--fail-on-missing", action="store_true", help="Exit non-zero when auth is missing")
+    s_health.set_defaults(func=cmd_status)
+
+    s_pull = sub.add_parser("sync-from-secrets", help="Copy auth files from secrets to /root home")
+    add_common(s_pull)
+    s_pull.set_defaults(func=cmd_sync_from_secrets)
+
+    s_push = sub.add_parser("sync-to-secrets", help="Copy auth files from /root home back to secrets")
+    add_common(s_push)
+    s_push.set_defaults(func=cmd_sync_to_secrets)
+
+    s_guide = sub.add_parser("guide", help="Interactive auth guidance and checks")
+    add_common(s_guide)
+    s_guide.add_argument("--yes", action="store_true", help="Run login command without prompt")
+    s_guide.add_argument("--non-interactive", action="store_true", help="Only print guidance commands")
+    s_guide.add_argument("--skip-sync-from-secrets", action="store_true", help="Skip initial sync-from-secrets")
+    s_guide.add_argument("--sync-to-secrets", action="store_true", help="After guide, sync local auth files to secrets")
+    s_guide.set_defaults(func=cmd_guide)
+
+    return p
+
+
+def main() -> int:
+    parser = build_parser()
+    args = parser.parse_args()
+    if args.command is None:
+        args.command = "status"
+        args.func = cmd_status
+        args.json = False
+        args.fail_on_missing = False
+        args.agents = "all"
+    return int(args.func(args))
+
+
+if __name__ == "__main__":
+    sys.exit(main())

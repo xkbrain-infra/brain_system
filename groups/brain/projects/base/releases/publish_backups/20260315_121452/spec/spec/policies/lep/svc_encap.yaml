@@ -1,0 +1,63 @@
+gate_id: G-GATE-SVC-ENCAP
+name: Service Source Encapsulation
+applies_to: [read, grep, glob, bash]
+rule: |
+  Infrastructure service 源码对 Agent 不可见。
+  Agent 只能通过 CLI 接口操作服务，不得读取服务的 Python 实现文件。
+priority: HIGH
+
+enforcement:
+  stage: pre_tool_use
+  method: c_binary
+  binary: lep_check
+  priority: HIGH
+
+  triggers:
+    tools: [Read, Grep, Glob, Bash]
+    check_type: source_exposure
+
+  protected_patterns:
+    # 服务源码目录（生产环境）
+    - /brain/infrastructure/service/*/src/**
+    - /xkagent_infra/brain/infrastructure/service/*/src/**
+    # Python 实现文件（直接位于服务目录）
+    - /brain/infrastructure/service/**/*.py
+    - /xkagent_infra/brain/infrastructure/service/**/*.py
+
+  allowed_exceptions:
+    # 允许读取服务的配置文件（yaml/json/env）
+    - /brain/infrastructure/service/*/config/**
+    - /brain/infrastructure/service/**/*.yaml
+    - /brain/infrastructure/service/**/*.json
+    # 允许读取可执行入口脚本（bin/）
+    - /brain/infrastructure/service/*/bin/*
+
+  block_message: |
+    🚫 基础设施服务源码不对 Agent 开放 (G-GATE-SVC-ENCAP)
+    路径: {file_path}
+
+    Infrastructure service 以 CLI 黑盒方式提供服务，Agent 不应读取其 Python 实现。
+
+    ✅ 正确操作方式：
+    ▸ 通过 CLI 接口使用服务（如 agentctl、brain-publish 等）
+    ▸ 读取服务的配置文件：/brain/infrastructure/service/*/config/**
+    ▸ 如需修改服务行为：走 pending 流程，提交给 brain-manager 审核
+
+    ❌ 禁止操作：
+    ▸ 直接读取 .py 源码文件
+    ▸ 直接修改服务实现（应走 pending 流程）
+
+rationale: |
+  Agent 读取 infrastructure service 源码会导致：
+  1. 上下文被大文件（数万 token）污染，加速 context 耗尽
+  2. Agent 可能基于实现细节做出越权修改
+  3. 服务封装性被破坏，Agent 行为难以预测
+
+  正确的抽象层次：Agent 只与服务的接口交互，不关心实现。
+
+bindings:
+  hooks:
+    stage: pre_tool_use
+    trigger_tools: [Read, Grep, Glob, Bash]
+  related_gates:
+    - G-GATE-SCOP

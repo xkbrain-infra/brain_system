@@ -1,0 +1,24 @@
+# Content Creation Industry Template
+
+industry: content_creation
+version: "1.0"
+
+goals:
+  - "持续产出可发布内容"
+  - "形成从选题到发布的数据闭环"
+
+primary_roles:
+  - researcher
+  - writer
+  - editor
+  - distributor
+
+common_deliverables:
+  - topic_calendar
+  - article_or_script
+  - review_notes
+  - distribution_plan
+
+overlays:
+  researcher: /brain/base/spec/templates/industries/content_creation/researcher.overlay.md
+  writer: /brain/base/spec/templates/industries/content_creation/writer.overlay.md

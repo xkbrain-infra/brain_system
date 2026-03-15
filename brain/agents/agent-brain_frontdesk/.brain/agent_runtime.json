@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "agent_name": "agent-brain_frontdesk",
+  "skill_bindings": {
+    "source": "/xkagent_infra/brain/infrastructure/config/agentctl/skill_bindings.yaml",
+    "resolved_skills": [
+      "lep",
+      "ipc"
+    ],
+    "role_skills": [
+      "lep",
+      "ipc"
+    ],
+    "agent_skills": [],
+    "workflow_skills": []
+  },
+  "lep_bindings": {
+    "source": "/xkagent_infra/brain/infrastructure/config/agentctl/lep_bindings.yaml",
+    "resolved_lep_profiles": [
+      "frontdesk-safe"
+    ],
+    "role_lep_profiles": [
+      "frontdesk-safe"
+    ],
+    "agent_lep_profiles": [],
+    "workflow_lep_profiles": []
+  },
+  "runtime": {
+    "command": "claude",
+    "args": [
+      "--model",
+      "copilot/gpt-5-mini",
+      "[Brain Skill Bindings]\nEnabled skills: lep, ipc.\nWhen a task matches these skills or the bound workflow, load and follow the corresponding skill before execution.\nRole defaults: lep, ipc.\n\n[Brain LEP Profiles]\nEnabled LEP profiles: frontdesk-safe.\nThese LEP profiles tighten hook enforcement and should be treated as mandatory operating constraints.\nRole defaults: frontdesk-safe."
+    ],
+    "env": {
+      "IS_SANDBOX": "1",
+      "BRAIN_TRANSPORT_MODE": "proxy",
+      "BRAIN_AGENT_NAME": "agent-brain_frontdesk",
+      "BRAIN_SKILL_BINDINGS_FILE": "/xkagent_infra/brain/infrastructure/config/agentctl/skill_bindings.yaml",
+      "BRAIN_ENABLED_SKILLS": "lep,ipc",
+      "BRAIN_ROLE_DEFAULT_SKILLS": "lep,ipc",
+      "BRAIN_LEP_BINDINGS_FILE": "/xkagent_infra/brain/infrastructure/config/agentctl/lep_bindings.yaml",
+      "BRAIN_ENABLED_LEP_PROFILES": "frontdesk-safe",
+      "BRAIN_ROLE_DEFAULT_LEP_PROFILES": "frontdesk-safe"
+    },
+    "agent_type": "copilot",
+    "use_claude_cli": true
+  }
+}

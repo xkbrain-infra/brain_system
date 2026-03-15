@@ -1,0 +1,17 @@
+name: agentctl
+description: Brain Infrastructure Service
+version: 1.0.0
+type: service
+language: python
+
+paths:
+  project_root: /xkagent_infra/groups/brain/projects/infrastructure/agentctl
+  infra_service: /xkagent_infra/brain/infrastructure/service/agentctl
+
+dependencies: []
+
+build:
+  type: python
+
+deploy:
+  method: copy

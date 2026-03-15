@@ -1,0 +1,64 @@
+publish_manifest:
+  package: base
+  version: "1.0.0"
+  source_root: "/xkagent_infra/groups/brain/projects/base"
+  publish_target: "/xkagent_infra/brain/base"
+  intent: "将 projects/base 的完整开发镜像发布到 brain/base"
+
+  root_files:
+    - source: "/xkagent_infra/groups/brain/projects/base/index.yaml"
+      target: "/xkagent_infra/brain/base/index.yaml"
+    - source: "/xkagent_infra/groups/brain/projects/base/INIT.md.new"
+      target: "/xkagent_infra/brain/base/INIT.md.new"
+
+  domains:
+    - name: evolution
+      source: "/xkagent_infra/groups/brain/projects/base/evolution"
+      target: "/xkagent_infra/brain/base/evolution"
+      mode: "mirror_directory"
+    - name: hooks
+      source: "/xkagent_infra/groups/brain/projects/base/hooks"
+      target: "/xkagent_infra/brain/base/hooks"
+      mode: "mirror_directory"
+    - name: knowledge
+      source: "/xkagent_infra/groups/brain/projects/base/knowledge"
+      target: "/xkagent_infra/brain/base/knowledge"
+      mode: "mirror_directory"
+    - name: mcp
+      source: "/xkagent_infra/groups/brain/projects/base/mcp"
+      target: "/xkagent_infra/brain/base/mcp"
+      mode: "mirror_directory"
+    - name: scripts
+      source: "/xkagent_infra/groups/brain/projects/base/scripts"
+      target: "/xkagent_infra/brain/base/scripts"
+      mode: "mirror_directory"
+    - name: skill
+      source: "/xkagent_infra/groups/brain/projects/base/skill"
+      target: "/xkagent_infra/brain/base/skill"
+      mode: "mirror_directory"
+    - name: spec
+      source: "/xkagent_infra/groups/brain/projects/base/spec"
+      target: "/xkagent_infra/brain/base/spec"
+      mode: "mirror_directory"
+    - name: workflow
+      source: "/xkagent_infra/groups/brain/projects/base/workflow"
+      target: "/xkagent_infra/brain/base/workflow"
+      mode: "mirror_directory"
+
+  excluded_project_meta:
+    - "/xkagent_infra/groups/brain/projects/base/README.md"
+    - "/xkagent_infra/groups/brain/projects/base/project.yaml"
+    - "/xkagent_infra/groups/brain/projects/base/PUBLISH_MANIFEST.yaml"
+    - "/xkagent_infra/groups/brain/projects/base/releases"
+
+  release_flow:
+    - "在 projects/base 修改对应域文件"
+    - "同步更新 manifest、README、域内索引或 registry"
+    - "先执行 scripts/publish_base.sh --dry-run"
+    - "评审通过后执行 scripts/publish_base.sh --publish"
+    - "发布后验证 /xkagent_infra/brain/base 各域文件可读、可引用、可加载"
+    - "若发布 mcp 域，必须同步验证 /brain/bin/brain_ipc_c_mcp_server 与 /brain/bin/mcp/mcp-brain_ipc_c"
+
+  backups:
+    root: "/xkagent_infra/groups/brain/projects/base/releases/publish_backups"
+    policy: "每次正式发布前按 root_files + domains 维度备份目标"

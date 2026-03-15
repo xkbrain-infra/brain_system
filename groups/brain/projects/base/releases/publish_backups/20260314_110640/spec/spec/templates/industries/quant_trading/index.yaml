@@ -1,0 +1,25 @@
+# Quant Trading Industry Template
+
+industry: quant_trading
+version: "1.0"
+
+goals:
+  - "策略研发、验证、风控与投产闭环"
+  - "数据、回测、风险控制可审计"
+
+primary_roles:
+  - strategist
+  - researcher
+  - data-engineer
+  - backtester
+  - risk-controller
+
+common_deliverables:
+  - research_note
+  - factor_report
+  - backtest_result
+  - risk_rule_set
+
+overlays:
+  researcher: /brain/base/spec/templates/industries/quant_trading/researcher.overlay.md
+  strategist: /brain/base/spec/templates/industries/quant_trading/strategist.overlay.md

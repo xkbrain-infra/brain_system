@@ -1,0 +1,34 @@
+publish_validation_and_promotion:
+  id: "MWF-BM-003"
+  version: "0.1"
+  intent: "定义 runtime package 发布验证与后续 promotion 到 base 的条件"
+
+runtime_publish_validation:
+  required_checks:
+    - "MANIFEST target set equals publish_mapping target set"
+    - "all rename_on_publish files have stable names"
+    - "all entrypoints exist in target package"
+    - "contracts/models/governance/protocols/workflow 分组完整"
+    - "DESIGN package tree matches published_layout"
+
+publish_verification_report:
+  required_fields:
+    - batch_id
+    - publish_target
+    - published_at
+    - verification_status
+    - validated_files
+    - missing_files
+    - inconsistent_mappings
+    - entrypoint_status
+    - next_action
+
+promotion_to_base:
+  preconditions:
+    - "runtime package 已稳定运行验证"
+    - "extraction_targets 已明确"
+    - "promotion scope 已审批"
+  rules:
+    - "promotion 必须按 extraction_targets 执行，不得整包平移"
+    - "promotion 前必须生成 diff 和 promotion manifest"
+    - "runtime-only 实验文档不得直接进入 base"

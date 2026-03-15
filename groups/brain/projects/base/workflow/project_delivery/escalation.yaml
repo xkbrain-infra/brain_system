@@ -1,0 +1,20 @@
+workflow:
+  id: "MWF-WF-ESC-001"
+  name: "Escalation Workflow"
+  owner: "project_orchestrator + manager"
+  trigger:
+    - "task blocked beyond threshold"
+    - "agent offline"
+    - "sandbox degraded"
+    - "scope changed"
+    - "critical release risk"
+  steps:
+    - "orchestrator emits escalation request with context and options"
+    - "global task manager records escalation"
+    - "manager or PMO reviews risk and chooses action"
+    - "response can approve replan, add resources, pause, rollback, or reject scope drift"
+    - "orchestrator applies decision and updates project state"
+  outputs:
+    - escalation decision
+    - replan or recovery action
+    - audit trail

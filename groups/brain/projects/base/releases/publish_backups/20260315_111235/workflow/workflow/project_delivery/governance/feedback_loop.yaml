@@ -1,0 +1,77 @@
+feedback_loop:
+  id: "MWF-FEEDBACK-001"
+  version: "0.1"
+  intent: "定义 release 与 audit 后如何回写 knowledge/workflow/evolution"
+
+closure_definition:
+  project_is_fully_closed_when:
+    - "release finished or rollback explicitly completed"
+    - "audit report finished"
+    - "improvement actions classified"
+    - "feedback records written to destination domains"
+
+action_routing:
+  knowledge:
+    when:
+      - "issue is repeatable operational lesson"
+      - "issue has standard mitigation pattern"
+    outputs:
+      - troubleshooting entry
+      - guide update
+
+  workflow:
+    when:
+      - "issue is caused by missing or weak execution flow"
+      - "a gate should be added or reordered"
+    outputs:
+      - workflow patch proposal
+
+  spec:
+    when:
+      - "issue is caused by unclear role boundary or policy"
+      - "state model or contract is inconsistent"
+    outputs:
+      - spec patch proposal
+
+  evolution:
+    when:
+      - "issue is systemic and requires architecture or capability upgrade"
+    outputs:
+      - evolution proposal
+
+improvement_action_schema:
+  required_fields:
+    - action_id
+    - source_audit_id
+    - category
+    - summary
+    - target_domain
+    - owner
+    - due_rule
+    - status
+
+governance_rules:
+  - "audit findings may not be dropped silently"
+  - "high severity recurring findings must create explicit follow-up tasks"
+  - "feedback routing should be visible from manager board"
+
+materialization_rules:
+  high_severity_finding:
+    must:
+      - "create follow-up task or project"
+      - "assign target_domain and owner"
+      - "appear on manager board until closed"
+  recurring_finding:
+    must:
+      - "create backlog item even if immediate fix is deferred"
+      - "link to source audit_id"
+  workflow_or_spec_gap:
+    must:
+      - "generate explicit patch proposal"
+      - "enter update_brain or equivalent governance queue"
+
+closure_gate:
+  project_cannot_be_marked_closed_when:
+    - "audit report is done but high severity findings have not been materialized"
+    - "improvement actions have no owner"
+    - "feedback actions are missing target_domain"

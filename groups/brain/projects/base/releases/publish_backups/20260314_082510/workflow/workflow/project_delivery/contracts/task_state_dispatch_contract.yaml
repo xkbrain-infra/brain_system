@@ -1,0 +1,144 @@
+task_state_dispatch_contract:
+  id: "MWF-TASK-DISPATCH-001"
+  version: "0.1"
+  intent: "定义 project_delivery 中 task manager 的状态机、任务列表、forward 与 dispatch ack double-check 契约"
+
+positioning:
+  role: "authoritative task state + dispatch confirmation service"
+  description: "task manager 不是可选看板，而是 project orchestrator 的权威状态面；没有持久化状态、任务列表、forward 记录和 ack 确认时，不得视为任务已进入执行"
+
+state_planes:
+  project_execution_state:
+    values:
+      - "active"
+      - "in_progress"
+      - "stopped"
+    rules:
+      - "project_execution_state 描述整个项目执行面是否持续推进"
+      - "project_execution_state=stopped 时不得继续 forward 新任务"
+
+  task_lifecycle_state:
+    values:
+      - "backlog"
+      - "ready"
+      - "assigned"
+      - "dispatched"
+      - "acknowledged"
+      - "in_progress"
+      - "blocked"
+      - "stopped"
+      - "review"
+      - "done"
+      - "verified"
+      - "cancelled"
+    rules:
+      - "task 必须按状态机推进，不得跳过 assigned/dispatched/acknowledged 直接视为 in_progress"
+      - "进入 done 前必须先经过 review 或显式写明 why review is not required"
+
+  dispatch_delivery_state:
+    values:
+      - "pending_send"
+      - "ipc_sent"
+      - "receipt_acknowledged"
+      - "execution_accepted"
+      - "execution_started"
+      - "heartbeat_seen"
+      - "delivery_timeout"
+      - "reassign_required"
+      - "failed"
+    rules:
+      - "ipc_sent 只表示消息已发出，不等于 worker 已收到"
+      - "必须在 receipt_acknowledged 和 execution_started 或 heartbeat_seen 之间形成闭环"
+      - "delivery_timeout 后不得继续把 task 标记为 in_progress"
+
+task_indexes:
+  required_views:
+    - "all_tasks"
+    - "ready_queue"
+    - "blocked_queue"
+    - "review_queue"
+    - "per_agent_assignment_list"
+    - "in_flight_dispatches"
+    - "completed_tasks"
+  rules:
+    - "task manager 必须能回答项目总任务数、各状态任务数、每个 agent 的分配清单"
+    - "per_agent_assignment_list 必须能反查 owner_agent_id 与当前 dispatch 状态"
+
+forward_model:
+  principle: "forward 必须是持久化 assignment + IPC dispatch + receipt/execution 确认的组合动作"
+  sequence:
+    - "orchestrator 从 ready_queue 选择 task"
+    - "orchestrator 写 TASK_UPDATE/ASSIGNMENT_UPDATE 到 task manager，记录 owner、participants、dispatch target"
+    - "task manager 生成 dispatch_id 并将 task_lifecycle_state 置为 assigned 或 dispatched"
+    - "orchestrator 发送 IPC 给 target agent"
+    - "target agent 回传 RECEIVED_ACK"
+    - "target agent 回传 EXEC_ACCEPTED 或 EXEC_STARTED"
+    - "后续 heartbeat 持续刷新 dispatch_delivery_state"
+    - "执行完成后由 orchestrator 写 TASK_UPDATE 进入 review/done/blocked"
+
+double_check_policy:
+  required_evidence:
+    - "dispatch_id"
+    - "task_id"
+    - "target_agent_id"
+    - "ipc_sent_at"
+    - "receipt_ack_at"
+    - "execution_started_at or first_heartbeat_at"
+    - "latest_delivery_state"
+    - "retry_count"
+  timeout_policy:
+    receipt_ack_timeout_seconds: 30
+    execution_start_timeout_seconds: 120
+    heartbeat_timeout_seconds: 300
+  on_timeout:
+    - "record timeout event in task_manager.yaml and dispatch log"
+    - "do not mark task as in_progress"
+    - "retry dispatch or reassign according to orchestration policy"
+    - "escalate when retry budget exhausted"
+
+storage_contract:
+  local_project_task_root: "spec/06_tasks"
+  required_paths:
+    - "spec/06_tasks/plan.yaml"
+    - "spec/06_tasks/backlog.yaml"
+    - "spec/06_tasks/task_manager.yaml"
+    - "spec/06_tasks/assigned/"
+    - "spec/06_tasks/review/"
+    - "spec/06_tasks/done/"
+    - "spec/06_tasks/events/"
+    - "spec/06_tasks/dispatch/"
+  group_task_artifact_root: "/xkagent_infra/groups/{group_id}/tasks/{task_id}"
+  rules:
+    - "task list 与 dispatch evidence 不得只存在 chat 上下文或 manager board"
+    - "task_manager.yaml 必须保存状态机配置、dispatch ack policy、最新 snapshot 与写入策略"
+    - "task artifact 可按 task_id 落到 groups/{group_id}/tasks/{task_id}/"
+
+write_contract:
+  allowed_operations:
+    - "CREATE_PROJECT"
+    - "TASK_CREATE"
+    - "TASK_UPDATE"
+    - "ASSIGNMENT_UPDATE"
+    - "TASK_EVENT_APPEND"
+    - "PROJECT_SNAPSHOT"
+  ownership:
+    orchestrator: "primary writer"
+    agents: "write via orchestrator callback/report only"
+
+forbidden_patterns:
+  - "send IPC to worker without first persisting assignment/dispatch intent in task manager"
+  - "treat successful ipc_send as equivalent to worker execution started"
+  - "continue using sandbox chat context as the only task list"
+  - "omit spec/06_tasks/task_manager.yaml from project root"
+  - "let worker agents mutate authoritative task state directly"
+
+bootstrap_and_planning_implications:
+  planning_must_define:
+    - "task manager state model"
+    - "task storage layout"
+    - "dispatch acknowledgement policy"
+  bootstrap_must_verify:
+    - "spec/06_tasks baseline exists in project_root or writable project workspace"
+    - "task_manager.yaml baseline created"
+    - "task manager write path ready"
+    - "dispatch ack policy ready"

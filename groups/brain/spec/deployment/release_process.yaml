@@ -1,0 +1,288 @@
+# Brain 组专属发布规范
+# 规范 ID: BRAIN-DEPLOY-001
+# 路径: /xkagent_infra/groups/brain/spec/deployment/release_process.yaml
+
+spec:
+  id: BRAIN-DEPLOY-001
+  title: Brain 组服务发布规范
+  version: 1.1.0
+  status: active
+  created: 2026-03-14
+  owner: agent-brain_manager
+
+scope:
+  group: brain
+  applies_to:
+    - brain_dashboard
+    - brain_gateway
+    - brain_ipc
+    - brain_agent_proxy
+    - brain_health_check
+    - brain_monitor
+
+dependencies:
+  file_organization: /brain/base/spec/standards/organization/file_organization.yaml
+  layers: /brain/base/spec/core/layers.yaml
+
+# ============================================================================
+# 核心原则
+# ============================================================================
+principles:
+  - name: "源码与运行时分离"
+    description: |
+      groups/projects/ 存放源码和构建脚本
+      infrastructure/service/ 存放实际的运行时文件（非软链接）
+
+  - name: "发布即复制"
+    description: |
+      发布流程必须将文件实际复制到 infrastructure/service/
+      禁止使用软链接指向 groups 目录
+
+  - name: "版本隔离"
+    description: |
+      每个版本在 infrastructure/service/{service}/releases/vX.Y.Z/ 中独立存在
+      支持多版本共存和快速回滚
+
+  - name: "服务注册完整"
+    description: |
+      发布必须更新所有相关配置：
+      - supervisor 配置（版本号、环境变量）
+      - agentctl 注册表（版本号、健康检查端点）
+      - IPC 名称注册（如有变更）
+
+# ============================================================================
+# 目录结构规范
+# ============================================================================
+directory_structure:
+  groups:  # 源码/构建端
+    path: /xkagent_infra/groups/brain/projects/{project}/
+    contents:
+      - src/           # 源码
+      - tests/         # 测试
+      - docs/          # 文档
+      - config/        # 配置模板
+      - build/         # 构建脚本
+      - Makefile       # 构建入口
+      - project.yaml   # 项目配置
+      - releases/      # 历史版本存档（可选）
+
+  infrastructure:  # 运行时端（实际文件）
+    path: /xkagent_infra/brain/infrastructure/service/{service}/
+    contents:
+      - bin/           # 启动脚本（实际文件）
+      - config/        # 运行时配置（实际文件）
+      - releases/      # 发布版本（实际文件，非软链接）
+      │   ├── v1.0.0/  # 完整副本
+      │   ├── v2.0.0/
+      │   └── v2.1.0/
+      - current/       # 当前运行版本（目录，非软链接）
+      - data/          # 运行时数据（数据库/日志）
+      - logs/          # 日志文件
+
+  supervisor:  # 进程管理配置
+    path: /xkagent_infra/brain/infrastructure/config/supervisord.d/
+    files:
+      - {service}.conf
+
+  agentctl:  # 服务注册表
+    path: /xkagent_infra/brain/infrastructure/config/agentctl/
+    files:
+      - agents_registry.yaml
+
+# ============================================================================
+# 发布流程
+# ============================================================================
+release_process:
+  phases:
+    1_build:
+      name: "构建阶段"
+      location: groups/projects/{project}/
+      steps:
+        - 执行测试: make test
+        - 构建产物: make build
+        - 验证产物完整性
+      outputs:
+        - 构建好的源码包
+
+    2_package:
+      name: "打包阶段"
+      location: groups/projects/{project}/
+      steps:
+        - 创建版本目录: releases/v{VERSION}/
+        - 复制源码到版本目录
+        - 生成版本元数据
+
+    3_deploy:
+      name: "部署阶段"
+      location: infrastructure/service/{service}/
+      steps:
+        - 创建发布目录: releases/v{VERSION}/
+        - **复制** 文件到 infrastructure（非软链接）
+        - 复制 bin/ 脚本
+        - 复制 config/ 配置
+      critical_rule: |
+        此步骤必须使用 cp -rL 或等效命令复制实际文件
+        禁止创建指向 groups 的软链接
+
+    4_activate:
+      name: "激活阶段"
+      location: infrastructure/service/{service}/
+      steps:
+        - 备份 current 到 .previous
+        - 停止当前服务
+        - 更新 current 指向新版本（或重命名目录）
+        - 启动新服务
+        - 健康检查
+      rollback_trigger:
+        - 健康检查失败
+        - 启动超时
+        - 功能异常
+
+    5_register:
+      name: "注册更新阶段"
+      location: infrastructure/config/
+      steps:
+        - 更新 supervisord.d/{service}.conf 版本号
+        - 更新 agents_registry.yaml 版本号
+        - 重载 supervisor 配置
+        - 重启服务进程
+      critical: |
+        supervisor 和 agentctl 注册表必须同步更新版本号
+        否则健康检查和自动恢复将无法正常工作
+
+    6_verify:
+      name: "验证阶段"
+      steps:
+        - 验证 current 是实际目录（非软链接）
+        - 验证服务进程运行正常
+        - 验证 API 响应正常
+        - 验证 agents_registry.yaml 版本正确
+
+  rollback:
+    trigger_conditions:
+      - 健康检查失败
+      - 用户手动触发
+      - 监控告警
+    procedure:
+      - 停止当前服务
+      - 恢复 current 到 .previous
+      - 恢复 supervisor 配置（可选）
+      - 重启服务
+      - 验证
+
+# ============================================================================
+# 服务注册配置更新
+# ============================================================================
+service_registration:
+  supervisor:
+    config_file: /xkagent_infra/brain/infrastructure/config/supervisord.d/{service}.conf
+    update_fields:
+      - version: 注释中的版本号
+      - environment: DASHBOARD_VERSION 环境变量
+      - directory: 工作目录路径
+    reload_command: supervisorctl reread && supervisorctl update {service}
+
+  agentctl:
+    config_file: /xkagent_infra/brain/infrastructure/config/agentctl/agents_registry.yaml
+    update_fields:
+      - version: 版本号字段
+      - health.endpoint: 健康检查端点（如有变更）
+      - port: 服务端口号（如有变更）
+    validation: |
+      必须确保 IPC 名称 (ipc_name) 保持一致
+      修改 IPC 名称需要额外协调
+
+  ipc:
+    note: |
+      IPC 名称通常在 agents_registry.yaml 中定义为 ipc_name 字段
+      发布流程不涉及 IPC 名称变更（除非有 breaking change）
+      如需变更 IPC 名称，需要额外步骤：
+        1. 通知所有依赖该服务的 Agent
+        2. 更新 IPC 路由表
+        3. 分阶段迁移
+
+# ============================================================================
+# LEP Gate - 发布强制约束
+# ============================================================================
+lep_gates:
+  G-BRAIN-DEPLOY-REAL:
+    name: "Infrastructure 必须是实际文件"
+    applies_to: [deploy]
+    rule: |
+      /xkagent_infra/brain/infrastructure/service/{service}/ 下的所有文件
+      必须是实际文件或目录，禁止软链接指向 /xkagent_infra/groups/
+    validation: |
+      使用 [ -L path ] 检查，若返回 true 则违规
+    priority: CRITICAL
+    auto_fix: |
+      删除软链接，执行 cp -rL 复制实际文件
+
+  G-BRAIN-DEPLOY-ISOLATION:
+    name: "版本隔离"
+    applies_to: [deploy]
+    rule: |
+      每个 releases/vX.Y.Z/ 必须是独立完整的副本
+      修改一个版本不得影响其他版本
+    priority: HIGH
+
+  G-BRAIN-DEPLOY-VERIFICATION:
+    name: "发布验证"
+    applies_to: [deploy]
+    rule: |
+      发布完成后必须验证:
+      1. current 指向的目录存在且包含预期文件
+      2. 服务可以正常启动
+      3. 健康检查通过
+    priority: CRITICAL
+
+  G-BRAIN-DEPLOY-REGISTER:
+    name: "服务注册同步"
+    applies_to: [register]
+    rule: |
+      supervisor 和 agentctl 注册表的版本号必须与发布版本一致
+      禁止不同版本的服务代码与注册信息不匹配
+    priority: CRITICAL
+    validation: |
+      检查 agents_registry.yaml 中的 version 字段
+      检查 supervisor conf 中的 DASHBOARD_VERSION 环境变量
+
+# ============================================================================
+# 示例 Makefile 目标
+# ============================================================================
+makefile_template: |
+  # 发布到 infrastructure（实际复制，非软链接）
+  deploy:
+      @echo "=== Deploying $(PROJECT_NAME) v$(VERSION) ==="
+      @# 1. 创建 infrastructure 发布目录
+      @mkdir -p $(INFRA_SERVICE)/releases/v$(VERSION)
+      @# 2. 复制实际文件（-L 跟随软链接复制目标）
+      @cp -rL $(PROJECT_ROOT)/releases/v$(VERSION)/* $(INFRA_SERVICE)/releases/v$(VERSION)/
+      @# 3. 复制 bin 和 config
+      @cp -rL $(PROJECT_ROOT)/bin/* $(INFRA_SERVICE)/bin/ 2>/dev/null || true
+      @cp -rL $(PROJECT_ROOT)/config/* $(INFRA_SERVICE)/config/ 2>/dev/null || true
+      @# 4. 备份并切换 current
+      @rm -rf $(INFRA_SERVICE)/.previous
+      @mv $(INFRA_SERVICE)/current $(INFRA_SERVICE)/.previous 2>/dev/null || true
+      @cp -r $(INFRA_SERVICE)/releases/v$(VERSION) $(INFRA_SERVICE)/current
+      @echo "✅ Deployed to infrastructure: v$(VERSION)"
+
+  # 验证部署
+  verify-deploy:
+      @echo "=== Verifying Deployment ==="
+      @# 检查 current 不是软链接
+      @if [ -L $(INFRA_SERVICE)/current ]; then \
+          echo "❌ ERROR: current is a symlink!"; \
+          echo "   Run: make fix-deploy"; \
+          exit 1; \
+      fi
+      @echo "✅ current is actual directory"
+      @# 检查文件存在
+      @ls $(INFRA_SERVICE)/current/src/main.py > /dev/null && echo "✅ main.py exists"
+
+  # 修复软链接问题
+  fix-deploy:
+      @echo "=== Fixing Symlink Deployment ==="
+      @rm -rf $(INFRA_SERVICE)/current.real
+      @cp -rL $(INFRA_SERVICE)/current $(INFRA_SERVICE)/current.real
+      @mv $(INFRA_SERVICE)/current.real $(INFRA_SERVICE)/current
+      @echo "✅ Fixed: current is now actual directory"

@@ -1,0 +1,176 @@
+config_registry_protocol:
+  id: "MWF-CFG-IPC-001"
+  version: "0.1"
+  intent: "细化 config registry service 的控制面消息与 payload 契约"
+
+shared_payload_rules:
+  required_refs:
+    - group_id
+    - project_id
+  optional_refs:
+    - sandbox_id
+    - service_name
+    - orchestrator_id
+
+messages:
+  GET_CONFIG:
+    purpose: "读取指定 scope/environment/version 的配置"
+    required_fields:
+      - msg_id
+      - type
+      - from
+      - to
+      - group_id
+      - project_id
+      - config_kind
+      - scope
+      - environment
+      - ts
+    optional_fields:
+      - sandbox_id
+      - version
+
+  PUT_CONFIG_VERSION:
+    purpose: "提交新的配置版本或 override"
+    required_fields:
+      - msg_id
+      - type
+      - from
+      - to
+      - group_id
+      - project_id
+      - config_kind
+      - scope
+      - environment
+      - payload_ref
+      - changed_by
+      - ts
+    optional_fields:
+      - sandbox_id
+      - supersedes
+      - rollout_strategy
+
+  ALLOCATE_PORT:
+    purpose: "为正式 service 申请监听端口"
+    required_fields:
+      - msg_id
+      - type
+      - from
+      - to
+      - group_id
+      - project_id
+      - sandbox_id
+      - service_name
+      - protocol
+      - ts
+    optional_fields:
+      - preferred_port
+      - host_binding
+
+  RESERVE_SERVICE_NAME:
+    purpose: "为新 service 保留唯一 service_name"
+    required_fields:
+      - msg_id
+      - type
+      - from
+      - to
+      - group_id
+      - project_id
+      - sandbox_id
+      - service_name
+      - ts
+    optional_fields:
+      - owner_role
+      - expected_lifetime
+
+  REGISTER_SERVICE:
+    purpose: "登记 service 的正式存在和依赖关系"
+    required_fields:
+      - msg_id
+      - type
+      - from
+      - to
+      - group_id
+      - project_id
+      - sandbox_id
+      - service_name
+      - owner_role
+      - config_version_ref
+      - ts
+    optional_fields:
+      - depends_on_services
+      - healthcheck_ref
+
+  REGISTER_ENDPOINT:
+    purpose: "登记 service 启动后的可达 endpoint"
+    required_fields:
+      - msg_id
+      - type
+      - from
+      - to
+      - group_id
+      - project_id
+      - sandbox_id
+      - service_name
+      - endpoint_ref
+      - port_allocation_ref
+      - ts
+    optional_fields:
+      - ipc_bindings
+
+  REGISTER_SUPERVISOR:
+    purpose: "登记长期运行进程的 supervisor 托管配置"
+    required_fields:
+      - msg_id
+      - type
+      - from
+      - to
+      - group_id
+      - project_id
+      - sandbox_id
+      - service_name
+      - program_name
+      - command
+      - autostart
+      - autorestart
+      - ts
+    optional_fields:
+      - stdout_log_ref
+      - stderr_log_ref
+      - healthcheck_command
+
+  RESOLVE_SERVICE:
+    purpose: "根据 service_name 或 role 解析当前活跃 endpoint"
+    required_fields:
+      - msg_id
+      - type
+      - from
+      - to
+      - group_id
+      - project_id
+      - service_name
+      - ts
+    optional_fields:
+      - sandbox_id
+      - expected_status
+
+  GET_ENV_BASELINE:
+    purpose: "读取环境基线和 profile 对应的默认配置"
+    required_fields:
+      - msg_id
+      - type
+      - from
+      - to
+      - group_id
+      - profile
+      - environment
+      - ts
+    optional_fields:
+      - project_id
+      - sandbox_id
+
+response_rules:
+  - "所有成功响应必须返回 status=ok 和 authoritative ref"
+  - "所有失败响应必须返回 status=error、reason_code、next_action"
+  - "ALLOCATE_PORT/PUT_CONFIG_VERSION/REGISTER_SUPERVISOR/REGISTER_SERVICE 必须返回 created ref"
+  - "RESERVE_SERVICE_NAME 成功时必须返回 reservation_ref"

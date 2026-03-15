@@ -1,0 +1,62 @@
+task_supervision:
+  id: "MWF-SUP-001"
+  version: "0.1"
+  intent: "定义 task 未完成时的督办、检查与升级机制"
+
+supervision_roles:
+  orchestrator:
+    role: "primary_supervisor"
+    responsibilities:
+      - "检查 task 是否按计划推进"
+      - "在收到 timer IPC 后做 reminder/reassign/replan/escalate"
+      - "确保每个 task 都有 owner 和下一步动作"
+  timer_service:
+    role: "check_trigger"
+    responsibilities:
+      - "按注册规则发送 task/project/review/release 检查 IPC"
+  task_manager:
+    role: "state_reference"
+    responsibilities:
+      - "提供 task 最新状态、更新时间、事件历史"
+  manager_pmo:
+    role: "escalation_backstop"
+    responsibilities:
+      - "当 orchestrator 未及时处理或风险过高时介入"
+
+check_rules:
+  progress_check:
+    trigger: "TASK_STALE_CHECK"
+    default_interval_s: 1800
+    action_owner: "orchestrator"
+    expected_actions:
+      - "send reminder"
+      - "request progress update"
+      - "mark blocked if necessary"
+  deadline_check:
+    trigger: "TASK_TIMEOUT_CHECK"
+    action_owner: "orchestrator"
+    expected_actions:
+      - "renegotiate deadline"
+      - "reassign"
+      - "escalate"
+  review_check:
+    trigger: "REVIEW_TIMEOUT_CHECK"
+    action_owner: "orchestrator"
+    expected_actions:
+      - "remind reviewer"
+      - "reassign reviewer"
+      - "escalate if gate blocks release"
+
+escalation_rules:
+  when_orchestrator_must_escalate:
+    - "same task remains blocked beyond threshold"
+    - "owner agent offline and no replacement available"
+    - "deadline missed twice"
+    - "release-critical review/test gate stalled"
+  when_manager_must_intervene:
+    - "orchestrator ignores repeated timer checks"
+    - "project snapshot remains stale beyond threshold"
+
+material_rule:
+  - "每个 active task 必须存在 next_check_at 或 trigger_policy"
+  - "每次督办动作都必须写 event history"

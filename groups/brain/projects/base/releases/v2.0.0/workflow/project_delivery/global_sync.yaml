@@ -1,0 +1,27 @@
+workflow:
+  id: "MWF-WF-SYNC-001"
+  name: "Global Sync Workflow"
+  owner: "project_orchestrator -> global_task_manager + global_logging_service"
+  trigger:
+    - "periodic snapshot tick"
+    - "critical event raised"
+    - "heartbeat emission"
+  steps:
+    - "orchestrator sends project snapshot at fixed interval"
+    - "orchestrator sends key task summaries for changed tasks"
+    - "orchestrator publishes task state change events for every meaningful transition"
+    - "sandbox logging service rolls up timeline/task/service logs by policy"
+    - "orchestrator sends log summaries and warning-or-higher logs to brain global logging service"
+    - "agents send heartbeats via orchestrator or runtime collector"
+    - "global task manager updates project/task/agent/orchestrator indexes"
+    - "manager board refreshes from global task manager only"
+  outputs:
+    - project snapshot registry
+    - event stream
+    - global health indexes
+    - global log indexes
+  rules:
+    - "workers do not write directly to manager board"
+    - "cross-sandbox visibility uses control IPC only"
+    - "DEBUG logs stay local by default"
+    - "WARNING/ERROR/CRITICAL logs must be mirrored upstream"

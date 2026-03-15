@@ -1,0 +1,50 @@
+gate_id: G-GATE-PROJECT-REF
+name: Project Dual Reference
+applies_to: [write]
+rule: 子项目必须有 parent ref
+block: false
+
+enforcement:
+  stage: pre_tool_use
+  method: python_inline
+  priority: LOW
+  note: "推荐性检查 - 不阻塞"
+
+  triggers:
+    tools: [Write, Edit]
+    patterns:
+      - "**/projects/**/index.yaml"
+      - "**/projects/**/00_index.yaml"
+
+  rules:
+    parent_ref_required:
+      description: "子项目必须引用父项目"
+      required_fields:
+        - "parent_project"
+        - "parent_group"
+
+  warn_message: |
+    💡 建议添加 parent ref (G-PROJECT-REF)
+
+    文件: {file_path}
+
+    子项目应该引用父项目：
+    ```yaml
+    parent_project: parent_project_name
+    parent_group: group_name
+    ```
+
+    这有助于：
+    - 追溯项目依赖关系
+    - 理解项目层级结构
+    - 便于项目管理
+
+    这是推荐性检查，不阻塞操作。
+
+    参考：/brain/base/spec/core/lep.yaml (G-PROJECT-REF)
+bindings:
+  hooks:
+    stage: pre_tool_use
+    trigger_tools: [Write]
+  mcp_tools: []
+  related_skills: []

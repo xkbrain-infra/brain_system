@@ -1,16 +1,47 @@
 {
   "version": 1,
   "agent_name": "agent-system_pmo",
+  "skill_bindings": {
+    "source": "/xkagent_infra/brain/infrastructure/config/agentctl/skill_bindings.yaml",
+    "resolved_skills": [
+      "lep",
+      "ipc"
+    ],
+    "role_skills": [
+      "lep",
+      "ipc"
+    ],
+    "agent_skills": [],
+    "workflow_skills": []
+  },
+  "lep_bindings": {
+    "source": "/xkagent_infra/brain/infrastructure/config/agentctl/lep_bindings.yaml",
+    "resolved_lep_profiles": [
+      "delivery-governance"
+    ],
+    "role_lep_profiles": [
+      "delivery-governance"
+    ],
+    "agent_lep_profiles": [],
+    "workflow_lep_profiles": []
+  },
   "runtime": {
     "command": "claude",
     "args": [
       "--model",
-      "copilot/claude-sonnet-4.6"
+      "copilot/claude-sonnet-4.6",
+      "[Brain Skill Bindings]\nEnabled skills: lep, ipc.\nWhen a task matches these skills or the bound workflow, load and follow the corresponding skill before execution.\nRole defaults: lep, ipc.\n\n[Brain LEP Profiles]\nEnabled LEP profiles: delivery-governance.\nThese LEP profiles tighten hook enforcement and should be treated as mandatory operating constraints.\nRole defaults: delivery-governance."
     ],
     "env": {
       "IS_SANDBOX": "1",
       "BRAIN_AGENT_NAME": "agent-system_pmo",
-      "BRAIN_TRANSPORT_MODE": "proxy"
+      "BRAIN_TRANSPORT_MODE": "proxy",
+      "BRAIN_SKILL_BINDINGS_FILE": "/xkagent_infra/brain/infrastructure/config/agentctl/skill_bindings.yaml",
+      "BRAIN_ENABLED_SKILLS": "lep,ipc",
+      "BRAIN_ROLE_DEFAULT_SKILLS": "lep,ipc",
+      "BRAIN_LEP_BINDINGS_FILE": "/xkagent_infra/brain/infrastructure/config/agentctl/lep_bindings.yaml",
+      "BRAIN_ENABLED_LEP_PROFILES": "delivery-governance",
+      "BRAIN_ROLE_DEFAULT_LEP_PROFILES": "delivery-governance"
     },
     "agent_type": "copilot",
     "use_claude_cli": true

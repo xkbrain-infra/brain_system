@@ -1,0 +1,17 @@
+# LEP Profile: delivery-governance
+gate_overrides:
+  G-GATE-NAWP:
+    priority: CRITICAL
+    note: "交付类任务必须先有 plan，再进入执行。"
+  G-GATE-ATOMIC:
+    priority: CRITICAL
+    note: "交付 plan 必须细化到文件、动作、验证。"
+  G-GATE-APPROVAL-DELEGATION:
+    priority: HIGH
+    note: "交付决策和分歧必须走 PMO 审批链。"
+  G-GATE-DEFER:
+    priority: HIGH
+    note: "延期、挂起、待办必须显式交接。"
+  G-GATE-SCOPE-DEVIATION:
+    priority: CRITICAL
+    note: "交付范围变化必须明确记录和上报。"

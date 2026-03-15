@@ -1,0 +1,133 @@
+project_spec_checklist:
+  id: "PROJECT-SPEC-CHECKLIST-TEMPLATE"
+  version: "0.1"
+  intent: "项目级 spec checklist 实例模板，由 workflow SPEC_CHECKLIST.yaml 展开而来"
+
+project_ref:
+  group_id: "<group_id>"
+  project_id: "<project_id>"
+  project_root: "<project_root>"
+  workflow_package_ref: "/brain/base/workflow/project_delivery"
+  workflow_spec_checklist_ref: "/brain/base/workflow/project_delivery/SPEC_CHECKLIST.yaml"
+
+summary:
+  base_items: 72
+  extension_items: 0
+  total_items: 72
+  done_items: 0
+  in_progress_items: 0
+  blocked_items: 0
+  waived_items: 0
+  open_items: 72
+  completion_pct: 0
+  evidence_coverage_pct: 0
+
+stage_completion:
+  intake:
+    total: 6
+    done: 0
+    blocked: 0
+    waived: 0
+  research:
+    total: 8
+    done: 0
+    blocked: 0
+    waived: 0
+  bootstrap:
+    total: 6
+    done: 0
+    blocked: 0
+    waived: 0
+  planning:
+    total: 12
+    done: 0
+    blocked: 0
+    waived: 0
+  task_modeling:
+    total: 8
+    done: 0
+    blocked: 0
+    waived: 0
+  execution:
+    total: 12
+    done: 0
+    blocked: 0
+    waived: 0
+  release:
+    total: 8
+    done: 0
+    blocked: 0
+    waived: 0
+  audit:
+    total: 7
+    done: 0
+    blocked: 0
+    waived: 0
+  feedback:
+    total: 5
+    done: 0
+    blocked: 0
+    waived: 0
+
+items: []
+
+item_template:
+  item_id: "<item_id>"
+  workflow_stage: "<workflow_stage>"
+  title: "<title>"
+  severity: "<critical|high|medium>"
+  source_ref: "</brain/base/workflow/project_delivery/SPEC_CHECKLIST.yaml#item_id>"
+  completion_rule: "<done_when>"
+  required_evidence: []
+  evidence_policy: "required"
+  owner: "<owner_or_role>"
+  status: "todo"
+  evidence_refs: []
+  task_refs: []
+  notes: ""
+  updated_at: "<ts>"
+
+seed_examples:
+  - item_id: "INT-001"
+    workflow_stage: "intake"
+    title: "确认 group 归属与 project root 位置"
+    severity: "critical"
+    source_ref: "/brain/base/workflow/project_delivery/SPEC_CHECKLIST.yaml#INT-001"
+    completion_rule: "group_id、group_root、project_root 可解析且合法"
+    required_evidence:
+      - "group_resolution_record"
+      - "project_root_path"
+    evidence_policy: "required"
+    owner: "<owner_or_role>"
+    status: "todo"
+    evidence_refs: []
+    task_refs: []
+    notes: ""
+    updated_at: "<ts>"
+
+  - item_id: "INT-002"
+    workflow_stage: "intake"
+    title: "记录需求目标"
+    severity: "critical"
+    source_ref: "/brain/base/workflow/project_delivery/SPEC_CHECKLIST.yaml#INT-002"
+    completion_rule: "目标已形成结构化输入"
+    required_evidence:
+      - "goal_statement"
+    evidence_policy: "required"
+    owner: "<owner_or_role>"
+    status: "todo"
+    evidence_refs: []
+    task_refs: []
+    notes: ""
+    updated_at: "<ts>"
+
+extension_items: []
+
+template_usage:
+  rules:
+    - "先复制本模板到 project_root/spec/spec_checklist.yaml"
+    - "先按 SPEC_CHECKLIST.yaml 实例化全部 72 个 base items 到 items"
+    - "seed_examples 仅作为前两项示例，不计入正式 items"
+    - "再按项目追加 extension_items"
+    - "done 时必须补 evidence_refs"
+    - "waived 时必须补 waived_by 和 waive_reason"

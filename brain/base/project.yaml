@@ -1,0 +1,45 @@
+---
+# Brain Base 项目配置
+# 路径: /xkagent_infra/groups/brain/projects/base/project.yaml
+
+project:
+  id: base
+  name: Brain Base
+  description: Brain base 全域能力的开发源与发布项目
+  version: 2.0.0
+  status: active
+
+organization:
+  org: xkagent_infra
+  group: brain
+  type: base_domain_project
+
+paths:
+  root: .
+  scripts: ./scripts
+  releases: ./releases
+  release_target: /xkagent_infra/brain/base
+
+domains:
+  - evolution
+  - hooks
+  - knowledge
+  - mcp
+  - skill
+  - spec
+  - workflow
+
+deployment:
+  target: /xkagent_infra/brain/base
+  method: manifest_publish
+  strategy: review_then_promote
+
+maintainers:
+  - agent-brain_manager
+  - agent-brain_codex_foos
+
+migration:
+  from: /xkagent_infra/brain/base
+  to: /xkagent_infra/groups/brain/projects/base
+  date: 2026-03-14
+  note: 将 brain/base 全量镜像到 groups/brain/projects/base，后续在 project 侧维护并统一发布

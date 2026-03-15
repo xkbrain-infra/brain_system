@@ -1,0 +1,302 @@
+---
+spec_id: STD-INFRA-SVC-001
+title: 服务项目目录结构规范
+version: "1.0"
+status: active
+created: 2026-02-23
+owner: tmp_claude
+category: standards/infra
+
+# ============================================================================
+# 目的：规范 infrastructure/service/ 下所有服务项目的目录结构
+# 适用范围：C/C++/Python 独立服务
+# 强制性：所有新建服务项目必须遵守，存量服务逐步对齐
+# ============================================================================
+
+overview: |
+  本规范定义了 /brain/infrastructure/service/{service_name}/ 下的标准目录结构。
+  核心原则：
+  1. 代码在 service 目录内，运行时数据在 runtime/ 或 infrastructure/config/ 外部目录
+  2. 每个项目必须有 README.md 和接口文档
+  3. 源码按模块分层，禁止所有文件平铺在一个目录
+
+# ============================================================================
+# 标准目录结构
+# ============================================================================
+
+directory_structure:
+  # --- 必须存在（MANDATORY）---
+  mandatory:
+    README.md:
+      description: "项目概览、构建方法、使用说明"
+      rules:
+        - "新建项目时第一个创建的文件"
+        - "必须包含：项目描述、构建命令、运行方式、接口概览"
+        - "内容参见下方 readme_template"
+
+    docs/:
+      description: "项目文档目录"
+      contents:
+        interfaces.md:
+          description: "接口文档：所有对外接口的完整定义"
+          rules:
+            - "每个接口必须包含：ID、名称、协议、请求字段、响应字段、错误码"
+            - "接口变更必须同步更新此文档"
+            - "IPC 服务列出所有 event type；HTTP 服务列出所有 endpoint"
+
+    src/:
+      description: "源代码目录，必须按模块分层"
+      rules:
+        - "禁止所有 .cpp/.py 文件平铺在 src/ 根目录"
+        - "至少按功能域分 2 个以上子目录"
+        - "每个子目录代表一个独立模块"
+      example_cpp: |
+        src/
+          core/       # 核心逻辑（main, config, types）
+          ipc/        # IPC 通信层
+          store/      # 数据存储层
+          engine/     # 业务引擎
+          health/     # 健康检查
+      example_python: |
+        src/
+          {package}/
+            __init__.py
+            core/       # 核心逻辑
+            ipc/        # IPC 通信层
+            models/     # 数据模型
+            handlers/   # 请求处理
+
+    Makefile|build.sh|pyproject.toml:
+      description: "构建入口（三选一）"
+      rules:
+        - "C/C++ 项目使用 Makefile"
+        - "Python 项目使用 pyproject.toml 或 build.sh"
+        - "必须支持 clean / build / release 目标"
+
+  # --- 按需存在（OPTIONAL）---
+  optional:
+    include/:
+      description: "C/C++ 公开头文件"
+      rules:
+        - "目录结构为 include/{project_name}/{module}/*.h"
+        - "仅放对外暴露的头文件，内部头文件留在 src/{module}/"
+
+    tests/:
+      description: "测试代码"
+      rules:
+        - "测试文件命名 test_{module}.cpp 或 test_{module}.py"
+
+    scripts/:
+      description: "运维/部署脚本"
+
+    third_party/:
+      description: "第三方依赖（header-only 库或 vendored 代码）"
+
+    releases/:
+      description: "发布版本管理"
+      structure: "releases/{version}/bin/"
+
+    bin/:
+      description: "编译输出目录"
+      rules:
+        - "不入版本控制（.gitignore）"
+        - "可包含 current → releases/{version}/bin/ 的 symlink"
+
+    build/:
+      description: "编译中间产物"
+      rules:
+        - "不入版本控制（.gitignore）"
+
+# ============================================================================
+# 外部路径约定（config / data / logs）
+# ============================================================================
+
+external_paths:
+  description: |
+    配置、运行时数据、日志不放在服务项目目录内。
+    遵循 infrastructure_reference.md 的路径约定。
+
+  config:
+    path: "/brain/infrastructure/config/{service_name}/"
+    description: "服务配置文件（JSON/YAML）"
+    rules:
+      - "服务代码通过启动参数或环境变量引用此路径"
+      - "示例：brain_task_manager.json, settings.yaml"
+
+  data:
+    path: "/xkagent_infra/runtime/data/{service_name}/"
+    description: "运行时持久化数据（数据库文件、状态文件）"
+    rules:
+      - "服务代码通过配置文件引用此路径"
+      - "示例：tasks.json, specs.json"
+
+  logs:
+    path: "/xkagent_infra/runtime/logs/"
+    description: "运行时日志"
+    rules:
+      - "日志文件名包含服务名：{service_name}.log"
+      - "或使用 supervisord 的 stdout/stderr 日志"
+
+  symlink_in_project:
+    description: "项目内可保留 config/ 和 data/ 作为 symlink 指向外部路径（便于开发）"
+    example: |
+      config/ -> /brain/infrastructure/config/brain_task_manager/
+      data/   -> /xkagent_infra/runtime/data/brain_task_manager/
+
+# ============================================================================
+# README.md 模板
+# ============================================================================
+
+readme_template: |
+  # {service_name}
+
+  > 一句话描述服务用途。
+
+  ## 概述
+
+  服务的核心功能和设计目标。替代了哪些旧服务（如适用）。
+
+  ## 构建
+
+  ```bash
+  cd /brain/infrastructure/service/{service_name}
+  make          # 编译
+  make clean    # 清理
+  make release  # 发布到 releases/
+  ```
+
+  ## 运行
+
+  ```bash
+  # 通过 supervisord（生产）
+  supervisorctl start {service_name}
+
+  # 直接运行（调试）
+  ./bin/{service_name} --config /brain/infrastructure/config/{service_name}/config.json
+  ```
+
+  ## 接口概览
+
+  | 接口 | 类型 | 说明 |
+  |------|------|------|
+  | IF1  | IPC  | ... |
+  | ...  | ...  | ... |
+
+  详细接口文档见 [docs/interfaces.md](docs/interfaces.md)
+
+  ## 目录结构
+
+  ```
+  src/
+    core/     # 核心逻辑
+    ipc/      # IPC 通信
+    store/    # 数据存储
+    ...
+  include/    # 公开头文件
+  docs/       # 文档
+  tests/      # 测试
+  ```
+
+  ## 配置
+
+  - 配置文件：`/brain/infrastructure/config/{service_name}/`
+  - 运行时数据：`/xkagent_infra/runtime/data/{service_name}/`
+
+  ## 相关项目
+
+  - Spec：`/xkagent_infra/groups/{group}/projects/{project_id}/spec/`
+  - 架构文档：`/brain/base/knowledge/architecture/infrastructure_reference.md`
+
+# ============================================================================
+# 接口文档模板
+# ============================================================================
+
+interfaces_template: |
+  # {service_name} 接口文档
+
+  ## 通信方式
+
+  - IPC：通过 brain_ipc daemon（event-based JSON 消息）
+  - HTTP：健康检查端点（如适用）
+
+  ## 接口列表
+
+  ### IF1: {INTERFACE_NAME}
+
+  **类型**: IPC event / HTTP endpoint
+  **描述**: 一句话说明
+
+  **请求**:
+  ```json
+  {
+    "event": "EVENT_TYPE",
+    "payload": {
+      "field1": "string (必填) - 说明",
+      "field2": "number (选填) - 说明"
+    }
+  }
+  ```
+
+  **响应**:
+  ```json
+  {
+    "status": "ok|error",
+    "data": { ... }
+  }
+  ```
+
+  **错误码**:
+  | 错误 | 说明 |
+  |------|------|
+  | INVALID_PAYLOAD | 缺少必填字段 |
+  | NOT_FOUND | 资源不存在 |
+
+  ---
+
+  ### IFn: HEALTH_CHECK
+
+  **类型**: HTTP GET
+  **端点**: `/health`
+  **响应**: `200 OK` / `503 Service Unavailable`
+
+# ============================================================================
+# 合规检查清单（新项目验收）
+# ============================================================================
+
+compliance_checklist:
+  mandatory:
+    - "README.md 存在且包含：描述、构建、运行、接口概览"
+    - "docs/interfaces.md 存在且覆盖所有对外接口"
+    - "src/ 按模块分层（≥ 2 个子目录）"
+    - "构建入口存在（Makefile / build.sh / pyproject.toml）"
+    - "config 在 /brain/infrastructure/config/{service_name}/"
+    - "data 在 /xkagent_infra/runtime/data/{service_name}/"
+    - "编译 0 warning（C/C++ 项目）"
+
+  recommended:
+    - "tests/ 目录存在且有基础测试"
+    - "scripts/ 有启动/部署脚本"
+    - "releases/ 有版本化发布"
+
+# ============================================================================
+# LEP Gate
+# ============================================================================
+
+lep_gate:
+  gate_id: G-GATE-SERVICE-STRUCTURE
+  rule: "新建服务项目必须符合 STD-INFRA-SVC-001 目录结构规范"
+  enforcement: "项目验收阶段（T13/T14）检查"
+  violations:
+    - "缺少 README.md → 验收不通过"
+    - "缺少 docs/interfaces.md → 验收不通过"
+    - "src/ 无模块分层 → 验收不通过"
+    - "config/data 放在项目目录内 → 验收不通过"
+
+# ============================================================================
+# 参考
+# ============================================================================
+
+references:
+  - "/brain/base/knowledge/architecture/infrastructure_reference.md"
+  - "/brain/base/spec/standards/coding/cpp.yaml"
+  - "/brain/base/spec/standards/organization/file_organization.yaml"

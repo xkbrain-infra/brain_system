@@ -1,0 +1,71 @@
+# SPEC 路径兼容性 fallback
+# SSOT: /xkagent_infra/brain/base/spec/policies/lep/spec_location.yaml
+
+version: "1.1-compat"
+description: "兼容 path_checker fallback；project spec 允许位于 group project_root/spec/ 下"
+
+rules:
+  - id: G-SPEC-LOCATION
+    name: "SPEC 位置门控"
+    priority: CRITICAL
+    description: "SPEC 文件必须位于 group spec 根或 project_root/spec/"
+
+    forbidden_patterns:
+      - "**/.claude/plans/**"
+      - "/brain/docs/plans/**"
+      - "**/tmp/**"
+      - "/tmp/**"
+      - "/root/**"
+      - "**/.local/**"
+      - "/home/**"
+      - "**/.cache/**"
+      - "/xkagent_infra/groups/**/spec/projects/**"
+
+    allowed_patterns:
+      - "/xkagent_infra/groups/*/spec/**"
+      - "/xkagent_infra/groups/*/projects/*/spec/**"
+      - "/xkagent_infra/brain/base/spec/**"
+
+    content_triggers:
+      - "spec_id:"
+      - "alignment:"
+      - "requirements:"
+      - "## Context"
+      - "实施计划："
+      - "## 实施步骤"
+      - "Phase 1:"
+      - "Phase 2:"
+
+    block_message: |
+      🚫 SPEC 路径违规 (G-SPEC-LOCATION)
+
+      文件路径: {file_path}
+      违规原因: {reason}
+
+      ✅ 合法路径族:
+        - group 级 spec: /xkagent_infra/groups/{group}/spec/{spec_id}/
+        - project 级 spec: /xkagent_infra/groups/{group}/projects/{project_id}/spec/
+
+      project_delivery 项目必须先在 groups/{group}/projects/{project} 下建立 project_root，
+      再在 project_root/spec/ 中落 intake/research/planning/task 文档。
+      禁止写入 /xkagent_infra/groups/**/spec/projects/** 这类兼容性兜底路径。
+
+      参考:
+      - /xkagent_infra/brain/base/spec/policies/lep/spec_location.yaml
+      - /xkagent_infra/brain/base/workflow/operations/project_initiation.yaml
+
+  - id: G-PLAN-MODE-SPEC
+    name: "Plan Mode 必须在合法 SPEC 目录"
+    priority: CRITICAL
+    description: "Plan Mode 只能在 group spec 根或 project_root/spec/ 中使用"
+
+    triggers:
+      - tool: EnterPlanMode
+        action: warn
+        condition: "current_dir not in allowed_spec_dirs"
+        message: |
+          ⚠️ Plan Mode 检测到可能的路径问题
+
+          合法路径族:
+          1. /xkagent_infra/groups/{group}/spec/{spec_id}/
+          2. /xkagent_infra/groups/{group}/projects/{project_id}/spec/

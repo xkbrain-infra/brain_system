@@ -1,0 +1,189 @@
+# Sandbox Provider Configuration
+# 路径: /xkagent_infra/groups/brain/platform/sandbox/providers/docker.yaml
+
+provider:
+  name: docker
+  type: container
+  version: 2.0.0
+
+  # ============================================================================
+  # 部署类型配置
+  # ============================================================================
+  deployment_profiles:
+    development:
+      description: "开发环境配置"
+      compose_overrides:
+        services:
+          sandbox:
+            volumes:
+              # 开发模式：挂载源码（热重载）
+              - ${PROJECT_ROOT}:/workspace/project:rw
+              # 开发工具
+              - /var/run/docker.sock:/var/run/docker.sock:ro
+            environment:
+              - DEBUG=true
+              - HOT_RELOAD=true
+            ports:
+              - "${HOST_PORT_APP}:${CONTAINER_PORT_APP}"
+              - "${HOST_PORT_DEBUG}:5678"  # debugpy
+            command: >
+              bash -c "
+                echo 'Development sandbox ready' &&
+                cd /workspace/project &&
+                pip install -e . 2>/dev/null || true &&
+                tail -f /dev/null
+              "
+        restart: no
+
+    testing:
+      description: "测试环境配置"
+      compose_overrides:
+        services:
+          sandbox:
+            volumes:
+              # 测试模式：只读挂载
+              - ${PROJECT_ROOT}:/workspace/project:ro
+            environment:
+              - TESTING=true
+              - PYTEST_CURRENT_TEST=1
+            command: >
+              bash -c "
+                echo 'Testing sandbox ready' &&
+                cd /workspace/project &&
+                pip install -e . 2>/dev/null || true &&
+                pytest tests/ -v --tb=short || true &&
+                echo 'Tests completed'
+              "
+        restart: "no"
+        # 测试完成后自动停止
+
+    staging:
+      description: "预发布环境配置"
+      compose_overrides:
+        services:
+          sandbox:
+            volumes:
+              # Staging：复制而非挂载
+              - type: volume
+                source: sandbox_staging_${INSTANCE_ID}
+                target: /workspace/project
+            environment:
+              - STAGING=true
+              - PROD_LIKE=true
+            command: >
+              bash -c "
+                echo 'Staging sandbox ready' &&
+                cd /workspace/project &&
+                python -m uvicorn app:app --host 0.0.0.0 --port 8080
+              "
+        restart: unless-stopped
+
+    audit:
+      description: "审计环境配置"
+      compose_overrides:
+        services:
+          sandbox:
+            volumes:
+              # 审计模式：只读，不可修改
+              - ${PROJECT_ROOT}:/workspace/project:ro
+              # 审计日志输出
+              - ${AUDIT_LOG_PATH}:/workspace/audit:rw
+            environment:
+              - AUDIT_MODE=true
+              - LOG_ALL=true
+            command: >
+              bash -c "
+                echo 'Audit sandbox ready' &&
+                cd /workspace/project &&
+                echo 'Audit started at $$(date)' > /workspace/audit/session.log &&
+                tail -f /dev/null
+              "
+        restart: "no"
+        # 审计容器：记录所有操作
+        labels:
+          - "brain.audit=true"
+          - "brain.immutable=true"
+
+  # ============================================================================
+  # 生命周期钩子
+  # ============================================================================
+  lifecycle_hooks:
+    pre_start:
+      - name: "验证项目存在"
+        command: "test -d ${PROJECT_ROOT}"
+      - name: "检查端口占用"
+        command: "! nc -z localhost ${HOST_PORT_APP}"
+      - name: "创建数据卷"
+        command: "docker volume create sandbox_data_${INSTANCE_ID} 2>/dev/null || true"
+
+    post_start:
+      - name: "等待服务就绪"
+        command: "sleep 2"
+      - name: "健康检查"
+        command: "docker exec ${CONTAINER_NAME} python -c 'import sys; sys.exit(0)'"
+      - name: "注册实例"
+        command: "echo '{\"status\":\"running\"}' > ${REGISTRY_PATH}/${INSTANCE_ID}.json"
+
+    pre_stop:
+      - name: "备份状态"
+        command: "docker exec ${CONTAINER_NAME} tar czf /workspace/backup/state.tar.gz /workspace/data 2>/dev/null || true"
+      - name: "注销实例"
+        command: "rm -f ${REGISTRY_PATH}/${INSTANCE_ID}.json"
+
+    post_stop:
+      - name: "清理临时卷（开发/测试）"
+        command: |
+          if [ \"${DEPLOYMENT_TYPE}\" = \"development\" ] || [ \"${DEPLOYMENT_TYPE}\" = \"testing\" ]; then
+            docker volume rm sandbox_data_${INSTANCE_ID} 2>/dev/null || true
+          fi
+
+  # ============================================================================
+  # 命名生成器
+  # ============================================================================
+  naming:
+    container:
+      template: "{group}-{project}-{type}-{instance_id}"
+      validation: "^[a-z][a-z0-9-]{0,63}$"
+
+    instance_id:
+      length: 6
+      charset: "abcdefghijklmnopqrstuvwxyz0123456789"
+      collision_check: true
+
+    ports:
+      allocation: dynamic
+      range:
+        min: 18080
+        max: 19999
+
+  # ============================================================================
+  # 网络配置
+  # ============================================================================
+  networking:
+    default_driver: bridge
+    isolation:
+      development: shared  # 开发容器可互相访问
+      testing: isolated     # 测试容器隔离
+      staging: custom       # 自定义网络
+      audit: isolated       # 审计完全隔离
+
+  # ============================================================================
+  # 资源限制
+  # ============================================================================
+  resources:
+    development:
+      cpus: 2.0
+      memory: 2G
+      storage: 10G
+    testing:
+      cpus: 1.0
+      memory: 1G
+      storage: 5G
+    staging:
+      cpus: 1.0
+      memory: 1G
+      storage: 5G
+    audit:
+      cpus: 0.5
+      memory: 512M
+      storage: 2G

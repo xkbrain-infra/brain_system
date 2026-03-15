@@ -1,0 +1,89 @@
+registry:
+  meta:
+    domain: wf
+    version: '2.0'
+    last_updated: '2026-02-22'
+    total_documents: 5
+  documents:
+    G-WF-LIFECYCLE-PROJECT:
+      id: G-WF-LIFECYCLE-PROJECT
+      scope: G
+      title: "项目生命周期 (S1-S8)"
+      path: /brain/base/workflow/lifecycle/project.yaml
+      category: CORE
+      tags: [lifecycle, proposal, initiation, project]
+      last_modified: '2026-02-22'
+      description: "项目全生命周期：Phase 1 提案(S1-S4) → Go/No-Go → Phase 2 执行设计(S5-S8)"
+      load_triggers: [project, proposal, initiation, s1_s8, spec_design]
+
+    G-WF-LIFECYCLE-GOVERNANCE:
+      id: G-WF-LIFECYCLE-GOVERNANCE
+      scope: G
+      title: "四域联动治理"
+      path: /brain/base/workflow/lifecycle/governance.yaml
+      category: CORE
+      tags: [governance, four_domain]
+      last_modified: '2026-02-22'
+      description: "SPEC/WORKFLOW/KNOWLEDGE/EVOLUTION 四域变更联动审核"
+      load_triggers: [governance, four_domain]
+
+    G-WF-EXECUTION-RUNTIME:
+      id: G-WF-EXECUTION-RUNTIME
+      scope: G
+      title: "PMO + Orchestrator 运行时"
+      path: /brain/base/workflow/execution/runtime.yaml
+      category: CORE
+      tags: [runtime, pmo]
+      last_modified: '2026-02-22'
+      description: "PMO 治理事件循环 + Orchestrator 执行编排"
+      load_triggers: [runtime, pmo]
+
+    G-WF-EXECUTION-DSL:
+      id: G-WF-EXECUTION-DSL
+      scope: G
+      title: "Task/Project/Group 状态机 DSL"
+      path: /brain/base/workflow/execution/dsl.yaml
+      category: CORE
+      tags: [dsl, state_machine]
+      last_modified: '2026-02-22'
+      description: "三层实体流转 DSL：Task/Project/Group 状态机与跨层触发"
+      load_triggers: [dsl, state_machine]
+
+    G-WF-OPS-UPDATE-BRAIN:
+      id: G-WF-OPS-UPDATE-BRAIN
+      scope: G
+      title: "update_brain 操作规范"
+      path: /brain/base/workflow/operations/update_brain.yaml
+      category: OPERATIONS
+      tags: [update_brain, pending, merge, archive, deploy]
+      last_modified: '2026-02-22'
+      description: "update_brain 完整操作流程：submit→review→merge→archive，含 MANIFEST schema、目录约定、回滚机制"
+      load_triggers: [update_brain, pending, deploy, base_update]
+
+  categories:
+    CORE:
+      count: 4
+      documents:
+        - G-WF-LIFECYCLE-PROJECT
+        - G-WF-LIFECYCLE-GOVERNANCE
+        - G-WF-EXECUTION-RUNTIME
+        - G-WF-EXECUTION-DSL
+    OPERATIONS:
+      count: 1
+      documents:
+        - G-WF-OPS-UPDATE-BRAIN
+
+  quick_lookup:
+    project: [G-WF-LIFECYCLE-PROJECT]
+    proposal: [G-WF-LIFECYCLE-PROJECT]
+    initiation: [G-WF-LIFECYCLE-PROJECT]
+    s1_s8: [G-WF-LIFECYCLE-PROJECT]
+    governance: [G-WF-LIFECYCLE-GOVERNANCE]
+    runtime: [G-WF-EXECUTION-RUNTIME]
+    pmo: [G-WF-EXECUTION-RUNTIME]
+    # orchestrator role removed - see pmo
+    dsl: [G-WF-EXECUTION-DSL]
+    state_machine: [G-WF-EXECUTION-DSL]
+    update_brain: [G-WF-OPS-UPDATE-BRAIN]
+    pending: [G-WF-OPS-UPDATE-BRAIN]
+    deploy: [G-WF-OPS-UPDATE-BRAIN]

@@ -1,0 +1,13 @@
+# LEP Profile: brain-manager-elevated
+scope:
+  allowed_write:
+    - /xkagent_infra/brain/agents/{agent}/**
+    - /xkagent_infra/brain/infrastructure/config/**
+
+gate_overrides:
+  G-GATE-AUDIT:
+    priority: HIGH
+    note: "brain manager 的协调决策必须留痕。"
+  G-GATE-APPROVAL-DELEGATION:
+    priority: HIGH
+    note: "brain manager 需要通过 PMO/IPC 串起审批链。"

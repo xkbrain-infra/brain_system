@@ -1,0 +1,61 @@
+rollout_degrade_modes:
+  id: "MWF-DEGRADE-001"
+  version: "0.1"
+  intent: "定义非核心服务故障时的降级运行策略，避免单点故障拖垮全局"
+
+service_classes:
+  must_have:
+    - "config registry"
+    - "global task manager"
+    - "project orchestrator"
+  degrade_allowed:
+    - "logging service"
+    - "watchdog"
+    - "release manager"
+    - "audit orchestrator"
+
+degrade_modes:
+  logging_service:
+    if_unavailable:
+      behavior:
+        - "continue local logging only"
+        - "buffer warning+ summaries for later sync"
+      blocked_actions: []
+  watchdog:
+    if_unavailable:
+      behavior:
+        - "execution may continue"
+        - "mark monitoring state degraded"
+      blocked_actions:
+        - "automatic stale/offline escalation"
+  release_manager:
+    if_unavailable:
+      behavior:
+        - "development execution may continue"
+      blocked_actions:
+        - "stage/prod release execution"
+  audit_orchestrator:
+    if_unavailable:
+      behavior:
+        - "project may complete delivery"
+      blocked_actions:
+        - "project close"
+        - "archive finalization"
+
+phase_acceptance:
+  foundation:
+    requires:
+      - "config registry healthy"
+      - "global task manager healthy"
+  execution_core:
+    requires:
+      - "project orchestrator healthy"
+      - "timer callback path healthy"
+  visibility:
+    allows_degraded:
+      - "logging service"
+      - "watchdog"
+  delivery:
+    requires:
+      - "release manager healthy for publish"
+      - "audit orchestrator healthy for close"

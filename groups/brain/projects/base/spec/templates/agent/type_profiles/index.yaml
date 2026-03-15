@@ -1,0 +1,43 @@
+# Agent Type Profile 分类索引
+# 不同行业/场景有不同的角色集和推荐 agent_type + model 配置
+#
+# 创建 Group 时，选择一个 category 作为基础，
+# general 中的通用角色自动包含，行业角色按需启用
+
+version: "1.0"
+
+categories:
+  TP-CAT-GENERAL:
+    name: "通用"
+    file: general.yaml
+    description: "所有行业通用的基础角色（编排、管理、前台）"
+    always_included: true
+
+  TP-CAT-SOFTWARE-DEV:
+    name: "软件开发"
+    file: software_dev.yaml
+    description: "架构设计、编码实现、测试验证、运维部署"
+    example_groups: [brain_system]
+
+  TP-CAT-QUANT-TRADING:
+    name: "量化交易"
+    file: quant_trading.yaml
+    description: "策略研发、回测、风控、行情数据"
+    example_groups: [xkquant]
+
+  TP-CAT-VIDEO-PRODUCTION:
+    name: "短视频制作"
+    file: video_production.yaml
+    description: "脚本策划、拍摄、剪辑、发布运营"
+
+  TP-CAT-CONTENT-CREATION:
+    name: "内容创作"
+    file: content_creation.yaml
+    description: "选题策划、写作、编辑审校、SEO 优化、多平台分发"
+
+# 选型规则
+selection_guide:
+  - "创建 Group 时先选 category"
+  - "general 角色自动包含，不需要选"
+  - "一个 Group 可以组合多个 category（如 quant_trading + software_dev）"
+  - "每个 category 内的角色可以按需启用，不必全部创建"

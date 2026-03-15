@@ -1,0 +1,100 @@
+identifier_conventions:
+  id: "MWF-ID-001"
+  version: "0.1"
+  intent: "统一 group_id、project_id、sandbox_id、task_id、report_id、log_id 等标识命名规则"
+
+principles:
+  - "must be stable after creation"
+  - "must be human-readable"
+  - "must be globally traceable"
+  - "must support dependency and event correlation"
+
+project_id:
+  format: "PRJ-{group}-{yyyyMMdd}-{seq}"
+  example: "PRJ-brain-20260311-001"
+  rule:
+    - "group 使用稳定短名"
+    - "seq 为当日递增序号"
+
+group_id:
+  format: "GRP-{group}"
+  example: "GRP-brain"
+  rule:
+    - "group_id 必须与 project_id 中的 group 片段一致"
+    - "同一项目组内所有日志、报告、sandbox 都应复用同一个 group_id"
+
+sandbox_id:
+  format: "SBX-{project_id}-{rev}"
+  example: "SBX-PRJ-brain-20260311-001-r1"
+  rule:
+    - "同一 project 可存在多个 sandbox revision"
+    - "sandbox_id 必须显式绑定 project_id"
+
+orchestrator_id:
+  format: "ORCH-{project_id}"
+  example: "ORCH-PRJ-brain-20260311-001"
+  rule:
+    - "一个活跃 project 对应一个主 orchestrator_id"
+
+task_id:
+  format: "{project_id}.{stage}.T{nn}.{type}"
+  example: "PRJ-brain-20260311-001.delivery.T01.impl"
+  fields:
+    stage:
+      allowed:
+        - intake
+        - bootstrap
+        - delivery
+        - testing
+        - release
+        - audit
+    type:
+      allowed:
+        - impl
+        - front
+        - test
+        - review
+        - deploy
+        - fix
+        - doc
+        - audit
+  rules:
+    - "task_id 一经创建不可重命名"
+    - "todo_list 不单独占用 task_id，除非升级为独立 task"
+    - "depends_on 必须引用 task_id，不允许模糊文本"
+
+subtask_id:
+  format: "{task_id}.S{nn}"
+  example: "PRJ-brain-20260311-001.delivery.T01.impl.S01"
+  rule:
+    - "仅在需要独立跟踪时使用"
+
+report_id:
+  format: "{kind}-{project_id}-{seq}"
+  examples:
+    - "delivery-PRJ-brain-20260311-001-01"
+    - "release-PRJ-brain-20260311-001-01"
+    - "audit-PRJ-brain-20260311-001-01"
+
+event_id:
+  format: "EVT-{project_id}-{ts_compact}-{seq}"
+  example: "EVT-PRJ-brain-20260311-001-20260311T143000-01"
+
+log_id:
+  format: "LOG-{project_id}-{log_class}-{ts_compact}-{seq}"
+  example: "LOG-PRJ-brain-20260311-001-task_progress-20260311T143500-01"
+  rule:
+    - "log_class 需使用结构化短名"
+    - "同一时刻重复写入时依靠 seq 去重"
+
+forbidden_patterns:
+  - "task-1"
+  - "tmp-task"
+  - "review-final"
+  - "无 project_id 前缀的自由命名"
+
+rules:
+  - "所有 cross-service 引用必须使用正式 id，不允许 display name 替代"
+  - "所有 timer 注册必须绑定 task_id 或 project_id"
+  - "所有 event/report 必须能回溯到 project_id"
+  - "所有 log/report/snapshot 必须能回溯到 group_id"

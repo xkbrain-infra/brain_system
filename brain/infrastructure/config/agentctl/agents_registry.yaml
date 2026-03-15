@@ -40,6 +40,22 @@ groups:
     required: false
     desired_state: running
     status: active
+  - name: tmp-agent-doubao
+    description: 临时 Doubao Seed 2.0 Pro 测试 Agent
+    role: dev
+    scope: group
+    group: brain
+    path: /xkagent_infra/brain/agents/tmp-agent-doubao
+    agent_type: bytedance
+    model: doubao-seed-2-0-pro
+    agent_model: doubao-seed-2-0-pro
+    transport_mode: proxy
+    tmux_session: tmp-agent-doubao
+    required: false
+    desired_state: running
+    status: active
+    env:
+      IS_SANDBOX: "1"
   - name: agent-brain_codex_foos
     description: brain 的 dev Agent
     role: dev

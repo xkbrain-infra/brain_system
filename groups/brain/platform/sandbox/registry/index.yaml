@@ -1,0 +1,92 @@
+# Sandbox Instance Registry
+# 路径: /xkagent_infra/groups/brain/platform/sandbox/registry/index.yaml
+
+registry:
+  version: "2.0.0"
+  description: "Brain 组 sandbox 实例注册表"
+
+  # ============================================================================
+  # 存储格式
+  # ============================================================================
+  storage:
+    format: yaml
+    path: "/xkagent_infra/groups/brain/platform/sandbox/registry/instances/"
+    # 实例 compose 文件存储格式:
+    # instances/{type}-{instance_id}/{instance_id}.yaml
+    # 例如:
+    # - instances/dev-abc123/abc123.yaml
+    # - instances/test-def456/def456.yaml
+    backup:
+      enabled: true
+      path: "/xkagent_infra/groups/brain/platform/sandbox/archives/"
+      retention: "30d"
+
+  # ============================================================================
+  # 实例记录格式
+  # ============================================================================
+  instance_schema:
+    required:
+      - instance_id
+      - project
+      - group
+      - type
+      - status
+      - created_at
+      - container_name
+      - host_ports
+
+    optional:
+      - stopped_at
+      - archived_at
+      - audit_log_path
+      - test_results
+
+  # ============================================================================
+  # 实例状态
+  # ============================================================================
+  status:
+    - pending       # 等待启动
+    - creating      # 创建中
+    - running       # 运行中
+    - paused        # 已暂停
+    - stopping      # 停止中
+    - stopped       # 已停止
+    - error         # 错误状态
+    - archived      # 已归档
+
+  # ============================================================================
+  # 查询接口
+  # ============================================================================
+  queries:
+    by_project:
+      description: "按项目查询"
+      command: "find ${REGISTRY_PATH} -name '*.yaml' -exec grep -l 'project: ${PROJECT}' {} \\;"
+
+    by_type:
+      description: "按类型查询"
+      command: "find ${REGISTRY_PATH} -name '*.yaml' -exec grep -l 'type: ${TYPE}' {} \\;"
+
+    by_status:
+      description: "按状态查询"
+      command: "find ${REGISTRY_PATH} -name '*.yaml' -exec grep -l 'status: ${STATUS}' {} \\;"
+
+    active:
+      description: "查询活跃实例"
+      filter: "status in ['pending', 'creating', 'running', 'paused']"
+
+  # ============================================================================
+  # 清理策略
+  # ============================================================================
+  cleanup:
+    development:
+      max_age: "7d"
+      on_max_age: archive
+    testing:
+      max_age: "1d"
+      on_max_age: delete
+    staging:
+      max_age: "3d"
+      on_max_age: archive
+    audit:
+      max_age: "90d"
+      on_max_age: archive

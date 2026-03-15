@@ -1,0 +1,123 @@
+# Brain Sandbox Base Image
+# 同步自当前 Brain 容器配置
+# 版本: 2.1.0
+# 路径: /xkagent_infra/groups/brain/platform/sandbox/templates/Dockerfile.base
+
+FROM ubuntu:24.04
+
+# ============================================================================
+# 基础系统配置（与 Brain 容器一致）
+# ============================================================================
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=Asia/Shanghai
+ENV LANG=en_US.UTF-8
+ENV LC_ALL=en_US.UTF-8
+
+# 系统更新 + 基础工具
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    # 基础工具
+    curl \
+    wget \
+    git \
+    vim \
+    nano \
+    tree \
+    jq \
+    yq \
+    # 构建工具
+    build-essential \
+    cmake \
+    make \
+    pkg-config \
+    # 网络工具
+    net-tools \
+    iputils-ping \
+    dnsutils \
+    netcat-openbsd \
+    socat \
+    # 进程管理
+    supervisor \
+    # 数据库
+    sqlite3 \
+    libsqlite3-dev \
+    # 其他依赖
+    libssl-dev \
+    libffi-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# ============================================================================
+# Python 环境（与 Brain 容器一致）
+# ============================================================================
+RUN apt-get update && apt-get install -y \
+    python3.11 \
+    python3.11-dev \
+    python3.11-venv \
+    python3-pip \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN ln -sf /usr/bin/python3.11 /usr/bin/python3
+RUN ln -sf /usr/bin/python3 /usr/bin/python
+
+# 升级 pip
+RUN python -m pip install --upgrade pip setuptools wheel
+
+# Brain 核心 Python 依赖
+RUN pip install --no-cache-dir \
+    fastapi>=0.104.0 \
+    uvicorn[standard]>=0.24.0 \
+    httpx>=0.25.0 \
+    aiofiles>=23.2.0 \
+    pydantic>=2.5.0 \
+    pyyaml>=6.0.1 \
+    psutil>=5.9.6 \
+    sqlalchemy>=2.0.0 \
+    aiosqlite>=0.19.0
+
+# 测试依赖
+RUN pip install --no-cache-dir \
+    pytest>=7.4.0 \
+    pytest-asyncio>=0.21.0 \
+    pytest-cov>=4.1.0 \
+    httpx>=0.25.0
+
+# ============================================================================
+# Node.js 环境（与 Brain 容器一致）
+# ============================================================================
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN npm install -g pnpm
+
+# ============================================================================
+# Brain 环境变量（只读，sandbox 内部使用）
+# ============================================================================
+ENV BRAIN_PATH="/brain"
+ENV BRAIN_GROUPS="/xkagent_infra/groups"
+ENV BRAIN_INFRA="/xkagent_infra/brain/infrastructure"
+ENV BRAIN_RUNTIME="/xkagent_infra/runtime"
+
+# IPC 配置
+ENV BRAIN_IPC_SOCKET="/tmp/brain_ipc.sock"
+ENV BRAIN_IPC_HOST="127.0.0.1"
+ENV BRAIN_IPC_PORT="9000"
+
+# 日志配置
+ENV BRAIN_LOG_LEVEL="INFO"
+ENV BRAIN_LOG_FORMAT="json"
+
+# ============================================================================
+# Sandbox 工作目录
+# ============================================================================
+WORKDIR /workspace
+
+# 创建标准目录结构
+RUN mkdir -p \
+    /workspace/project \
+    /workspace/data \
+    /workspace/logs \
+    /workspace/tmp \
+    /workspace/cache
+
+# 默认 entrypoint：保持容器运行
+CMD ["sleep", "infinity"]

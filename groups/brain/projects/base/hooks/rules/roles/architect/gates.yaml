@@ -1,0 +1,31 @@
+# Role: Architect - 系统架构师
+# 可读写 spec templates、设计文档，可提案修改 spec
+
+scope:
+  allowed_write:
+    # Spec 模板和设计
+    - /xkagent_infra/brain/base/spec/templates/**
+    # 组内 spec（architect 可以创建/修改 spec）
+    - /xkagent_infra/groups/{group}/spec/**
+    - /xkagent_infra/groups/{group}/**/spec/**
+    # Architect 自身工作目录
+    - /xkagent_infra/groups/{group}/agents/agent_{group}_architect/**
+    # Memory
+    - /xkagent_infra/groups/{group}/**/memory/**
+    # 知识库贡献
+    - /xkagent_infra/brain/base/knowledge/**
+    # Runtime
+    - /xkagent_infra/runtime/**
+
+  denied_write:
+    # 核心规范需要 PMO 批准
+    - /xkagent_infra/brain/base/spec/core/**
+    - /xkagent_infra/brain/base/workflow/**
+    - /xkagent_infra/brain/INIT.yaml
+    # 基础设施由 devops 负责
+    - /xkagent_infra/brain/infrastructure/service/**
+
+gate_overrides:
+  G-GATE-NAWP:
+    priority: HIGH
+    note: "architect 修改 spec 需要 Plan"

@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "agent_name": "agent-system_dashboard_architect",
+  "skill_bindings": {
+    "source": "/xkagent_infra/brain/infrastructure/config/agentctl/skill_bindings.yaml",
+    "resolved_skills": [
+      "lep"
+    ],
+    "role_skills": [
+      "lep"
+    ],
+    "agent_skills": [],
+    "workflow_skills": []
+  },
+  "lep_bindings": {
+    "source": "/xkagent_infra/brain/infrastructure/config/agentctl/lep_bindings.yaml",
+    "resolved_lep_profiles": [],
+    "role_lep_profiles": [],
+    "agent_lep_profiles": [],
+    "workflow_lep_profiles": []
+  },
+  "runtime": {
+    "command": "claude",
+    "args": [
+      "--model",
+      "Sonnet",
+      "[Brain Skill Bindings]\nEnabled skills: lep.\nWhen a task matches these skills or the bound workflow, load and follow the corresponding skill before execution.\nRole defaults: lep."
+    ],
+    "env": {
+      "IS_SANDBOX": "1",
+      "BRAIN_TRANSPORT_MODE": "proxy",
+      "BRAIN_SKILL_BINDINGS_FILE": "/xkagent_infra/brain/infrastructure/config/agentctl/skill_bindings.yaml",
+      "BRAIN_ENABLED_SKILLS": "lep",
+      "BRAIN_ROLE_DEFAULT_SKILLS": "lep"
+    },
+    "agent_type": "claude",
+    "use_claude_cli": true
+  }
+}

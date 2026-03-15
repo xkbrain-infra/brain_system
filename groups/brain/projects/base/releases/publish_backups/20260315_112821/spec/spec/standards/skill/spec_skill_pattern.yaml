@@ -1,0 +1,126 @@
+# Spec → Skill 渐进式披露模式
+# 定义何时将 spec 包装为 skill，以及 skill 如何渐进式暴露 spec 内容
+
+standard:
+  id: "STD-SKILL-SPEC-PATTERN"
+  version: "1.0"
+  status: "Active"
+  owner: "brain"
+
+intent:
+  summary: |
+    Spec 是权威定义，Skill 是可执行入口。
+    Spec → Skill 模式将操作性 spec 包装为 skill，
+    通过渐进式披露在正确时机暴露正确内容，避免 agent 一次性加载全部规范。
+  principle:
+    - "Skill 不复制 Spec 内容，只在需要时引用并加载"
+    - "每一层披露只暴露当前阶段所需的最小信息"
+    - "Spec 保持权威，Skill 保持可执行"
+
+# ============================================
+# 适用性判断：哪些 spec 应该包装为 skill
+# ============================================
+eligibility:
+  should_become_skill:
+    - 多步骤操作流程（发布、部署、创建、初始化）
+    - 需要 agent 在执行中做判断的策略（路由、审批）
+    - 有明确触发场景的操作规范
+
+  stay_as_spec_only:
+    - 核心架构定义（lep.yaml、layers.yaml）— 被所有人引用，不适合包装
+    - Schema / 结构约束（spec_bindings、registry）— 机器读取用
+    - 模板文件 — 作为样板使用，不需要执行逻辑
+    - 纯参考数据（index、registry）— 查找用
+
+  existing_examples:
+    - skill: lep        → spec: spec/core/lep.yaml + spec/policies/lep/
+    - skill: brain-publish → spec: spec/policies/deployment/base_publish.yaml
+    - skill: preset        → spec: (直接内嵌，无独立 spec 文件)
+
+# ============================================
+# 渐进式披露层级
+# ============================================
+disclosure_levels:
+  L0_trigger:
+    name: "触发识别"
+    location: "skill frontmatter description 字段"
+    content: "一句话描述触发条件，agent 据此判断是否调用此 skill"
+    load_spec: false
+
+  L1_context:
+    name: "上下文确认"
+    location: "skill 正文 ## 触发场景 段"
+    content: "列出典型场景，agent 对号入座确认自己在哪个情境"
+    load_spec: "仅加载 spec 的 intent / principles 段"
+
+  L2_flow:
+    name: "流程路由"
+    location: "skill 正文 ## 执行入口 段"
+    content: "根据上下文给出对应的执行路径，不同场景走不同分支"
+    load_spec: "按场景加载对应 spec 的 flow / steps 段"
+
+  L3_detail:
+    name: "细节按需"
+    location: "skill 正文各执行步骤内的 '深入读取' 指引"
+    content: "执行到某步时才加载该步的详细约束和验证规则"
+    load_spec: "加载 spec 中具体 gate / policy / validation 段"
+
+# ============================================
+# Skill 文件标准结构
+# ============================================
+skill_structure:
+  frontmatter:
+    required:
+      - id          # G-SKILL-<NAME>
+      - name        # skill 名（与目录名一致）
+      - description # L0 触发条件（一句话，agent 据此决定是否调用）
+    optional:
+      - spec_ref    # 对应的权威 spec 路径
+      - user-invocable
+      - allowed-tools
+      - argument-hint
+
+  body_sections:
+    "## 触发场景":
+      level: L1
+      purpose: "列举典型使用场景，让 agent 快速确认适用性"
+    "## 执行入口":
+      level: L2
+      purpose: "根据场景路由到对应流程分支，每个分支只暴露当前需要的步骤"
+    "## [具体流程段]":
+      level: L3
+      purpose: "具体执行步骤，步骤内按需引用 spec 深度内容"
+    "## Spec 引用":
+      level: L3
+      purpose: "明确列出本 skill 依赖的 spec 文件路径，说明何时加载"
+
+# ============================================
+# Spec 引用规范
+# ============================================
+spec_reference:
+  principle: "skill 不内联 spec 内容，通过路径引用按需加载"
+  pattern: |
+    在需要深入规则时，skill 说明：
+      "读取 <spec_path> 的 <section> 段"
+    而不是把 spec 内容复制到 skill 里
+  anti_pattern:
+    - "将完整 spec YAML 内容粘贴到 skill 文件中"
+    - "skill 与 spec 内容重复导致维护两份"
+
+# ============================================
+# 命名约定
+# ============================================
+naming:
+  skill_id: "G-SKILL-<DOMAIN>-<NAME>"    # 示例: G-SKILL-DEPLOY-BASE-PUBLISH
+  skill_name: "kebab-case"                # 与目录名一致
+  skill_dir: "groups/brain/projects/base/skill/<name>/"
+  skill_file: "SKILL.md"
+
+# ============================================
+# 覆盖与发布
+# ============================================
+coverage:
+  spec_published_by: "publish_base.sh --domain spec"
+  skill_published_by: "publish_base.sh --domain skill"
+  deployed_to_agents_by: "publish_base.sh --domain agents"
+  note: "spec 和 skill 是独立域，各自发布，互不覆盖"

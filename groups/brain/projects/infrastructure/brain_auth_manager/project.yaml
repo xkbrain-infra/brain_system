@@ -1,0 +1,17 @@
+name: brain_auth_manager
+description: Brain Infrastructure Service
+version: 1.0.0
+type: service
+language: python
+
+paths:
+  project_root: /xkagent_infra/groups/brain/projects/infrastructure/brain_auth_manager
+  infra_service: /xkagent_infra/brain/infrastructure/service/brain_auth_manager
+
+dependencies: []
+
+build:
+  type: python
+
+deploy:
+  method: copy

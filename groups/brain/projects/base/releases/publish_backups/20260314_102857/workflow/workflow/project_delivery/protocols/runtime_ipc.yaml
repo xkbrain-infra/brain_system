@@ -1,0 +1,42 @@
+runtime_ipc:
+  id: "MWF-RT-IPC-001"
+  version: "0.1"
+  intent: "定义 sandbox 内 orchestrator 与 worker agents 的执行面协议"
+
+message_contract:
+  required_fields:
+    - msg_id
+    - type
+    - from
+    - to
+    - project_id
+    - sandbox_id
+    - ts
+
+message_types:
+  TASK_ASSIGN:
+    purpose: "orchestrator 分配任务"
+  TASK_ACCEPT:
+    purpose: "agent 接受任务"
+  TASK_PROGRESS:
+    purpose: "agent 上报中间进度"
+  TASK_BLOCKED:
+    purpose: "agent 上报阻塞"
+  TASK_REVIEW_REQUEST:
+    purpose: "agent 请求 review"
+  TASK_REVIEW_RESULT:
+    purpose: "reviewer 返回结果"
+  TASK_TEST_RESULT:
+    purpose: "qa 或 test runner 返回结果"
+  TASK_DONE:
+    purpose: "agent 提交完成状态和产物"
+  AGENT_HEARTBEAT:
+    purpose: "agent 心跳"
+  ORCHESTRATOR_HEARTBEAT:
+    purpose: "orchestrator 心跳"
+  RELEASE_PREP_RESULT:
+    purpose: "项目内 release prep 完成"
+
+rules:
+  - "runtime IPC 不直接穿透到其他 sandbox"
+  - "worker 不直接写 global task manager，统一由 orchestrator 汇总"

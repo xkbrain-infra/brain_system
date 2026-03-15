@@ -1,0 +1,56 @@
+{
+  "version": 1,
+  "agent_name": "agent-brain_codex_foos",
+  "skill_bindings": {
+    "source": "/xkagent_infra/brain/infrastructure/config/agentctl/skill_bindings.yaml",
+    "resolved_skills": [
+      "doc-search",
+      "lep",
+      "tmux",
+      "sandbox"
+    ],
+    "role_skills": [
+      "lep",
+      "doc-search",
+      "tmux",
+      "sandbox"
+    ],
+    "agent_skills": [
+      "doc-search"
+    ],
+    "workflow_skills": []
+  },
+  "lep_bindings": {
+    "source": "/xkagent_infra/brain/infrastructure/config/agentctl/lep_bindings.yaml",
+    "resolved_lep_profiles": [
+      "workspace-dev"
+    ],
+    "role_lep_profiles": [
+      "workspace-dev"
+    ],
+    "agent_lep_profiles": [],
+    "workflow_lep_profiles": []
+  },
+  "runtime": {
+    "command": "claude",
+    "args": [
+      "--model",
+      "openai/gpt-5.4",
+      "[Brain Skill Bindings]\nEnabled skills: doc-search, lep, tmux, sandbox.\nWhen a task matches these skills or the bound workflow, load and follow the corresponding skill before execution.\nAgent-specific additions: doc-search.\nRole defaults: lep, doc-search, tmux, sandbox.\n\n[Brain LEP Profiles]\nEnabled LEP profiles: workspace-dev.\nThese LEP profiles tighten hook enforcement and should be treated as mandatory operating constraints.\nRole defaults: workspace-dev."
+    ],
+    "env": {
+      "IS_SANDBOX": "1",
+      "BRAIN_TRANSPORT_MODE": "proxy",
+      "BRAIN_AGENT_NAME": "agent-brain_codex_foos",
+      "BRAIN_SKILL_BINDINGS_FILE": "/xkagent_infra/brain/infrastructure/config/agentctl/skill_bindings.yaml",
+      "BRAIN_ENABLED_SKILLS": "doc-search,lep,tmux,sandbox",
+      "BRAIN_ROLE_DEFAULT_SKILLS": "lep,doc-search,tmux,sandbox",
+      "BRAIN_AGENT_EXTRA_SKILLS": "doc-search",
+      "BRAIN_LEP_BINDINGS_FILE": "/xkagent_infra/brain/infrastructure/config/agentctl/lep_bindings.yaml",
+      "BRAIN_ENABLED_LEP_PROFILES": "workspace-dev",
+      "BRAIN_ROLE_DEFAULT_LEP_PROFILES": "workspace-dev"
+    },
+    "agent_type": "openai",
+    "use_claude_cli": true
+  }
+}

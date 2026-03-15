@@ -1,0 +1,36 @@
+version: "3.8"
+
+services:
+  dashboard-dev:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.dev
+    container_name: brain_dashboard_sandbox
+    volumes:
+      # Mount project source (read-write for development)
+      - ../:/workspace/project:rw
+      # Data volume (isolated from host)
+      - dashboard_data:/workspace/data
+      # Logs volume
+      - dashboard_logs:/workspace/logs
+      # Mount brain_gateway for API testing (read-only)
+      - /xkagent_infra/brain/infrastructure/service/brain_gateway:/brain/gateway:ro
+    ports:
+      - "18080:8080"  # Dashboard API (host:container)
+      - "18081:8081"  # Debug port
+    environment:
+      - BRAIN_GATEWAY_URL=http://host.docker.internal:8200
+      - SANDBOX_MODE=full
+      - PROJECT_ROOT=/workspace/project
+    working_dir: /workspace/project
+    command: bash -c "echo 'Sandbox ready' && tail -f /dev/null"
+    networks:
+      - brain_sandbox
+
+volumes:
+  dashboard_data:
+  dashboard_logs:
+
+networks:
+  brain_sandbox:
+    driver: bridge

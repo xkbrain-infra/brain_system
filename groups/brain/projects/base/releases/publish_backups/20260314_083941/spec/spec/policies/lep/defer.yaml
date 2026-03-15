@@ -1,0 +1,75 @@
+gate_id: G-GATE-DEFER
+name: Deferred Task Handoff
+applies_to: [write, delete, move]
+rule: |
+  Agent 产生"当前不做、以后要做"的延迟任务时，必须通过 IPC 通知对应 PMO：
+  - routing: 任务所属 group 的 PMO (agent_{group}_pmo)
+  - scope = project 时，先查 project PMO，无则上升到 group PMO
+  - PMO 收到后记录到 backlog，设置触发条件
+  - 禁止仅口头提及而不发送结构化消息
+required_fields: [task, trigger_type, trigger_condition, owner_suggestion, context]
+trigger_types: [time, event, dependency]
+
+enforcement:
+  stage: ipc_message_check
+  method: message_content_validation
+  priority: MEDIUM
+  note: "需要 IPC 拦截支持 - 当前为推荐性检查"
+
+  triggers:
+    keywords:
+      - "以后"
+      - "稍后"
+      - "待办"
+      - "TODO"
+      - "延迟"
+      - "将来"
+      - "下次"
+
+  rules:
+    require_ipc_notification:
+      description: "延迟任务必须通过 IPC 通知 PMO"
+      required_message_fields:
+        - task
+        - trigger_type
+        - trigger_condition
+        - owner_suggestion
+        - context
+      target_pmo: "agent_{group}_pmo"
+
+  warn_message: |
+    💡 延迟任务需要通知 PMO (G-DEFER)
+
+    检测到延迟任务关键词: {keyword}
+
+    如果产生了"当前不做、以后要做"的任务，必须：
+    1. 发送 IPC 消息给 group PMO
+    2. 包含字段: task, trigger_type, trigger_condition, owner_suggestion, context
+    3. PMO 会记录到 backlog
+
+    示例:
+    ```python
+    ipc_send(
+        to="agent-system_pmo",
+        message="延迟任务: 优化数据库索引",
+        metadata={
+            "task": "优化数据库索引",
+            "trigger_type": "time",
+            "trigger_condition": "2026-03-01",
+            "owner_suggestion": "agent-system_devops",
+            "context": "当前性能可接受，3月后预计需要优化"
+        }
+    )
+    ```
+
+    禁止仅口头提及而不发送结构化消息。
+
+    这是推荐性检查（需要 IPC 集成）。
+
+    参考：/brain/base/spec/core/lep.yaml (G-DEFER)
+bindings:
+  hooks:
+    stage: post_tool_use
+    trigger_tools: [Write]
+  mcp_tools: []
+  related_skills: []

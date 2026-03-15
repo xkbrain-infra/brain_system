@@ -1,0 +1,34 @@
+# Industry / Domain Template Layer
+
+version: "1.0"
+status: "phase1_scaffold"
+
+description: |
+  Industry 层定义业务场景、行业交付物、workflow 与角色 overlay。
+  该层不重复角色底线，而是补充“在这个行业中该角色要交付什么”。
+
+industries:
+  software_dev:
+    path: /brain/base/spec/templates/industries/software_dev/index.yaml
+    description: "软件工程、系统设计、编码实现、测试与部署"
+
+  content_creation:
+    path: /brain/base/spec/templates/industries/content_creation/index.yaml
+    description: "内容生产、选题、写作、编辑、分发"
+
+  self_media:
+    path: /brain/base/spec/templates/industries/self_media/index.yaml
+    description: "个人品牌、自媒体运营、选题与分发闭环"
+
+  novel_writing:
+    path: /brain/base/spec/templates/industries/novel_writing/index.yaml
+    description: "长篇写作、角色与世界观维护、章节生产"
+
+  quant_trading:
+    path: /brain/base/spec/templates/industries/quant_trading/index.yaml
+    description: "策略研发、回测、风控、数据分析"
+
+industry_layer_rules:
+  - "行业模板只描述场景，不重写角色底线"
+  - "角色在不同行业内的差异，通过 overlay 表达"
+  - "overlay 优先定义交付物、输出格式、行业 workflow"

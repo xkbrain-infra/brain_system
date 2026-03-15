@@ -1,0 +1,190 @@
+# Telegram Message Templates
+# Telegram 消息模板与格式规范
+
+templates:
+  version: "1.0"
+  last_updated: "2026-01-17"
+
+  message_formatting:
+    markdown:
+      enabled: true
+      supported_syntax:
+        - "**bold**"
+        - "*italic*"
+        - "`code`"
+        - "```code block```"
+        - "[link](url)"
+        - "• bullet list"
+
+    emoji:
+      enabled: true
+      recommended_usage:
+        info: "ℹ️"
+        warning: "⚠️"
+        error: "🛑"
+        critical: "🚨"
+        success: "✅"
+        question: "🤔"
+        lightbulb: "💡"
+        rocket: "🚀"
+
+    structure:
+      title:
+        format: "**{emoji} {title}**"
+        examples:
+          - "**🚨 CRITICAL: Scope Deviation Detected**"
+          - "**⚠️ Retry Exhausted**"
+          - "**ℹ️ Batch Operation Partial Failure**"
+
+      sections:
+        format: |
+          **{Section Title}**:
+          {content}
+
+          **{Next Section}**:
+          {content}
+
+      lists:
+        format: |
+          - Item 1
+          - Item 2
+          - Item 3
+
+      code_blocks:
+        format: |
+          ```bash
+          command here
+          ```
+
+      buttons:
+        format: |
+          Options:
+          A) First option
+          B) Second option
+          C) Third option
+
+  button_interactions:
+    inline_keyboard:
+      enabled: true
+      max_buttons_per_row: 3
+      max_rows: 8
+
+    button_schema:
+      required_fields:
+        - "label"  # Display text
+        - "action"  # Action identifier
+
+      optional_fields:
+        - "params"  # Additional parameters
+        - "confirm_required"  # Whether to show confirmation dialog
+
+      example: |
+        {
+          "label": "✅ Approve",
+          "action": "approve",
+          "params": {"auto_proceed": true},
+          "confirm_required": false
+        }
+
+    response_format:
+      schema: |
+        {
+          "message_id": "string",
+          "user_id": "string",
+          "timestamp": "ISO8601",
+          "action": "string",
+          "params": "object",
+          "raw_text": "string"  # If user typed response instead of button
+        }
+
+  common_templates:
+    scope_deviation:
+      title: "**🚨 Scope Deviation Detected**"
+      body: |
+        **Planned**: {planned_items}
+        **Actual**: {actual_items}
+        **Reason**: {reason}
+
+        **Context**:
+        - Project: {project_name}
+        - Planned count: {planned_count}
+        - Actual count: {actual_count}
+
+      options:
+        - label: "A: Continue (Partial)"
+          action: "continue_partial"
+        - label: "B: Abort"
+          action: "abort"
+        - label: "C: Discuss"
+          action: "discuss"
+
+    retry_exhausted:
+      title: "**⚠️ Retry Exhausted**"
+      body: |
+        **Operation**: {operation_name}
+        **Attempts**: {retry_count}/{max_retries}
+        **Last Error**: {error_message}
+
+        **Options**:
+        A) Skip this item
+        B) Increase retry limit and retry
+        C) Abort entire operation
+
+      options:
+        - label: "A: Skip"
+          action: "skip"
+        - label: "B: Retry more"
+          action: "increase_retry"
+        - label: "C: Abort"
+          action: "abort"
+
+    batch_partial_failure:
+      title: "**ℹ️ Batch Operation Partial Failure**"
+      body: |
+        **Success**: {success_count}/{total_count} items
+        **Failed**: {failed_count} items
+        **Failure Rate**: {failure_rate}%
+
+        **Failed Items**:
+        {failed_items_list}
+
+        **Options**:
+        A) Continue with successful items
+        B) Retry failed items only
+        C) Abort entire operation
+
+      options:
+        - label: "A: Continue"
+          action: "continue"
+        - label: "B: Retry failed"
+          action: "retry_failed"
+        - label: "C: Abort"
+          action: "abort"
+
+    progress_notification:
+      title: "**✅ {phase_name} Completed**"
+      body: |
+        **Duration**: {duration}
+        **Items Processed**: {item_count}
+        **Details**:
+        {details_dict}
+
+    unrecoverable_error:
+      title: "**🛑 Unrecoverable Error**"
+      body: |
+        **Error Type**: {error_type}
+        **Error Message**: {error_message}
+        **Operation**: {operation_name}
+
+        **Context**:
+        {error_context}
+
+        **Agent Status**: ⏸️ HALTED
+
+      options:
+        - label: "A: View logs"
+          action: "view_logs"
+        - label: "B: Discuss solution"
+          action: "discuss"
+        - label: "C: Abort task"
+          action: "abort"

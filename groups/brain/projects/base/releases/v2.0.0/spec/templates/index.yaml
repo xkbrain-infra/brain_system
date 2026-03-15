@@ -1,0 +1,63 @@
+# Agent Template Layering Index
+#
+# Phase 1:
+# - 引入新的分层目录
+# - 保留现有 /agent/ 作为兼容 canonical source
+# - 暂不切换 agentctl / docs 的消费路径
+
+version: "1.0"
+status: "phase2_switch_ready"
+
+layers:
+  core:
+    path: /brain/base/spec/templates/core/index.yaml
+    intent: "系统级硬约束与公共协议"
+    owns:
+      - LEP / gating
+      - IPC 共性规则
+      - 公共健康检查框架
+      - 初始化通用骨架
+
+  roles:
+    path: /brain/base/spec/templates/roles/index.yaml
+    intent: "角色边界、原则、禁区、协作接口"
+    owns:
+      - 角色身份与职责
+      - 工作原则
+      - 禁止事项
+      - 角色专属健康检查
+
+  industries:
+    path: /brain/base/spec/templates/industries/index.yaml
+    intent: "行业场景、交付物、workflow、角色 overlay"
+    owns:
+      - 行业目标
+      - 典型交付物
+      - 行业 workflow
+      - 行业下的角色补充要求
+
+  type_profiles:
+    path: /brain/base/spec/templates/type_profiles/index.yaml
+    intent: "模型、CLI、provider、transport 选型"
+    owns:
+      - agent_type
+      - cli_type
+      - model
+      - provider
+      - runtime transport 推荐
+
+composition_order:
+  - core
+  - role
+  - industry_overlay
+  - local_group_override
+  - type_profile
+
+phase2_canonical_sources:
+  canonical_base_template: /brain/base/spec/templates/core/base_template.md
+  canonical_role_templates: /brain/base/spec/templates/roles/
+  canonical_type_profiles: /brain/base/spec/templates/type_profiles/
+  compatibility_fallbacks:
+    - /brain/base/spec/templates/agent/base_template.md
+    - /brain/base/spec/templates/agent/roles/
+    - /brain/base/spec/templates/agent/type_profiles/

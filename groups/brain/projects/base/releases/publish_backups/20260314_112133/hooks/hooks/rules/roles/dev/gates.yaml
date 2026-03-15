@@ -1,0 +1,33 @@
+# Role: Developer - 开发工程师
+# 限制在项目代码目录，不可修改 spec 和基础设施
+
+scope:
+  allowed_write:
+    # 项目代码 - 主要工作区域
+    - /xkagent_infra/groups/{group}/**/projects/**
+    # Dev 自身工作目录
+    - /xkagent_infra/groups/{group}/agents/agent_{group}_dev*/**
+    # Memory
+    - /xkagent_infra/groups/{group}/**/memory/**
+    # Runtime
+    - /xkagent_infra/brain/runtime/**
+    # 临时文件
+    - /xkagent_infra/brain/runtime/tmp/**
+
+  denied_write:
+    # Spec 由 architect 负责
+    - /xkagent_infra/groups/{group}/spec/**
+    # 核心规范只读
+    - /xkagent_infra/brain/base/spec/**
+    - /xkagent_infra/brain/base/workflow/**
+    - /xkagent_infra/brain/INIT.yaml
+    # 基础设施由 devops 负责
+    - /xkagent_infra/brain/infrastructure/**
+
+gate_overrides:
+  G-GATE-NAWP:
+    priority: CRITICAL
+    note: "dev 必须有 Plan 才能开始工作"
+  G-GATE-VERIFICATION:
+    priority: CRITICAL
+    note: "dev 代码必须通过测试"

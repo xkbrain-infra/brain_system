@@ -1,0 +1,84 @@
+sequence_flows:
+  id: "MWF-SEQ-001"
+  version: "0.1"
+  intent: "定义 multicore workflow 的关键消息顺序与事件流"
+
+flows:
+  task_bootstrap_and_assignment:
+    summary: "orchestrator 组织 task 对齐、落记录、分配 agent"
+    steps:
+      - "orchestrator 生成 task graph 与初始 READY 集合"
+      - "orchestrator 召集相关 agents 对齐 task / todo_list / handoff 关系"
+      - "orchestrator 写 TASK_CREATE 到 task manager"
+      - "orchestrator 写 ASSIGNMENT_UPDATE 到 task manager"
+      - "orchestrator 向目标 agent 发送 TASK_ASSIGN"
+      - "agent 返回 TASK_ACCEPT"
+      - "orchestrator 写 TASK_EVENT_APPEND(task.assigned/task.accepted)"
+      - "orchestrator 更新 project snapshot"
+
+  timer_registered_task_check:
+    summary: "orchestrator 注册 trigger，timer 到点主动发 IPC"
+    steps:
+      - "orchestrator 将 trigger_policy 写入 task manager"
+      - "orchestrator 向 timer service 注册 trigger"
+      - "timer service 到达 trigger_at 或 interval 时主动发送 IPC"
+      - "target orchestrator 接收 IPC 并查询 task manager"
+      - "orchestrator 判断是否需要 reassign / escalate / state transition"
+      - "orchestrator 将决策回写 task manager 并追加 task event"
+
+  dependency_unblock_flow:
+    summary: "上游 task 完成后触发下游 READY"
+    steps:
+      - "agent 提交 TASK_DONE 给 orchestrator"
+      - "orchestrator 写 TASK_UPDATE(status=VERIFIED/DONE)"
+      - "orchestrator 追加 task.done event"
+      - "orchestrator 检查依赖图中受影响下游 tasks"
+      - "满足条件的下游 task 从 BACKLOG/READY 派生为 READY"
+      - "orchestrator 写 readiness 变化并触发新的 TASK_ASSIGN"
+
+  review_and_verify_flow:
+    summary: "执行产物进入 review，再进入 verified/done"
+    steps:
+      - "owner agent 向 orchestrator 发送 TASK_REVIEW_REQUEST"
+      - "orchestrator 更新 task 为 REVIEW 并记录 reviewer"
+      - "orchestrator 向 reviewer 发送 review task IPC"
+      - "reviewer 返回 TASK_REVIEW_RESULT"
+      - "orchestrator 更新 task 为 VERIFIED 或回退到 ACTIVE/BLOCKED"
+      - "验收完成后 orchestrator 更新为 DONE"
+
+  audit_feedback_materialization:
+    summary: "audit finding 必须重新进入执行链"
+    steps:
+      - "audit orchestrator 生成 finding 与 improvement action"
+      - "高优先级 action 转成 follow-up task/project"
+      - "follow-up item 写入 task manager backlog"
+      - "manager board 展示 materialization 状态"
+      - "原 project 只有在 follow-up item 已 materialize 后才能 CLOSED"
+
+  config_registry_bootstrap_chain:
+    summary: "bootstrap 期间完成 name/port/config/supervisor/endpoint/service 注册"
+    steps:
+      - "bootstrap pipeline 请求 GET_ENV_BASELINE"
+      - "bootstrap pipeline 调用 RESERVE_SERVICE_NAME"
+      - "bootstrap pipeline 调用 ALLOCATE_PORT"
+      - "bootstrap pipeline 调用 PUT_CONFIG_VERSION"
+      - "bootstrap pipeline 调用 REGISTER_SUPERVISOR"
+      - "service process started under supervisor"
+      - "bootstrap pipeline 调用 REGISTER_ENDPOINT"
+      - "project orchestrator 调用 REGISTER_SERVICE"
+      - "orchestrator 追加 service.registered / endpoint.registered event 与日志"
+
+event_requirements:
+  every_state_change_must:
+    - "persist to task manager"
+    - "append event history"
+    - "be visible to project snapshot derivation"
+
+correlation:
+  required_fields:
+    - project_id
+    - group_id
+    - task_id
+    - orchestrator_id
+    - msg_id
+    - causal_event_id

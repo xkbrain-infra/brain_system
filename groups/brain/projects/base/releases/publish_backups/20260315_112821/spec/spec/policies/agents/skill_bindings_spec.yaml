@@ -1,0 +1,114 @@
+# Skill Bindings Specification
+# skill_bindings.yaml 的结构约束和绑定优先级规范
+
+spec:
+  id: "SPEC-SKILL-BINDINGS"
+  version: "1.0"
+  status: "Active"
+  owner: "brain_system"
+
+intent:
+  summary: "将 skill 绑定策略从 agents_registry.yaml 中分离，单独管理 role/agent/workflow 与 skill 的映射。"
+  location: "/brain/infrastructure/config/agentctl/skill_bindings.yaml"
+  rationale:
+    - "agents_registry.yaml 负责运行时注册信息，不应承载完整能力编排策略。"
+    - "skill 绑定需要独立演进，不应与 agent 生命周期配置强耦合。"
+    - "workflow.required_skills、role.default_skills、agent.extra_skills 语义不同，单独建模更清晰。"
+
+schema:
+  skill_bindings:
+    required:
+      - version
+      - updated
+      - roles
+    optional:
+      - owner
+      - description
+      - resolution_order
+      - merge_rules
+      - agents
+      - workflows
+
+  role_binding:
+    required:
+      - default_skills
+    optional: []
+
+  agent_binding:
+    required: []
+    optional:
+      - extra_skills
+
+  workflow_binding:
+    required: []
+    optional:
+      - required_skills
+      - recommended_roles
+
+constraints:
+  separate_from_agents_registry:
+    rule: "skills 不直接定义在 agents_registry.yaml 中；全局 skill 绑定统一放入 skill_bindings.yaml。"
+
+  role_keys_match_runtime_roles:
+    rule: "roles.* 的 key 应与 agents_registry.yaml 中的 role 值语义一致。"
+
+  skill_names_reference_base_skill:
+    rule: "所有 skill 名必须能映射到 /brain/base/skill/<skill-name> 或兼容 skill 标识。"
+
+  workflow_names_reference_base_workflow:
+    rule: "workflows.* 的 key 应与 /brain/base/workflow 下可识别的 workflow 包或主流程名称对应。"
+
+  merge_deduplicate:
+    rule: "同一 skill 通过 role/agent/workflow 多次命中时，只保留一次。"
+
+resolution:
+  order:
+    - workflow.required_skills
+    - agent.extra_skills
+    - role.default_skills
+  description:
+    - "workflow.required_skills: 当任务上下文明确进入某 workflow 时必须加载。"
+    - "agent.extra_skills: 针对具体 agent 的附加绑定。"
+    - "role.default_skills: 角色默认技能集合。"
+
+example:
+  skill_bindings:
+    version: "1.0"
+    updated: "2026-03-14"
+    roles:
+      manager:
+        default_skills: [agentctl, ipc]
+      devops:
+        default_skills: [agentctl, tmux]
+    agents:
+      agent-brain_manager:
+        extra_skills: [validate-alignment]
+    workflows:
+      project_delivery:
+        required_skills: [project_delivery]
+        recommended_roles: [manager, devops]
+
+deployment:
+  description: "skill_bindings.yaml 变更后，必须通过 publish_base.sh 将 skill 部署到各 agent"
+  trigger: "修改 skill_bindings.yaml 中任意 role/agent 绑定后"
+  flow:
+    - step: "publish_base.sh --dry-run --domain agents"
+      purpose: "预览每个 agent 的有效 skill 集合及 stale skill 清单"
+    - step: "publish_base.sh --publish --domain agents"
+      purpose: "按 bindings 将 brain/base/skill/<name>/ 复制到各 agent .claude/skills/<name>/"
+  deployment_logic:
+    source: "brain/base/skill/<skill-name>/"
+    target: "<agent_path>/.claude/skills/<skill-name>/"
+    effective_skills: "role.default_skills + agent.extra_skills（去重）"
+    stale_cleanup: "不在 effective_skills 中的已有 skill 目录将被删除"
+  ref: "spec/policies/deployment/base_publish.yaml § skill_publish_flow"
+
+consumer_guidance:
+  intended_consumers:
+    - "agentctl 配置加载层"
+    - "publish_base.sh --domain agents 部署层"
+    - "session/hook 注入层"
+    - "workflow runtime 的 skill 解析器"
+  non_goals:
+    - "不直接替代 agents_registry.yaml"
+    - "不负责定义 hook 绑定细节"

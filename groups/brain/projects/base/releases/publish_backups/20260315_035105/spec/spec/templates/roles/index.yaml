@@ -1,0 +1,68 @@
+# Role Template Layer
+
+version: "1.0"
+status: "phase2_canonical"
+
+description: |
+  Role 层定义角色身份、职责边界、原则、禁区与协作接口。
+  行业特化规则不在此层定义。
+
+roles:
+  pmo:
+    current_canonical: /brain/base/spec/templates/roles/pmo.md
+    legacy_path: /brain/base/spec/templates/agent/roles/pmo.md
+    legacy_runtime_init: /brain/base/spec/templates/roles/pmo/INIT.md
+    intent: "审批、编排、进度治理"
+
+  architect:
+    current_canonical: /brain/base/spec/templates/roles/architect.md
+    legacy_path: /brain/base/spec/templates/agent/roles/architect.md
+    legacy_runtime_init: /brain/base/spec/templates/roles/architect/INIT.md
+    intent: "架构设计、契约、技术决策"
+
+  developer:
+    current_canonical: /brain/base/spec/templates/roles/developer.md
+    legacy_path: /brain/base/spec/templates/agent/roles/developer.md
+    legacy_runtime_init: /brain/base/spec/templates/roles/developer/INIT.md
+    intent: "代码实现、测试、调试"
+
+  qa:
+    current_canonical: /brain/base/spec/templates/roles/qa.md
+    legacy_path: /brain/base/spec/templates/agent/roles/qa.md
+    legacy_runtime_init: /brain/base/spec/templates/roles/qa/INIT.md
+    intent: "质量门禁、测试、验收"
+
+  devops:
+    current_canonical: /brain/base/spec/templates/roles/devops.md
+    legacy_path: /brain/base/spec/templates/agent/roles/devops.md
+    legacy_runtime_init: /brain/base/spec/templates/roles/devops/INIT.md
+    intent: "部署、基础设施、监控"
+
+  researcher:
+    current_canonical: /brain/base/spec/templates/roles/researcher.md
+    legacy_path: /brain/base/spec/templates/agent/roles/researcher.md
+    legacy_runtime_init: /brain/base/spec/templates/roles/researcher/INIT.md
+    intent: "调研、分析、知识沉淀"
+
+  frontdesk:
+    current_canonical: /brain/base/spec/templates/roles/frontdesk.md
+    legacy_path: /brain/base/spec/templates/agent/roles/frontdesk.md
+    legacy_runtime_init: /brain/base/spec/templates/roles/frontdesk/INIT.md
+    intent: "消息路由、用户响应保障"
+
+  ui-designer:
+    current_canonical: /brain/base/spec/templates/roles/ui-designer.md
+    legacy_path: /brain/base/spec/templates/agent/roles/ui-designer.md
+    legacy_runtime_init: ""
+    intent: "界面设计、设计系统、前端协作"
+
+role_layer_rules:
+  - "不要在角色模板里重复 LEP / IPC 公共规则"
+  - "不要在角色模板里塞行业 workflow"
+  - "保留角色禁区和跨角色协作接口"
+
+must_preserve_from_legacy:
+  - "architect: Spec S3/S4/S5 输出约束"
+  - "qa: S7 输出规范与测试报告 schema"
+  - "researcher: 报告落盘/命名规范"
+  - "frontdesk: target_bot / target_service / no-polling 硬约束"

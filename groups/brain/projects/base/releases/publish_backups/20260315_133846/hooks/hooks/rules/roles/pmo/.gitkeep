@@ -1,0 +1,14 @@
+# PMO 角色规则目录
+
+## 规则说明
+
+PMO 角色需要以下规则：
+- 审批相关规则
+- 项目管理规则
+- 任务分配规则
+
+## 文件示例
+
+- approval.yaml - 审批规则
+- delegation.yaml - 委派规则
+- project_check.yaml - 项目检查规则

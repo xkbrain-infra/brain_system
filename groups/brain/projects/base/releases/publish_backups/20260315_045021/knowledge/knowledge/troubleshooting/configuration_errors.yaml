@@ -1,0 +1,58 @@
+# Configuration Errors - 配置错误
+# 配置缺失、数据库连接问题
+
+category: "configuration_errors"
+version: "1.0"
+last_updated: "2026-01-17"
+
+problems:
+  - id: "CFG-001"
+    category: "configuration_errors"
+    keywords: ["config", "missing", "environment", "variable"]
+    error_patterns:
+      - "KeyError"
+      - "Configuration key not found"
+      - "Environment variable not set"
+    description: "Missing configuration or environment variable"
+
+    solutions:
+      - id: "CFG-001-SOL-A"
+        description: "Use default value if safe, otherwise notify user"
+        confidence: "medium"
+        risk_level: "medium"
+        reversible: true
+
+        prerequisites:
+          - "safe_default_exists == true"
+
+        steps:
+          - "Check if safe default value exists"
+          - "If yes: Use default and log warning"
+          - "If no: HALT and notify user"
+
+        expected_outcome: "Configuration resolved or user notified"
+
+  - id: "CFG-002"
+    category: "configuration_errors"
+    keywords: ["database", "connection", "config", "dsn"]
+    error_patterns:
+      - "OperationalError"
+      - "Can't connect to database"
+      - "Connection refused"
+    description: "Database connection configuration error"
+
+    solutions:
+      - id: "CFG-002-SOL-A"
+        description: "Verify connection parameters and retry"
+        confidence: "high"
+        risk_level: "low"
+        reversible: true
+
+        steps:
+          - "Verify database host is reachable (ping/telnet)"
+          - "Check port is correct"
+          - "Verify credentials"
+          - "Check firewall rules"
+          - "Retry with verified configuration"
+
+        expected_outcome: "Database connection established"

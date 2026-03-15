@@ -1,0 +1,30 @@
+# Role: PMO - Project Management Officer
+# PMO 是组内操作的全权审批代理，可读写 workflow 和 memory
+
+scope:
+  allowed_write:
+    # Workflow 管理
+    - /xkagent_infra/groups/{group}/**/workflow/**
+    - /xkagent_infra/groups/{group}/**/memory/**
+    - /xkagent_infra/groups/{group}/**/logs/**
+    # PMO 自身工作目录
+    - /xkagent_infra/groups/{group}/agents/agent_{group}_pmo/**
+    # 任务管理
+    - /xkagent_infra/groups/{group}/**/tasks/**
+    # Runtime
+    - /xkagent_infra/brain/runtime/**
+
+  denied_write:
+    # PMO 不应直接修改代码
+    - /xkagent_infra/groups/{group}/**/projects/**/src/**
+    # 核心规范只读
+    - /xkagent_infra/brain/base/spec/core/**
+    - /xkagent_infra/brain/INIT.yaml
+
+gate_overrides:
+  G-GATE-NAWP:
+    # PMO 自身不需要 Plan（PMO 就是审批者）
+    skip: true
+  G-GATE-APPROVAL-DELEGATION:
+    # PMO 可以直接 AskUserQuestion（它就是审批代理）
+    skip: true

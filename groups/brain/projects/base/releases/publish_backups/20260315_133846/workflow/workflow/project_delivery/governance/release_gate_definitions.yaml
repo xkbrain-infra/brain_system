@@ -1,0 +1,31 @@
+release_gate_definitions:
+  id: "MWF-REL-GATE-001"
+  version: "0.1"
+  intent: "定义 stage/prod gate 的标准通过条件"
+
+stage_pass_definition:
+  required:
+    - "candidate deployed to stage"
+    - "integration checks passed"
+    - "regression checks passed if required by plan"
+    - "QA validation recorded"
+    - "no unresolved release-critical blocker"
+  result: "stage_passed=true"
+
+prod_smoke_pass_definition:
+  required:
+    - "candidate deployed to prod"
+    - "core business smoke checks passed"
+    - "monitoring shows no immediate critical regression"
+    - "QA or equivalent automation evidence recorded"
+  result: "prod_smoke_passed=true"
+
+reject_definition:
+  applies_when:
+    - "required gate evidence missing"
+    - "approval not granted"
+    - "critical blocker unresolved"
+    - "rollback path unavailable"
+
+notes:
+  - "不同项目可扩展更多 gate，但不能弱化 stage/prod 的基础门"

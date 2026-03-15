@@ -1,0 +1,181 @@
+# Sandbox 部署规范体系
+# 规范 ID: BRAIN-SANDBOX-001
+# 源码路径: /xkagent_infra/groups/brain/projects/base/sandbox/
+# 发布路径: /xkagent_infra/brain/base/sandbox/
+# 运行时数据: /xkagent_infra/groups/brain/platform/sandbox/
+
+sandbox_platform:
+  group_id: brain
+  version: 2.0.0
+  status: active
+  created: "2026-03-15"
+  owner: agent-brain_manager
+
+  # ============================================================================
+  # 核心原则
+  # ============================================================================
+  principles:
+    - name: "同步 Brain 基础镜像"
+      description: |
+        Sandbox 容器必须基于当前运行 Brain 的版本构建，
+        确保开发环境与生产环境一致。
+
+    - name: "Group 级共享平台"
+      description: |
+        /xkagent_infra/groups/{group}/platform/sandbox/ 是 group 级运行时数据目录，
+        仅存放实例、注册表、归档数据。
+        平台能力源码在 /xkagent_infra/groups/{group}/projects/base/sandbox/ 开发，
+        发布后同步到 /xkagent_infra/brain/base/sandbox/
+
+    - name: "部署类型明确化"
+      description: |
+        每个 sandbox 必须有明确的 deployment_type：
+        - development: 开发调试
+        - testing: 自动化测试
+        - staging: 预发布验证
+        - audit: 审计审查
+
+    - name: "持久化可追溯"
+      description: |
+        Sandbox 配置和审计记录必须持久化到 host，
+        runtime 状态可重建。
+
+  # ============================================================================
+  # 目录结构
+  # ============================================================================
+  # 架构分离:
+  # - 源代码: groups/brain/projects/base/sandbox/ -> brain/base/sandbox/
+  # - 运行时: groups/brain/platform/sandbox/ (instances, registry, archives)
+  roots:
+    # 源代码路径 (base 项目)
+    templates_source: "/xkagent_infra/groups/brain/projects/base/sandbox/templates"
+    providers_source: "/xkagent_infra/groups/brain/projects/base/sandbox/providers"
+    service_source: "/xkagent_infra/groups/brain/projects/base/sandbox/service"
+    # 发布态路径
+    templates_published: "/xkagent_infra/brain/base/sandbox/templates"
+    providers_published: "/xkagent_infra/brain/base/sandbox/providers"
+    # 运行时数据路径 (platform 目录)
+    instances: "/xkagent_infra/groups/brain/platform/sandbox/instances"
+    registry: "/xkagent_infra/groups/brain/platform/sandbox/registry"
+    archives: "/xkagent_infra/groups/brain/platform/sandbox/archives"
+
+  # ============================================================================
+  # 持久化模型
+  # ============================================================================
+  persistence:
+    host_persisted:
+      - metadata          # sandbox.yaml, session.yaml
+      - registry          # 实例注册表
+      - archives          # 审计日志、历史记录
+      - provider_assets   # Dockerfile, compose 模板
+    runtime_only:
+      - container_state   # 运行中的容器
+      - ephemeral_volumes # 临时卷
+      - process_state     # 进程状态
+
+  # ============================================================================
+  # 部署类型定义
+  # ============================================================================
+  deployment_types:
+    development:
+      code: DEV
+      description: "开发环境 - 代码修改、调试、实验"
+      features:
+        - hot_reload: true
+        - debug_tools: true
+        - volume_mount_rw: true
+      constraints:
+        - max_duration: "8h"
+        - auto_suspend: "30m_idle"
+        - network_isolation: "bridge"
+
+    testing:
+      code: TST
+      description: "测试环境 - 自动化测试、集成测试"
+      features:
+        - hot_reload: false
+        - test_runner: true
+        - coverage_report: true
+      constraints:
+        - max_duration: "2h"
+        - clean_on_exit: true
+        - network_isolation: "bridge"
+
+    staging:
+      code: STG
+      description: "预发布环境 - 生产前验证"
+      features:
+        - hot_reload: false
+        - prod_like: true
+        - smoke_test: true
+      constraints:
+        - max_duration: "24h"
+        - network_isolation: "custom_bridge"
+
+    audit:
+      code: AUD
+      description: "审计环境 - 代码审查、安全检查"
+      features:
+        - hot_reload: false
+        - audit_tools: true
+        - immutable: true
+      constraints:
+        - max_duration: "72h"
+        - network_isolation: "isolated"
+        - log_all: true
+
+  # ============================================================================
+  # 命名规范
+  # ============================================================================
+  naming:
+    container:
+      pattern: "{group}-{project}-{type}-{instance_id}"
+      example: "brain-dashboard-dev-a7f3k2"
+      constraints:
+        - max_length: 64
+        - lowercase: true
+        - alphanumeric_hyphen: true
+
+    network:
+      pattern: "{group}-{type}-{instance_id}"
+      example: "brain-dev-a7f3k2"
+
+    volume:
+      pattern: "{group}_{project}_{type}_{instance_id}_{purpose}"
+      example: "brain_dashboard_dev_a7f3k2_data"
+
+  # ============================================================================
+  # 基础镜像配置
+  # ============================================================================
+  base_image:
+    name: brain-sandbox-base
+    version: "2.1.0"
+    dockerfile: "/xkagent_infra/groups/brain/projects/base/sandbox/templates/Dockerfile.base"
+    features:
+      - python: "3.11"
+      - node: "20"
+      - supervisor: "latest"
+      - sqlite3: "latest"
+      - git: "latest"
+    capabilities:
+      - mcp_servers:
+          - brain_ipc
+          - brain_memory
+      - cli_tools:
+          - claude-code
+          - agentctl
+          - ipcsend
+
+  # ============================================================================
+  # 依赖的服务注册
+  # ============================================================================
+  service_dependencies:
+    optional:
+      - brain_gateway
+      - brain_ipc
+      - brain_task_manager
+    mockable:
+      - brain_telegram_api
+      - brain_google_api
+
+  note: "Brain 组 sandbox 平台入口；基础镜像与生产环境保持一致"

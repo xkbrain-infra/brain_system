@@ -1,0 +1,225 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Example only:
+# Materialize project-scoped agent runtime homes in sandbox,
+# build a sandbox-local agentctl registry bridge, then use agentctl
+# to start and verify the bootstrap roster.
+
+PROJECT_ID="${PROJECT_ID:?PROJECT_ID is required}"
+GROUP_ID="${GROUP_ID:?GROUP_ID is required}"
+SANDBOX_ID="${SANDBOX_ID:?SANDBOX_ID is required}"
+ORCHESTRATOR_ID="${ORCHESTRATOR_ID:?ORCHESTRATOR_ID is required}"
+PROVISION_PLAN_PATH="${PROVISION_PLAN_PATH:?PROVISION_PLAN_PATH is required}"
+ROSTER_PATH="${ROSTER_PATH:?ROSTER_PATH is required}"
+TEMPLATE_MAP_PATH="${TEMPLATE_MAP_PATH:?TEMPLATE_MAP_PATH is required}"
+BRAIN_WORKTREE="${BRAIN_WORKTREE:-/workspace/brain}"
+PROJECT_ROOT="${PROJECT_ROOT:?PROJECT_ROOT is required}"
+RUNTIME_ROOT="${RUNTIME_ROOT:-/workspace/runtime}"
+AGENT_RUNTIME_ROOT="${AGENT_RUNTIME_ROOT:-${RUNTIME_ROOT}/agents}"
+TEMPLATE_BUNDLE_ROOT="${TEMPLATE_BUNDLE_ROOT:-${RUNTIME_ROOT}/template_bundles/agents}"
+AGENTCTL_CONFIG_DIR="${AGENTCTL_CONFIG_DIR:-${RUNTIME_ROOT}/config/agentctl}"
+AGENTCTL_BIN="${AGENTCTL_BIN:-${BRAIN_WORKTREE}/infrastructure/service/agentctl/bin/agentctl}"
+
+mkdir -p "${AGENT_RUNTIME_ROOT}" "${TEMPLATE_BUNDLE_ROOT}" "${AGENTCTL_CONFIG_DIR}"
+
+python3 - "$PROJECT_ID" "$GROUP_ID" "$SANDBOX_ID" "$ORCHESTRATOR_ID" "$ROSTER_PATH" "$TEMPLATE_MAP_PATH" "$AGENT_RUNTIME_ROOT" "$TEMPLATE_BUNDLE_ROOT" "$AGENTCTL_CONFIG_DIR" "$PROJECT_ROOT" <<'PY'
+import json
+import sys
+from pathlib import Path
+import yaml
+
+project_id, group_id, sandbox_id, orchestrator_id, roster_path, template_map_path, agent_runtime_root, template_bundle_root, agentctl_config_dir, project_root = sys.argv[1:]
+
+roster_doc = yaml.safe_load(Path(roster_path).read_text(encoding="utf-8"))
+template_doc = yaml.safe_load(Path(template_map_path).read_text(encoding="utf-8"))
+
+roster = roster_doc.get("project_agent_roster", roster_doc)
+template_map = template_doc.get("template_resolution_map", template_doc)
+
+registry = {
+    "version": "1.0",
+    "updated": "2026-03-12",
+    "projects": {
+        f"{group_id}/{project_id}": []
+    }
+}
+
+for agent in roster:
+    agent_id = agent["agent_id"]
+    role_key = agent["role_key"]
+    provider = agent.get("provider") or template_map[role_key]["provider"]
+    agent_type = provider["agent_type"]
+    model = provider["model"]
+
+    runtime_home = Path(agent_runtime_root) / agent_id
+    bundle_home = Path(template_bundle_root) / agent_id
+    runtime_home.mkdir(parents=True, exist_ok=True)
+    bundle_home.mkdir(parents=True, exist_ok=True)
+    (runtime_home / "logs").mkdir(exist_ok=True)
+    (runtime_home / "memory").mkdir(exist_ok=True)
+
+    mcp_doc = {
+        "mcpServers": {
+            "mcp-brain_ipc_c": {
+                "command": "/brain/bin/mcp/mcp-brain_ipc_c",
+                "args": [],
+                "env": {
+                    "BRAIN_AGENT_NAME": agent_id,
+                    "BRAIN_TMUX_SESSION": agent_id,
+                    "BRAIN_DAEMON_AUTOSTART": "0",
+                },
+            }
+        }
+    }
+    (runtime_home / ".mcp.json").write_text(
+        json.dumps(mcp_doc, indent=2, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    runtime_meta = {
+        "agent_id": agent_id,
+        "group_id": group_id,
+        "project_id": project_id,
+        "sandbox_id": sandbox_id,
+        "orchestrator_id": orchestrator_id,
+        "role_key": role_key,
+        "agent_type": agent_type,
+        "model": model,
+        "template_source_ref": agent["template_source_ref"],
+        "template_bundle_ref": str(bundle_home),
+        "runtime_created_in_sandbox": True,
+    }
+    (runtime_home / "runtime_meta.yaml").write_text(
+        yaml.safe_dump(runtime_meta, sort_keys=False, allow_unicode=False),
+        encoding="utf-8",
+    )
+
+    ag_md = "\n".join(
+        [
+            f"# {agent_id}",
+            "",
+            f"- group: {group_id}",
+            f"- project: {project_id}",
+            f"- sandbox: {sandbox_id}",
+            f"- role: {role_key}",
+            f"- orchestrator: {orchestrator_id}",
+            "",
+            "This runtime home is materialized inside the sandbox.",
+        ]
+    )
+    (runtime_home / "AGENTS.md").write_text(ag_md + "\n", encoding="utf-8")
+
+    if agent_type == "claude":
+        cfg = {
+            "permissions": {"defaultMode": "bypassPermissions"},
+            "env": {
+                "BRAIN_AGENT_NAME": agent_id,
+                "BRAIN_AGENT_ROLE": role_key,
+                "BRAIN_AGENT_GROUP": group_id,
+                "BRAIN_PROJECT_ID": project_id,
+                "BRAIN_SANDBOX_ID": sandbox_id,
+                "BRAIN_SCOPE_PATH": project_root,
+                "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+            },
+            "language": "中文",
+            "mcpServers": mcp_doc["mcpServers"],
+            "skipDangerousModePermissionPrompt": True,
+        }
+        claude_dir = runtime_home / ".claude"
+        claude_dir.mkdir(exist_ok=True)
+        (claude_dir / "settings.local.json").write_text(
+            json.dumps(cfg, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+    elif agent_type == "codex":
+        codex_dir = runtime_home / ".codex"
+        codex_dir.mkdir(exist_ok=True)
+        codex_toml = "\n".join(
+            [
+                f'model = "{model}"',
+                'model_reasoning_effort = "medium"',
+                'profile = "yolo"',
+                "suppress_unstable_features_warning = true",
+                "",
+                f'[projects."{runtime_home}"]',
+                'trust_level = "trusted"',
+                "",
+                "[profiles.yolo]",
+                'approval_policy = "never"',
+                'sandbox_mode = "danger-full-access"',
+                f'model = "{model}"',
+                'model_reasoning_effort = "medium"',
+                "",
+                "[features]",
+                "unified_exec = true",
+                "shell_snapshot = true",
+                "steer = true",
+                "multi_agent = true",
+                "apps = true",
+                "",
+                "[mcp_servers.mcp-brain_ipc_c]",
+                'command = "/brain/bin/mcp/mcp-brain_ipc_c"',
+                "args = []",
+                f'env = {{ BRAIN_AGENT_NAME = "{agent_id}", BRAIN_TMUX_SESSION = "{agent_id}", BRAIN_DAEMON_AUTOSTART = "0" }}',
+            ]
+        )
+        (codex_dir / "config.toml").write_text(codex_toml + "\n", encoding="utf-8")
+    else:
+        raise SystemExit(f"unsupported agent_type for example script: {agent_type}")
+
+    registry["projects"][f"{group_id}/{project_id}"].append(
+        {
+            "name": agent_id,
+            "scope": "project",
+            "group": group_id,
+            "project": project_id,
+            "path": str(runtime_home),
+            "cwd": str(runtime_home),
+            "agent_type": agent_type,
+            "model": model,
+            "tmux_session": agent_id,
+            "desired_state": "stopped",
+            "status": "active",
+        }
+    )
+
+registry_path = Path(agentctl_config_dir) / "agents_registry.yaml"
+registry_path.write_text(
+    yaml.safe_dump(registry, sort_keys=False, allow_unicode=False),
+    encoding="utf-8",
+)
+PY
+
+export AGENTCTL_CONFIG_DIR
+
+python3 - "$ROSTER_PATH" <<'PY' | while read -r agent_id; do
+import sys
+from pathlib import Path
+import yaml
+
+roster_doc = yaml.safe_load(Path(sys.argv[1]).read_text(encoding="utf-8"))
+roster = roster_doc.get("project_agent_roster", roster_doc)
+for agent in roster:
+    print(agent["agent_id"])
+PY
+  "${AGENTCTL_BIN}" start --apply "${agent_id}"
+done
+
+online_snapshot="$("${AGENTCTL_BIN}" online || true)"
+
+python3 - "$ROSTER_PATH" "$online_snapshot" <<'PY'
+import sys
+from pathlib import Path
+import yaml
+
+roster_doc = yaml.safe_load(Path(sys.argv[1]).read_text(encoding="utf-8"))
+roster = roster_doc.get("project_agent_roster", roster_doc)
+online_text = sys.argv[2]
+missing = [agent["agent_id"] for agent in roster if agent["agent_id"] not in online_text]
+
+if missing:
+    raise SystemExit(f"agents not visible in agentctl online: {', '.join(missing)}")
+PY
+
+echo "example runtime materialization completed"

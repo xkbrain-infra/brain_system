@@ -1,0 +1,157 @@
+docker_sandbox_template:
+  id: "MWF-SANDBOX-DOCKER-001"
+  version: "0.1"
+  intent: "定义 docker_container 作为当前默认 sandbox provider 时的内置模板、实例化规则和项目适配边界"
+
+positioning:
+  sandbox_contract_role: "provider_implementation"
+  note:
+    - "docker_container 是当前默认 sandbox provider，不是 sandbox 的定义"
+    - "所有项目必须先从内置 Docker 模板实例化，再叠加项目适配层"
+
+template_assets:
+  required:
+    - path: "/brain/platform/docker/Dockerfile"
+      role: "基础镜像模板，提供完整 brain baseline 和通用工具链"
+    - path: "/brain/platform/docker/compose.yaml"
+      role: "默认 compose 模板，作为项目级 compose 的骨架"
+    - path: "/brain/platform/docker/scripts/container_bootstrap.sh"
+      role: "容器通用启动初始化，如 auth、SSH、登录 hook 等"
+    - path: "/brain/platform/docker/scripts/healthcheck.sh"
+      role: "基础健康检查入口；项目适配时必须补 project 模式"
+  project_required_extensions:
+    - "project-specific compose.yaml"
+    - "project-specific env file"
+    - "project-specific supervisor config"
+    - "project-specific bootstrap script for workspace seeding"
+    - "project-specific agent roster definition"
+    - "project-specific agent template resolution map"
+
+instantiation_model:
+  baseline_seed:
+    source_root_in_image: "/xkagent_infra/brain"
+    requirement: "镜像中必须包含完整 brain baseline，而不是仅包含单一项目目录"
+  writable_workspace:
+    brain_root: "/workspace/brain"
+    groups_root: "/workspace/groups"
+    project_root: "/workspace/groups/{group_id}/projects/{project_id}"
+    runtime_root: "/workspace/runtime"
+    agent_runtime_root: "/workspace/runtime/agents"
+    agent_template_bundle_root: "/workspace/runtime/template_bundles/agents"
+    artifacts_root: "/workspace/artifacts"
+    logs_root: "/workspace/logs"
+    memory_root: "/workspace/memory"
+  rule:
+    - "brain 基线代码修改、workflow 适配、运行脚本验证在 /workspace/brain 内发生"
+    - "项目 spec、memory、references、tests 与业务产物应落在 /workspace/groups/{group_id}/projects/{project_id}"
+    - "容器内 /xkagent_infra/brain 作为只读 seed baseline，不作为项目直接开发工作目录"
+    - "项目工作区必须可持久化，以支持重启、恢复和归档"
+
+compose_contract:
+  required_fields:
+    - "service name"
+    - "image tag"
+    - "container_name"
+    - "working_dir=/workspace/brain"
+    - "environment block"
+    - "volumes for workspace/root/artifacts if needed"
+    - "healthcheck"
+    - "restart policy"
+  required_environment:
+    - "PROJECT_ID"
+    - "GROUP_ID"
+    - "SANDBOX_ID"
+    - "BRAIN_SOURCE_REVISION"
+    - "SEED_BRAIN_PATH"
+    - "BRAIN_WORKTREE"
+    - "GROUPS_WORKTREE"
+    - "PROJECT_ROOT"
+    - "PROJECT_LOG_DIR"
+    - "PROJECT_ARTIFACT_DIR"
+    - "PROJECT_MEMORY_DIR"
+  preferred_start_command:
+    - "run container_bootstrap.sh"
+    - "run project-specific bootstrap script"
+    - "start supervisord with project supervisor config"
+  forbidden_patterns:
+    - "mount host source tree as primary project worktree"
+    - "execute project workflow directly in /xkagent_infra/brain seed path"
+    - "collapse /workspace/brain and /workspace/groups into a single mutable root"
+    - "skip project healthcheck"
+
+supervisor_contract:
+  required_programs:
+    - "project_orchestrator"
+  optional_programs:
+    - "sandbox_logger"
+    - "project_test_runner"
+    - "project-local helpers explicitly declared by plan"
+  rules:
+    - "system agents are not supervised as project workers inside sandbox"
+    - "project worker agents are created as project-scoped identities"
+    - "all project runtime logs must land in /workspace/logs first"
+
+project_adaptation_surface:
+  allowed:
+    - "project identifier and sandbox identifier"
+    - "image tag and compose service name"
+    - "project-specific environment values"
+    - "language/toolchain extension packages"
+    - "project-specific service ports and external dependencies"
+    - "project supervisor entries"
+    - "project-scoped agent roster"
+    - "project build/test/release commands"
+  forbidden:
+    - "replace sandbox contract with ad-hoc host execution"
+    - "reuse system agents as project worker roster"
+    - "remove healthcheck or archive hooks"
+    - "collapse project workspace into host path without approved sandbox provider change"
+
+startup_sequence:
+  steps:
+    - "freeze brain runtime version and parent image reference"
+    - "render project compose/env from built-in template"
+    - "build or select provider image"
+    - "package project payload from group project root"
+    - "docker compose up -d --build --force-recreate"
+    - "run container_bootstrap.sh"
+    - "seed /workspace/brain from complete baseline"
+    - "initialize /workspace/groups/{group_id}/projects/{project_id} from packaged project payload"
+    - "import agent template bundles into /workspace/runtime/template_bundles/agents"
+    - "render project agent configs from imported template bundles into /workspace/runtime/agents"
+    - "write sandbox metadata and baseline revision evidence"
+    - "start project supervisor and project orchestrator"
+    - "create project-scoped worker agents"
+    - "run project healthcheck and registration verification"
+
+healthcheck_contract:
+  required_checks:
+    - "brain workspace root exists"
+    - "group project workspace root exists"
+    - "baseline revision evidence exists"
+    - "project_orchestrator is RUNNING"
+    - "agent template bundles exist under /workspace/runtime/template_bundles/agents"
+    - "project agent runtime homes exist under /workspace/runtime/agents"
+    - "workspace/logs is writable"
+    - "sandbox can reach required control plane dependencies"
+  required_evidence:
+    - "container_name"
+    - "container_id"
+    - "image_tag"
+    - "baseline_source_revision"
+    - "brain_workspace_root"
+    - "project_workspace_root"
+    - "project_agent_template_bundle_ref"
+    - "project_agent_roster_ref"
+    - "project_health_status"
+
+archive_and_destroy:
+  requirements:
+    - "persist runtime/logs/artifacts before destroy"
+    - "record provider-specific metadata in sandbox_destroy_report"
+    - "release provider runtime resources after archive passes"
+
+rules:
+  - "docker_container provider 必须遵守 sandbox contract，而不是重新定义 contract"
+  - "项目可以适配 Docker 模板，但不能绕过模板核心约束"
+  - "任何需要偏离模板核心约束的项目，都必须先升级 sandbox provider 规则或新增 provider"

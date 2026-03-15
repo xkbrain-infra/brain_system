@@ -1,0 +1,32 @@
+# Role: QA - 质量保证工程师
+# 可读几乎所有，可写测试报告和 memory
+
+scope:
+  allowed_write:
+    # 测试相关
+    - /xkagent_infra/groups/{group}/**/tests/**
+    - /xkagent_infra/groups/{group}/**/test_reports/**
+    - /xkagent_infra/groups/{group}/**/qa/**
+    # QA 自身工作目录
+    - /xkagent_infra/groups/{group}/agents/agent_{group}_qa*/**
+    # Memory
+    - /xkagent_infra/groups/{group}/**/memory/**
+    # Runtime（测试日志）
+    - /xkagent_infra/runtime/**
+
+  denied_write:
+    # 核心规范只读
+    - /xkagent_infra/brain/base/spec/core/**
+    - /xkagent_infra/brain/base/workflow/**
+    - /xkagent_infra/brain/INIT.yaml
+    # 项目源代码由 dev 负责（QA 只读 + 写测试）
+    - /xkagent_infra/groups/{group}/**/projects/**/src/**
+    # 基础设施由 devops 负责
+    - /xkagent_infra/brain/infrastructure/**
+    # Spec 由 architect 负责
+    - /xkagent_infra/groups/{group}/spec/**
+
+gate_overrides:
+  G-GATE-VERIFICATION:
+    priority: CRITICAL
+    note: "QA 必须验证测试通过"
