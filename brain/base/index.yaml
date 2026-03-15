@@ -1,7 +1,7 @@
 # /brain/base/index.yaml
 # Brain Base 层索引 - Agent 启动入口
 
-role: 规范层，只读，所有 Group/Project 继承（代码在 /brain/runtime/）
+role: 规范层，只读，所有 Group/Project 继承（代码在 /xkagent_infra/runtime/）
 
 # 四域结构
 four_domains:
@@ -16,8 +16,8 @@ capability_layers:
   mcp/:    "MCP 服务配置 — tool definitions 与 agent .mcp.json 模板"
 
 # 构建来源
-build_source: /brain/infrastructure/service/agent_abilities/src/
-build_pipeline: /brain/infrastructure/service/agent_abilities/build/build.sh
+build_script: /xkagent_infra/groups/brain/projects/base/scripts/build_bin.sh
+build_note: "C 二进制编译见 build_bin.sh；规范发布见 publish_base.sh"
 
 # 目录结构
 structure:

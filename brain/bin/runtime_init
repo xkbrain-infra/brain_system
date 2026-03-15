@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+RUNTIME_ROOT="${ROOT}/runtime"
+
+mkdir -p \
+  "${RUNTIME_ROOT}/agents" \
+  "${RUNTIME_ROOT}/config" \
+  "${RUNTIME_ROOT}/data" \
+  "${RUNTIME_ROOT}/logs" \
+  "${RUNTIME_ROOT}/memory" \
+  "${RUNTIME_ROOT}/tmp" \
+  "${RUNTIME_ROOT}/update_brain/proposals" \
+  "${RUNTIME_ROOT}/update_brain/pending" \
+  "${RUNTIME_ROOT}/update_brain/completed" \
+  "${RUNTIME_ROOT}/update_brain/archive" \
+  "${RUNTIME_ROOT}/data/services" \
+  "${RUNTIME_ROOT}/data/telegram_api" \
+  "${RUNTIME_ROOT}/data/brain_task_manager" \
+  "${RUNTIME_ROOT}/logs/agents"
+
+python3 "${ROOT}/brain/infrastructure/launch/loader_env_vars.py" --validate
+python3 "${ROOT}/brain/infrastructure/launch/loader_env_vars.py" --reload
+"${ROOT}/brain/bin/runtime_path_guard" --root "${ROOT}" --check-filesystem
+
+echo "[OK] runtime initialized at ${RUNTIME_ROOT}"

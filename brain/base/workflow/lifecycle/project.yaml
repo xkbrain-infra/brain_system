@@ -793,7 +793,7 @@ phase_2_execution:
           target: "{group_root}/knowledge/"
           items: "从本项目中提炼的经验，写入 group knowledge"
       - pending_base_update:
-          target: "/brain/runtime/update_brain/pending/base/"
+          target: "/xkagent_infra/runtime/update_brain/pending/<batch>/base/"
           items: "需要更新到 base 的内容（agent-brain-manager 编译时合并）"
     validate:
       - all_steps_completed: [S1, S2, S3, S4, S5, S6, S7]  # S8 不检查自己
@@ -807,7 +807,7 @@ phase_2_execution:
         1. pmo 产出任务报表（完成度、工期对比、agent 使用情况）
         2. pmo + architect 提炼经验教训和可复用模式
         3. 经验写入 {group_root}/knowledge/（group 级别知识）
-        4. 如有需要更新到 base 的内容，写入 /brain/runtime/update_brain/pending/base/（等待 agent-brain-manager 编译时合并）
+        4. 如有需要更新到 base 的内容，写入 /xkagent_infra/runtime/update_brain/pending/<batch>/base/（等待 agent-brain-manager 编译时合并）
         5. pmo 通过 agentctl purge 清理临时 dev agent
         6. PMO 审阅报表，更新 index.yaml status: archived
         7. 项目 agent（pmo/architect/qa/devops/researcher）先 stop，purge 必须经用户确认

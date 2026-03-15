@@ -69,17 +69,7 @@ lep_gates:
   G-GATE-SPEC-LOCATION: SPEC 必须在正确路径 (通过 Hook 强制)
   G-GATE-KVCACHE-FIRST: 必须优先使用 registry.yaml 索引系统 (HIGH)
   G-GATE-AGENT-LIFECYCLE: Agent 生命周期操作必须通过 agentctl
-
-# Spec 编译系统
-spec_build:
-  service: /brain/infrastructure/service/agent_abilities/spec
-  source: /brain/infrastructure/service/agent_abilities/spec/src
-  target: /brain/base/spec
-  commands:
-    validate: scripts/build.sh validate
-    test: scripts/build.sh test
-    publish: scripts/build.sh publish
-    rollback: scripts/build.sh rollback
+  G-GATE-SVC-ENCAP: 禁止读取 infrastructure service Python 源码，只通过 CLI 接口操作服务
 
 # 启动确认
 startup_confirmation: "✅ Agent Brain 已激活 | LEP 已加载"

@@ -297,5 +297,5 @@ ownership_rules:
   - "optimization ownership belongs to audit orchestrator"
 
 references:
-  schema_contract: "/brain/runtime/architecture/multicore/contracts/unified_schemas.yaml"
-  identifier_contract: "/brain/runtime/architecture/multicore/contracts/identifier_conventions.yaml"
+  schema_contract: "/xkagent_infra/runtime/architecture/multicore/contracts/unified_schemas.yaml"
+  identifier_contract: "/xkagent_infra/runtime/architecture/multicore/contracts/identifier_conventions.yaml"

@@ -133,8 +133,8 @@ runtime_layout:
     required_paths:
       - "/brain/base"
       - "/brain/infrastructure"
-      - "/brain/runtime/architecture"
-      - "/brain/runtime/state"
+      - "/xkagent_infra/runtime/architecture"
+      - "/xkagent_infra/runtime/state"
 
 project_task_storage:
   required_paths:

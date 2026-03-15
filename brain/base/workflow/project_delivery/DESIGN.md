@@ -185,17 +185,16 @@
   index.yaml
   DESIGN.md
   CHANGELOG.pending.md
-  workflow/
-    intake.yaml
-    bootstrap.yaml
-    research.yaml
-    planning.yaml
-    task_modeling.yaml
-    execution.yaml
-    global_sync.yaml
-    escalation.yaml
-    release.yaml
-    audit.yaml
+  intake.yaml
+  bootstrap.yaml
+  research.yaml
+  planning.yaml
+  task_modeling.yaml
+  execution.yaml
+  global_sync.yaml
+  escalation.yaml
+  release.yaml
+  audit.yaml
   contracts/
     state_machines.yaml
     unified_schemas.yaml

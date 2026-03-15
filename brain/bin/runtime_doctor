@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+RUNTIME_ROOT="${ROOT}/runtime"
+
+echo "[INFO] runtime root: ${RUNTIME_ROOT}"
+"${ROOT}/brain/bin/runtime_path_guard" --root "${ROOT}" --check-filesystem
+python3 "${ROOT}/brain/infrastructure/launch/loader_env_vars.py" --validate
+
+for dir in agents config data logs memory tmp update_brain; do
+  if [[ -d "${RUNTIME_ROOT}/${dir}" ]]; then
+    echo "[OK] ${RUNTIME_ROOT}/${dir}"
+  else
+    echo "[ERROR] missing ${RUNTIME_ROOT}/${dir}" >&2
+    exit 1
+  fi
+done
+
+du -sh "${RUNTIME_ROOT}/data" "${RUNTIME_ROOT}/logs" "${RUNTIME_ROOT}/memory" 2>/dev/null || true
+echo "[OK] runtime doctor passed"

@@ -1,0 +1,175 @@
+#!/usr/bin/env python3
+"""Repo/runtime guard for canonical runtime layout."""
+
+from __future__ import annotations
+
+import argparse
+import re
+import sys
+from pathlib import Path
+
+
+FORBIDDEN_PATTERNS = [
+    (
+        "legacy_runtime_root",
+        re.compile(r"/(?:xkagent_infra/)?brain/runtime\b"),
+        "Use /xkagent_infra/runtime instead of brain/runtime.",
+    ),
+    (
+        "retired_infra_logs",
+        re.compile(r"/(?:xkagent_infra/)?brain/infrastructure/logs\b"),
+        "Use /xkagent_infra/runtime/logs for live logs.",
+    ),
+    (
+        "retired_infra_data",
+        re.compile(r"/(?:xkagent_infra/)?brain/infrastructure/data\b"),
+        "Use /xkagent_infra/runtime/data for live state or /xkagent_infra/brain/backup for archives.",
+    ),
+    (
+        "legacy_dashboard_db",
+        re.compile(r"/(?:xkagent_infra/)?brain/infrastructure/service/(?:brain_)?dashboard/dashboard\.db\b"),
+        "Use /xkagent_infra/runtime/data/services/dashboard.db.",
+    ),
+]
+
+SCAN_DIRS = ("brain", "groups")
+SKIP_DIRS = {
+    ".git",
+    ".claude",
+    ".previous",
+    "__pycache__",
+    ".pytest_cache",
+    ".mypy_cache",
+    "node_modules",
+    ".venv",
+    "venv",
+    "publish_backups",
+    "backups",
+    "backup",
+    "runtime",
+}
+SKIP_SUFFIXES = (
+    ".pyc",
+    ".pyo",
+    ".so",
+    ".o",
+    ".a",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".pdf",
+    ".lock",
+    ".db",
+    ".sqlite",
+)
+
+
+def should_skip(path: Path) -> bool:
+    if path.suffix in SKIP_SUFFIXES or ".bak" in path.name:
+        return True
+    return any(part in SKIP_DIRS for part in path.parts)
+
+
+def should_skip_match(path: Path) -> bool:
+    path_str = str(path)
+    skip_fragments = (
+        "/hooks/checkers/file_org_checker/",
+        "/spec/policies/lep/file_org.yaml",
+        "/spec/core/layers.yaml",
+        "/.claude/lep.yaml",
+    )
+    return any(fragment in path_str for fragment in skip_fragments)
+
+
+def scan_sources(root: Path) -> list[tuple[Path, int, str, str]]:
+    issues: list[tuple[Path, int, str, str]] = []
+    for rel in SCAN_DIRS:
+        base = root / rel
+        if not base.exists():
+            continue
+        for path in base.rglob("*"):
+            if not path.is_file() or should_skip(path):
+                continue
+            try:
+                text = path.read_text(encoding="utf-8")
+            except UnicodeDecodeError:
+                continue
+            except OSError:
+                continue
+            for lineno, line in enumerate(text.splitlines(), start=1):
+                for name, regex, message in FORBIDDEN_PATTERNS:
+                    if regex.search(line):
+                        if should_skip_match(path):
+                            continue
+                        issues.append((path, lineno, name, message))
+    return issues
+
+
+def check_filesystem(root: Path) -> list[str]:
+    issues: list[str] = []
+    runtime_root = root / "runtime"
+    required_runtime_dirs = [
+        runtime_root / "agents",
+        runtime_root / "config",
+        runtime_root / "data",
+        runtime_root / "logs",
+        runtime_root / "memory",
+        runtime_root / "tmp",
+        runtime_root / "update_brain",
+        runtime_root / "update_brain" / "proposals",
+        runtime_root / "update_brain" / "pending",
+        runtime_root / "update_brain" / "completed",
+        runtime_root / "update_brain" / "archive",
+    ]
+    for path in required_runtime_dirs:
+        if not path.is_dir():
+            issues.append(f"missing runtime dir: {path}")
+
+    retired_paths = [
+        root / "brain" / "infrastructure" / "data",
+        root / "brain" / "infrastructure" / "logs",
+    ]
+    for path in retired_paths:
+        if path.exists():
+            issues.append(f"retired path still exists: {path}")
+    return issues
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Check canonical runtime layout.")
+    parser.add_argument("--root", default="/xkagent_infra", help="Repo root to scan.")
+    parser.add_argument(
+        "--check-filesystem",
+        action="store_true",
+        help="Also verify runtime dirs exist and retired dirs are gone.",
+    )
+    args = parser.parse_args()
+
+    root = Path(args.root).resolve()
+    source_issues = scan_sources(root)
+    fs_issues = check_filesystem(root) if args.check_filesystem else []
+
+    if not source_issues and not fs_issues:
+        print("[OK] runtime path guard passed")
+        return 0
+
+    for issue in fs_issues:
+        print(f"[ERROR] {issue}", file=sys.stderr)
+
+    for path, lineno, name, message in source_issues:
+        print(
+            f"[ERROR] {path}:{lineno}: {name}: {message}",
+            file=sys.stderr,
+        )
+
+    print(
+        f"[FAIL] runtime path guard found {len(fs_issues)} filesystem issue(s) "
+        f"and {len(source_issues)} source reference issue(s)",
+        file=sys.stderr,
+    )
+    return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
