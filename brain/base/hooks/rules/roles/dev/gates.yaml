@@ -10,9 +10,9 @@ scope:
     # Memory
     - /xkagent_infra/groups/{group}/**/memory/**
     # Runtime
-    - /xkagent_infra/brain/runtime/**
+    - /xkagent_infra/runtime/**
     # 临时文件
-    - /xkagent_infra/brain/runtime/tmp/**
+    - /xkagent_infra/runtime/tmp/**
 
   denied_write:
     # Spec 由 architect 负责

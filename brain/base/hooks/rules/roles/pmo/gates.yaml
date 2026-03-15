@@ -12,7 +12,7 @@ scope:
     # 任务管理
     - /xkagent_infra/groups/{group}/**/tasks/**
     # Runtime
-    - /xkagent_infra/brain/runtime/**
+    - /xkagent_infra/runtime/**
 
   denied_write:
     # PMO 不应直接修改代码

@@ -60,10 +60,8 @@ _SCAN_ONLY_PREFIXES = [
 ]
 
 _PROTECTED_PREFIXES = [
-    '/brain/base/spec/core/',
-    '/brain/base/workflow/',
-    '/brain/INIT.yaml',
-    '/brain/base/spec/',
+    '/brain/',
+    '/xkagent_infra/brain/',
 ]
 
 

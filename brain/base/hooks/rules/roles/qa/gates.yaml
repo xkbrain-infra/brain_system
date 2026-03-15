@@ -12,7 +12,7 @@ scope:
     # Memory
     - /xkagent_infra/groups/{group}/**/memory/**
     # Runtime（测试日志）
-    - /xkagent_infra/brain/runtime/**
+    - /xkagent_infra/runtime/**
 
   denied_write:
     # 核心规范只读

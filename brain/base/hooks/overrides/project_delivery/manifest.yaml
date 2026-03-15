@@ -1,0 +1,22 @@
+hook_package:
+  id: project_delivery
+  status: draft
+  source_project: "/xkagent_infra/groups/brain/projects/base"
+  workflow_ref: "/xkagent_infra/groups/brain/projects/base/workflow/project_delivery"
+  publish_target: "/xkagent_infra/brain/base/hooks/overrides/project_delivery"
+
+  intent:
+    - "在关键工具调用前校验是否遵守 project delivery workflow"
+    - "在关键写入或失败后追加记录与提醒"
+    - "防止 agent 跳过 plan/research/release/audit 等必要阶段"
+
+  suggested_events:
+    - UserPromptSubmit
+    - PreToolUse
+    - PostToolUse
+    - Stop
+
+  draft_rules:
+    - "未建立 task/phase 上下文时，不允许直接进入大规模执行"
+    - "发生失败时，要求把结果写回 progress 或 findings"
+    - "release 前要求通过 checklist 或显式豁免"

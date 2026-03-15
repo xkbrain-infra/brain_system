@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Dict, Any, List
 
 # 默认日志路径（fallback）
-LOG_DIR = Path("/brain/runtime/logs")
+LOG_DIR = Path("/xkagent_infra/runtime/logs")
 AUDIT_LOG = LOG_DIR / "hooks_audit.jsonl"
 
 # 尝试导入 lep 模块

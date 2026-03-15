@@ -8,7 +8,7 @@ scope:
     # DevOps 自身工作目录
     - /xkagent_infra/groups/{group}/agents/agent_{group}_devops/**
     # Runtime 和部署
-    - /xkagent_infra/brain/runtime/**
+    - /xkagent_infra/runtime/**
     # 组内部署配置
     - /xkagent_infra/groups/{group}/**/deploy/**
     - /xkagent_infra/groups/{group}/**/docker/**

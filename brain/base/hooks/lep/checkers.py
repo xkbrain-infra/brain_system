@@ -281,14 +281,14 @@ class NawpChecker(BaseChecker):
     """G-GATE-NAWP: Warn when writing to protected areas without a plan file."""
 
     PROTECTED_AREAS = [
-        "/brain/base/spec/**",
-        "/brain/base/workflow/**",
-        "/brain/infrastructure/service/**",
+        "/brain/**",
+        "/xkagent_infra/brain/**",
     ]
     EXCEPTIONS = [
         "/brain/**/memory/**",
-        "/brain/runtime/tmp/**",
-        "/brain/runtime/logs/**",
+        "/xkagent_infra/brain/**/memory/**",
+        "/xkagent_infra/runtime/tmp/**",
+        "/xkagent_infra/runtime/logs/**",
     ]
     PLAN_DIR = Path("/root/.claude/plans/")
 

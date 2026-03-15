@@ -226,8 +226,9 @@ def check_spec_path(file_path: str, rules_yaml: Path = None) -> Tuple[bool, str]
 
     # 排除合法写入路径（这些路径即使含 "spec" 也不是 SPEC 文档）
     EXCLUDED_PREFIXES = [
-        "/brain/runtime/update_brain/pending/",  # update_brain pending 机制
-        "/brain/runtime/update_brain/archive/",  # update_brain 归档
+        "/xkagent_infra/runtime/update_brain/proposals/",  # update_brain 草稿区
+        "/xkagent_infra/runtime/update_brain/pending/",  # update_brain pending 机制
+        "/xkagent_infra/runtime/update_brain/archive/",  # update_brain 归档
         "/root/.claude/projects/",              # memory 文件（非 spec）
     ]
     for prefix in EXCLUDED_PREFIXES:

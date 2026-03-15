@@ -37,23 +37,21 @@
  * Universal protected paths - ALL roles blocked from writing
  * ============================================================ */
 static const char *UNIVERSAL_PROTECTED[] = {
-    "/brain/base/spec/core/",    /* core spec: lep.yaml, layers.yaml, workflow.yaml */
-    "/brain/base/workflow/",     /* workflow definitions */
-    "/brain/INIT.yaml",          /* boot config */
+    "/brain/",                   /* published brain tree: never edit directly */
+    "/xkagent_infra/brain/",     /* workspace path to published brain tree */
     NULL
 };
 
 /* ============================================================
- * Role-specific exceptions: paths that certain roles CAN write
- * despite being "generally protected"
+ * Legacy role-specific exceptions retained for non-universal paths.
  *
- * The general /brain/base/spec/ protection is now role-aware:
- * - architect: can write to /brain/base/spec/templates/
- * - devops:    can write to /brain/infrastructure/
- * - Others:    full protection applies
+ * Note:
+ * - /brain/** and /xkagent_infra/brain/** are now universally protected
+ * - the exception tables below no longer apply to the published brain tree
+ * - keep them only for future narrowing or for non-published prefixes
  * ============================================================ */
 
-/* Extended protected paths for non-privileged roles */
+/* Legacy extended protected paths (currently shadowed by universal /brain guards) */
 static const char *EXTENDED_PROTECTED[] = {
     "/brain/base/spec/",         /* G-GATE-SCOP: spec 目录 */
     "/brain/infrastructure/",    /* infra 目录 */
@@ -160,7 +158,7 @@ static int role_has_write_exception(const char *role, const char *path) {
     return 0;
 }
 
-/* G-SCOP: 检查是否是保护路径 (role-aware) */
+/* G-SCOP: 检查是否是保护路径 */
 static int check_protected(const char *path) {
     const char *role = get_role();
 
@@ -168,7 +166,7 @@ static int check_protected(const char *path) {
     for (int i = 0; UNIVERSAL_PROTECTED[i] != NULL; i++) {
         if (starts_with(path, UNIVERSAL_PROTECTED[i]) || equals(path, UNIVERSAL_PROTECTED[i])) {
             fprintf(stderr, "BLOCK: Universal protected path: %s\n", UNIVERSAL_PROTECTED[i]);
-            fprintf(stderr, "  Role: %s | No role can write to core spec/workflow.\n", role);
+            fprintf(stderr, "  Role: %s | No role can write to the published /brain tree directly.\n", role);
             return 1;  /* block */
         }
     }

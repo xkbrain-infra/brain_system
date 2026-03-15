@@ -6,9 +6,12 @@ Reads role context from environment variables (injected by agentctl):
   - BRAIN_AGENT_ROLE:  role (pmo, architect, dev, devops, qa, ...)
   - BRAIN_AGENT_GROUP: group (brain_system, xkquant, ...)
   - BRAIN_SCOPE_PATH:  base scope path (/brain/groups/org/{group})
+  - BRAIN_ENABLED_LEP_PROFILES:  comma-separated LEP profile overlays
 
 Loads role-specific gates from:
   hooks/rules/roles/{role}/gates.yaml
+Loads LEP profile overlays from:
+  hooks/rules/profiles/{profile}/gates.yaml
 
 Provides scope checking: is a given file_path writable for this role?
 """
@@ -25,7 +28,8 @@ from typing import Any
 import yaml
 
 
-RULES_DIR = Path(__file__).parent.parent.parent / "rules" / "roles"
+RULES_DIR = Path(__file__).parent.parent / "rules" / "roles"
+PROFILES_DIR = Path(__file__).parent.parent / "rules" / "profiles"
 
 
 @dataclass(frozen=True)
@@ -56,16 +60,14 @@ class RoleScopeRules:
     extra_protected: list[str] = field(default_factory=list)
 
     @classmethod
-    def load(cls, role: str, group: str = "") -> "RoleScopeRules":
-        """Load role scope rules from YAML file.
-
-        Falls back to empty rules if file doesn't exist.
-        Supports {group} placeholder expansion.
-        """
-        rules_file = RULES_DIR / role / "gates.yaml"
-        if not rules_file.exists():
-            return cls(role=role)
-
+    def _load_rules_file(
+        cls,
+        rules_file: Path,
+        *,
+        role: str,
+        group: str = "",
+        agent_name: str = "",
+    ) -> "RoleScopeRules":
         try:
             with open(rules_file, "r", encoding="utf-8") as f:
                 data = yaml.safe_load(f) or {}
@@ -75,11 +77,25 @@ class RoleScopeRules:
         scope = data.get("scope", {})
 
         def expand(paths: list) -> list[str]:
-            """Expand {group} placeholder in paths."""
+            """Expand {group}/{agent} placeholders in paths."""
             result = []
             for p in (paths or []):
                 if isinstance(p, str):
-                    result.append(p.replace("{group}", group) if group else p)
+                    expanded = p
+                    if group:
+                        expanded = expanded.replace("{group}", group)
+                        expanded = expanded.replace(
+                            f"/agents/agent_{group}_",
+                            f"/agents/agent-{group}_",
+                        )
+                    if agent_name:
+                        expanded = expanded.replace("{agent}", agent_name)
+                    if group == "brain":
+                        expanded = expanded.replace(
+                            "/xkagent_infra/groups/brain/agents/",
+                            "/xkagent_infra/brain/agents/",
+                        )
+                    result.append(expanded)
             return result
 
         return cls(
@@ -89,6 +105,55 @@ class RoleScopeRules:
             gate_overrides=data.get("gate_overrides", {}),
             extra_protected=expand(scope.get("extra_protected", [])),
         )
+
+    @classmethod
+    def merge(cls, base: "RoleScopeRules", overlay: "RoleScopeRules") -> "RoleScopeRules":
+        def dedupe(items: list[str]) -> list[str]:
+            seen: set[str] = set()
+            result: list[str] = []
+            for item in items:
+                if not item or item in seen:
+                    continue
+                seen.add(item)
+                result.append(item)
+            return result
+
+        merged_overrides = dict(base.gate_overrides)
+        merged_overrides.update(overlay.gate_overrides or {})
+        return cls(
+            role=base.role,
+            allowed_write=dedupe([*(base.allowed_write or []), *(overlay.allowed_write or [])]),
+            denied_write=dedupe([*(base.denied_write or []), *(overlay.denied_write or [])]),
+            gate_overrides=merged_overrides,
+            extra_protected=dedupe([*(base.extra_protected or []), *(overlay.extra_protected or [])]),
+        )
+
+    @classmethod
+    def load(
+        cls,
+        role: str,
+        group: str = "",
+        *,
+        agent_name: str = "",
+        profiles: list[str] | None = None,
+    ) -> "RoleScopeRules":
+        """Load role scope rules and merge optional LEP profile overlays."""
+        rules_file = RULES_DIR / role / "gates.yaml"
+        base = cls(role=role)
+        if rules_file.exists():
+            base = cls._load_rules_file(rules_file, role=role, group=group, agent_name=agent_name)
+
+        for profile in profiles or []:
+            profile_name = str(profile).strip()
+            if not profile_name:
+                continue
+            profile_file = PROFILES_DIR / profile_name / "gates.yaml"
+            if not profile_file.exists():
+                continue
+            overlay = cls._load_rules_file(profile_file, role=role, group=group, agent_name=agent_name)
+            base = cls.merge(base, overlay)
+
+        return base
 
 
 def check_write_scope(
@@ -231,7 +296,14 @@ def get_role_rules() -> RoleScopeRules:
     global _ROLE_RULES
     if _ROLE_RULES is None:
         ctx = get_role_context()
-        _ROLE_RULES = RoleScopeRules.load(ctx.role, ctx.group)
+        raw_profiles = os.environ.get("BRAIN_ENABLED_LEP_PROFILES", "")
+        profiles = [item.strip() for item in raw_profiles.split(",") if item.strip()]
+        _ROLE_RULES = RoleScopeRules.load(
+            ctx.role,
+            ctx.group,
+            agent_name=ctx.agent_name,
+            profiles=profiles,
+        )
     return _ROLE_RULES
 
 

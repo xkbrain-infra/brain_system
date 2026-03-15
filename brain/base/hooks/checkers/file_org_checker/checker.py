@@ -18,7 +18,7 @@ from typing import Tuple
 
 # 例外路径（不检查）
 EXCEPTIONS = [
-    "/brain/runtime/tmp/",
+    "/xkagent_infra/runtime/tmp/",
     "/brain/.claude/",
     "/brain/.git/",
 ]
@@ -30,6 +30,16 @@ ALLOWED_TOPLEVEL = [
     "/brain/CLAUDE.md",
     "/brain/.gitignore",
     "/brain/Makefile",
+]
+
+RETIRED_INFRA_DATA_PREFIXES = [
+    "/brain/infrastructure/data/",
+    "/xkagent_infra/brain/infrastructure/data/",
+]
+
+RETIRED_INFRA_LOGS_PREFIXES = [
+    "/brain/infrastructure/logs/",
+    "/xkagent_infra/brain/infrastructure/logs/",
 ]
 
 
@@ -82,6 +92,25 @@ def check_meaningless_names(file_path: str) -> Tuple[bool, str]:
     return True, ""
 
 
+def check_retired_infra_runtime_paths(file_path: str) -> Tuple[bool, str]:
+    """禁止把 live runtime 文件重新写回 retired infrastructure 根。"""
+    for prefix in RETIRED_INFRA_LOGS_PREFIXES:
+        if file_path.startswith(prefix):
+            return False, (
+                "infrastructure/logs 已退役；live logs 必须写入 "
+                "/xkagent_infra/runtime/logs/"
+            )
+
+    for prefix in RETIRED_INFRA_DATA_PREFIXES:
+        if file_path.startswith(prefix):
+            return False, (
+                "infrastructure/data 已退役；live DB/state 请写入 "
+                "/xkagent_infra/runtime/data/，历史归档请写入 /xkagent_infra/brain/backup/"
+            )
+
+    return True, ""
+
+
 def check_file_organization(file_path: str) -> Tuple[bool, str]:
     """
     检查文件组织是否符合规范
@@ -103,7 +132,12 @@ def check_file_organization(file_path: str) -> Tuple[bool, str]:
     if not is_valid:
         return False, error_msg
 
-    # 3. 禁止无意义命名
+    # 3. 禁止写回 retired infrastructure runtime 根
+    is_valid, error_msg = check_retired_infra_runtime_paths(file_path)
+    if not is_valid:
+        return False, error_msg
+
+    # 4. 禁止无意义命名
     is_valid, error_msg = check_meaningless_names(file_path)
     if not is_valid:
         return False, error_msg
@@ -119,10 +153,13 @@ if __name__ == "__main__":
         ("/brain/README.md", True, "允许的顶层文件"),
         ("/brain/groups/org/xkquant/report.pdf", False, "项目根目录文件"),
         ("/brain/groups/org/xkquant/projects/newsalpha/report.pdf", True, "正确的项目文件"),
-        ("/brain/runtime/misc/test.txt", False, "无意义命名"),
-        ("/brain/runtime/logs/2026/02/13/test.log", True, "正确的日志文件"),
-        ("/brain/runtime/tmp/test.txt", True, "例外路径"),
+        ("/xkagent_infra/runtime/misc/test.txt", False, "无意义命名"),
+        ("/xkagent_infra/runtime/logs/2026/02/13/test.log", True, "正确的日志文件"),
+        ("/xkagent_infra/runtime/tmp/test.txt", True, "例外路径"),
         ("/brain/groups/org/xkquant/memory/test.md", True, "memory 例外"),
+        ("/xkagent_infra/brain/infrastructure/data/brain_shared.db", False, "retired infra data"),
+        ("/xkagent_infra/brain/backup/infrastructure/hooks/test.db", True, "backup 目录允许"),
+        ("/xkagent_infra/brain/infrastructure/logs/daemon.log", False, "retired infra logs"),
     ]
 
     print("=== File Organization Checker Tests ===")
