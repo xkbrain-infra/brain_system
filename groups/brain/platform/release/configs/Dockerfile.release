@@ -1,0 +1,38 @@
+# Brain System Release Image
+# 这是 brain 系统的发布版本镜像，供 sandbox 消费
+# 构建上下文: 由 build.sh 准备，或在 CI 中直接使用仓库根目录
+
+ARG VERSION=2.1.0
+ARG BUILD_DATE
+ARG BUILD_COMMIT
+ARG BUILD_BRANCH
+
+FROM brain/docker-base:latest
+
+# 镜像标签
+LABEL org.opencontainers.image.title="Brain System"
+LABEL org.opencontainers.image.description="Brain Platform Core System"
+LABEL org.opencontainers.image.version="${VERSION}"
+LABEL org.opencontainers.image.created="${BUILD_DATE}"
+LABEL org.opencontainers.image.revision="${BUILD_COMMIT}"
+LABEL org.opencontainers.image.source="https://github.com/xkbrain-infra/brain"
+LABEL brain.system.version="${VERSION}"
+LABEL brain.system.release="true"
+
+# 复制 brain 系统文件（支持 CI 构建和本地构建）
+# CI 构建时从仓库根目录复制
+# 本地构建时由 build.sh 准备到 .build/brain/
+COPY brain /brain
+
+# 创建符号链接（兼容路径）
+RUN ln -sf /brain /xkagent_infra/brain 2>/dev/null || true
+
+# 设置权限
+RUN chmod +x /brain/platform/release/scripts/*.sh 2>/dev/null || true
+
+# 工作目录
+WORKDIR /brain
+
+# 使用基础镜像的入口点（supervisord）
+# brain/system 镜像本身不启动额外服务
+# 具体服务由 sandbox 层决定

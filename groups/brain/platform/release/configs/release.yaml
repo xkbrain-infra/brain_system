@@ -1,0 +1,76 @@
+# Brain System Release Configuration
+# 发布配置: 定义哪些组件参与发布
+
+release:
+  name: brain-system
+  description: "Brain Platform Core System"
+
+  # 版本控制
+  versioning:
+    scheme: semver
+    initial_version: 2.1.0
+    version_file: VERSION
+
+  # 源代码组件（从 /brain 复制）
+  components:
+    base:
+      path: /brain/base
+      description: "核心规范和标准"
+      include:
+        - spec/**               # 所有规范文件
+        - knowledge/**          # 知识库
+        - workflow/**           # 工作流定义
+        - templates/**          # 模板
+
+    infrastructure:
+      path: /brain/infrastructure
+      description: "基础设施组件"
+      include:
+        - launch/**             # 启动器
+        - hooks/**              # 钩子系统
+        - mcp/**                # MCP 服务
+        - ipc/**                # IPC 框架
+        - agents/**             # Agent 框架
+
+    platform:
+      path: /brain/platform
+      description: "平台服务"
+      include:
+        - bin/**                # 工具脚本
+
+    runtime:
+      path: /brain/runtime
+      description: "运行时配置"
+      include:
+        - config/**             # 配置文件模板
+
+  # 排除模式
+  exclude:
+    - "**/.git"
+    - "**/.gitignore"
+    - "**/__pycache__"
+    - "**/*.pyc"
+    - "**/.pytest_cache"
+    - "**/node_modules"
+    - "**/.claude"
+    - "**/.codex"
+    - "**/.gemini"
+    - "**/tmp/**"
+    - "**/logs/**"
+    - "**/*.log"
+    - "**/secrets/**"
+
+  # 镜像配置
+  image:
+    name: brain/system
+    base_image: brain/docker-base:latest
+    entrypoint: /brain/platform/release/scripts/container-entrypoint.sh
+
+  # 发布目标
+  publish:
+    registry: localhost:5000  # 本地 registry，可改为远程
+    tags:
+      - "{version}"
+      - "{major}.{minor}"
+      - "{major}"
+      - "latest"
