@@ -57,8 +57,8 @@ RUN mkdir -p /run/sshd /var/log/supervisor \
     && echo "root:aigroup" | chpasswd \
     && ssh-keygen -A
 
-COPY configs/sshd_config /etc/ssh/sshd_config
-COPY configs/requirements.lock.txt /tmp/requirements.lock.txt
+COPY groups/brain/platform/docker/configs/sshd_config /etc/ssh/sshd_config
+COPY groups/brain/platform/docker/configs/requirements.lock.txt /tmp/requirements.lock.txt
 
 RUN python3 -m venv /opt/venv \
     && /opt/venv/bin/pip install --no-cache-dir --upgrade pip \
@@ -68,10 +68,11 @@ RUN python3 -m venv /opt/venv \
 
 ENV PATH="/opt/venv/bin:$PATH"
 
-COPY configs/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+COPY groups/brain/platform/docker/configs/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
 # 从构建上下文复制代码（context 是仓库根目录）
 COPY brain /xkagent_infra/brain
+
 RUN ln -sf /xkagent_infra/brain /brain \
     && ln -sf /xkagent_infra/groups /groups \
     && ln -sf /xkagent_infra/app /app
