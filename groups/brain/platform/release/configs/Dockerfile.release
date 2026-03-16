@@ -7,7 +7,7 @@ ARG BUILD_DATE
 ARG BUILD_COMMIT
 ARG BUILD_BRANCH
 
-FROM brain/docker-base:latest
+FROM ghcr.io/xkbrain-infra/brain-docker-base:latest
 
 # 镜像标签
 LABEL org.opencontainers.image.title="Brain System"
