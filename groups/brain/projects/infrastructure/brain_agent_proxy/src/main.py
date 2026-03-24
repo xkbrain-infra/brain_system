@@ -2540,6 +2540,4 @@ if __name__ == "__main__":
         port=config.port,
         log_level=config.log_level.lower(),
         reload=False,
-        workers=2,
-        limit_max_requests=1000,
     )
