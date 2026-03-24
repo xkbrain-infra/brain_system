@@ -1504,7 +1504,7 @@ class GitHubCopilotProvider(BaseProvider):
             while True:
                 outbound_payload = dict(current_payload)
                 alias_to_original = outbound_payload.pop("_tool_alias_map", {})
-                async with httpx.AsyncClient(timeout=None) as client:
+                async with httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=10.0)) as client:
                     async with client.stream("POST", url, json=outbound_payload, headers=headers) as resp:
                         if resp.status_code == 401:
                             self._cached_token = None
