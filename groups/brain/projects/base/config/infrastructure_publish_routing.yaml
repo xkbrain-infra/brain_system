@@ -1,0 +1,243 @@
+infrastructure_publish:
+  id: "BRAIN-INFRA-PUBLISH-ROUTING-001"
+  version: "0.1.0"
+  owner: "brain"
+  intent: "定义 brain infrastructure 发布路由、注册动作、版本控制要求与依赖清单。"
+
+  policy:
+    summary: "每个 service 发布时必须声明是否触发 supervisor、agentctl registry、global skill、mcp、hooks、brain/bin 刷新。"
+    publish_driver_defaults:
+      make_all:
+        command_template:
+          - "make"
+          - "-C"
+          - "{project_root}"
+          - "all"
+          - "VERSION={version}"
+      manual:
+        command_template: []
+    register_targets:
+      supervisor: "是否需要写入或刷新 supervisor 配置"
+      agentctl_registry: "是否需要更新 agents_registry / service registry"
+      global_skill: "是否会影响全局 skill 可用性"
+      mcp: "是否会影响全局 MCP 入口或 server 注册"
+      hooks: "是否会影响 hooks/runtime checker"
+      brain_bin: "是否会刷新 /brain/bin/ 运行时入口"
+
+  services:
+    - service_id: "agentctl"
+      core_member: true
+      phase: "foundation"
+      rollout_order: 20
+      role_hints:
+        - "config_registry_service"
+      implementation_status: "active"
+      publish_driver: "make_all"
+      project_root: "/xkagent_infra/groups/brain/projects/infrastructure/agentctl"
+      infra_service_root: "/xkagent_infra/brain/infrastructure/service/agentctl"
+      version_file: "/xkagent_infra/groups/brain/projects/infrastructure/agentctl/project.yaml"
+      version_key: "version"
+      register_targets:
+        supervisor: false
+        agentctl_registry: false
+        global_skill: false
+        mcp: false
+        hooks: false
+        brain_bin: false
+      route_targets:
+        verify_paths:
+          - "/xkagent_infra/brain/infrastructure/service/agentctl/bin/agentctl"
+      dependencies:
+        - "brain_base"
+
+    - service_id: "brain_ipc"
+      core_member: true
+      phase: "foundation"
+      rollout_order: 25
+      role_hints:
+        - "control_ipc_bus"
+      implementation_status: "active"
+      publish_driver: "make_targets"
+      publish_targets:
+        - "build"
+        - "release"
+        - "deploy"
+        - "verify"
+      project_root: "/xkagent_infra/groups/brain/projects/infrastructure/brain_ipc"
+      infra_service_root: "/xkagent_infra/brain/infrastructure/service/brain_ipc"
+      version_file: "/xkagent_infra/groups/brain/projects/infrastructure/brain_ipc/project.yaml"
+      version_key: "project.version"
+      register_targets:
+        supervisor: false
+        agentctl_registry: false
+        global_skill: false
+        mcp: false
+        hooks: false
+        brain_bin: false
+      route_targets:
+        verify_paths:
+          - "/xkagent_infra/brain/infrastructure/service/brain_ipc/bin"
+      dependencies:
+        - "brain_base"
+
+    - service_id: "brain_task_manager"
+      core_member: true
+      phase: "foundation"
+      rollout_order: 30
+      role_hints:
+        - "global_task_manager"
+      implementation_status: "active"
+      publish_driver: "make_all"
+      project_root: "/xkagent_infra/groups/brain/projects/infrastructure/brain_task_manager"
+      infra_service_root: "/xkagent_infra/brain/infrastructure/service/brain_task_manager"
+      version_file: "/xkagent_infra/groups/brain/projects/infrastructure/brain_task_manager/project.yaml"
+      version_key: "project.version"
+      register_targets:
+        supervisor: true
+        agentctl_registry: true
+        global_skill: false
+        mcp: true
+        hooks: false
+        brain_bin: false
+      route_targets:
+        verify_paths:
+          - "/xkagent_infra/brain/infrastructure/config/supervisord.d/brain_task_manager.conf"
+          - "/xkagent_infra/brain/infrastructure/config/agentctl/agents_registry.yaml"
+          - "/xkagent_infra/brain/infrastructure/service/brain_task_manager/bin/brain_task_manager"
+      dependencies:
+        - "agentctl"
+        - "brain_ipc"
+
+    - service_id: "brain_timer"
+      core_member: true
+      phase: "execution_core"
+      rollout_order: 50
+      role_hints:
+        - "timer_service"
+      implementation_status: "active"
+      publish_driver: "make_all"
+      project_root: "/xkagent_infra/groups/brain/projects/infrastructure/brain_timer"
+      infra_service_root: "/xkagent_infra/brain/infrastructure/service/brain_timer"
+      version_file: "/xkagent_infra/groups/brain/projects/infrastructure/brain_timer/project.yaml"
+      version_key: "version"
+      register_targets:
+        supervisor: false
+        agentctl_registry: false
+        global_skill: false
+        mcp: false
+        hooks: false
+        brain_bin: false
+      route_targets:
+        verify_paths:
+          - "/xkagent_infra/brain/infrastructure/service/brain_timer/bin/service_timer"
+      dependencies:
+        - "brain_ipc"
+        - "brain_task_manager"
+
+    - service_id: "brain_sandbox_service"
+      core_member: true
+      phase: "execution_core"
+      rollout_order: 60
+      role_hints:
+        - "sandbox_local_task_runtime"
+      implementation_status: "active"
+      publish_driver: "make_all"
+      project_root: "/xkagent_infra/groups/brain/projects/infrastructure/brain_sandbox_service"
+      infra_service_root: "/xkagent_infra/brain/infrastructure/service/brain_sandbox_service"
+      version_file: "/xkagent_infra/groups/brain/projects/infrastructure/brain_sandbox_service/project.yaml"
+      version_key: "project.version"
+      register_targets:
+        supervisor: false
+        agentctl_registry: false
+        global_skill: false
+        mcp: false
+        hooks: false
+        brain_bin: true
+      route_targets:
+        verify_paths:
+          - "/xkagent_infra/brain/infrastructure/service/brain_sandbox_service/current"
+          - "/xkagent_infra/brain/infrastructure/service/brain_sandbox_service/bin/brain_sandbox_service"
+          - "/xkagent_infra/brain/bin/sandboxctl"
+      dependencies:
+        - "agentctl"
+        - "brain_ipc"
+        - "brain_task_manager"
+
+    - service_id: "brain_monitor"
+      core_member: true
+      phase: "visibility"
+      rollout_order: 70
+      role_hints:
+        - "logging_service"
+        - "watchdog"
+      implementation_status: "active"
+      publish_driver: "make_all"
+      project_root: "/xkagent_infra/groups/brain/projects/infrastructure/brain_monitor"
+      infra_service_root: "/xkagent_infra/brain/infrastructure/service/brain_monitor"
+      version_file: "/xkagent_infra/groups/brain/projects/infrastructure/brain_monitor/project.yaml"
+      version_key: "version"
+      register_targets:
+        supervisor: false
+        agentctl_registry: false
+        global_skill: false
+        mcp: false
+        hooks: false
+        brain_bin: false
+      route_targets:
+        verify_paths:
+          - "/xkagent_infra/brain/infrastructure/service/brain_monitor/bin/monitor_service"
+      dependencies:
+        - "brain_task_manager"
+        - "brain_timer"
+
+    - service_id: "brain_agent_proxy"
+      core_member: false
+      phase: "support"
+      rollout_order: 90
+      role_hints:
+        - "model_gateway"
+      implementation_status: "active"
+      publish_driver: "make_all"
+      project_root: "/xkagent_infra/groups/brain/projects/infrastructure/brain_agent_proxy"
+      infra_service_root: "/xkagent_infra/brain/infrastructure/service/brain_agent_proxy"
+      version_file: "/xkagent_infra/groups/brain/projects/infrastructure/brain_agent_proxy/project.yaml"
+      version_key: "project.version"
+      register_targets:
+        supervisor: true
+        agentctl_registry: true
+        global_skill: false
+        mcp: false
+        hooks: false
+        brain_bin: false
+      route_targets:
+        verify_paths:
+          - "/xkagent_infra/brain/infrastructure/config/agentctl/agents_registry.yaml"
+          - "/xkagent_infra/brain/infrastructure/service/brain_agent_proxy/current"
+      dependencies:
+        - "agentctl"
+        - "brain_ipc"
+
+    - service_id: "brain_ipc_pty"
+      core_member: false
+      phase: "support"
+      rollout_order: 95
+      role_hints:
+        - "pty_ipc_bus"
+      implementation_status: "active"
+      publish_driver: "make_all"
+      project_root: "/xkagent_infra/groups/brain/projects/infrastructure/brain_ipc_pty"
+      infra_service_root: "/xkagent_infra/brain/infrastructure/service/brain_ipc_pty"
+      version_file: "/xkagent_infra/groups/brain/projects/infrastructure/brain_ipc_pty/project.yaml"
+      version_key: "project.version"
+      register_targets:
+        supervisor: false
+        agentctl_registry: false
+        global_skill: false
+        mcp: false
+        hooks: false
+        brain_bin: false
+      route_targets:
+        verify_paths:
+          - "/xkagent_infra/brain/infrastructure/service/brain_ipc_pty"
+      dependencies:
+        - "brain_ipc"

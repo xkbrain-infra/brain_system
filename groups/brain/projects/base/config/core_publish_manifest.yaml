@@ -1,0 +1,126 @@
+core_publish:
+  id: "BRAIN-CORE-PUBLISH-001"
+  version: "0.1.0"
+  owner: "brain"
+  intent: "定义 whole-brain core publish 的发布范围、模块边界、产物与验证要求。"
+  source_workspace: "/xkagent_infra"
+  runtime_root: "/xkagent_infra/brain"
+  release_artifacts_root: "/xkagent_infra/groups/brain/projects/base/releases/core_publish"
+  orchestration_entrypoint: "/xkagent_infra/groups/brain/projects/base/scripts/publish_core.sh"
+  dependency_manifest_name: "core_dependency_manifest.yaml"
+  change_summary_name: "change_summary.md"
+  activation_report_name: "activation_report.yaml"
+  verification_report_name: "verification_report.yaml"
+
+  publish_scope:
+    summary: "core publish 对应整个 brain 运行面，而不是单独的 base publish。"
+    includes:
+      - "brain/base runtime package"
+      - "brain/platform runtime package"
+      - "brain/bin runtime entrypoints"
+      - "brain root runtime assets (.claude/.codex/.gemini)"
+      - "brain/agents runtime assets"
+      - "brain core infrastructure services"
+    excludes:
+      - "runtime/ transient data"
+      - "secrets payloads"
+      - "非 core member 的 support service 默认不纳入 --scope all"
+
+  module_groups:
+    base_runtime:
+      description: "runtime architecture package via brain manager publish service"
+      modules:
+        - module_id: "brain_base"
+          kind: "base_publish"
+          source_roots:
+            - "/xkagent_infra/groups/brain/projects/base"
+          target_roots:
+            - "/xkagent_infra/brain/base"
+          version_file: "/xkagent_infra/groups/brain/projects/base/project.yaml"
+          version_key: "project.version"
+          publish_script: "/xkagent_infra/groups/brain/projects/base/scripts/publish_base.sh"
+          publish_args:
+            - "--domain"
+            - "all"
+          dependencies:
+            - "groups/brain/projects/base/PUBLISH_MANIFEST.yaml"
+            - "groups/brain/projects/base/spec/policies/deployment/base_publish.yaml"
+
+    platform_runtime:
+      description: "group-level platform runtime assets"
+      modules:
+        - module_id: "brain_platform"
+          kind: "mirror_directory"
+          source_roots:
+            - "/xkagent_infra/groups/brain/platform"
+          target_roots:
+            - "/xkagent_infra/brain/platform"
+          backup_label: "brain_platform"
+          version_hint: "workspace"
+          dependencies:
+            - "groups/brain/platform"
+
+    runtime_assets:
+      description: "whole-brain runtime assets that must exist after a core publish"
+      modules:
+        - module_id: "brain_bin"
+          kind: "verify_only"
+          source_roots:
+            - "/xkagent_infra/brain/bin"
+          target_roots:
+            - "/xkagent_infra/brain/bin"
+          required_paths:
+            - "/xkagent_infra/brain/bin"
+            - "/xkagent_infra/brain/bin/mcp"
+            - "/xkagent_infra/brain/bin/brain_ipc_c_mcp_server"
+            - "/xkagent_infra/brain/bin/mcp/mcp-brain_ipc_c"
+            - "/xkagent_infra/brain/bin/sandboxctl"
+        - module_id: "brain_root_runtime_assets"
+          kind: "verify_only"
+          source_roots:
+            - "/xkagent_infra/brain/.claude"
+            - "/xkagent_infra/brain/.codex"
+            - "/xkagent_infra/brain/.gemini"
+          target_roots:
+            - "/xkagent_infra/brain/.claude"
+            - "/xkagent_infra/brain/.codex"
+            - "/xkagent_infra/brain/.gemini"
+          required_paths:
+            - "/xkagent_infra/brain/.claude"
+            - "/xkagent_infra/brain/.codex"
+            - "/xkagent_infra/brain/.gemini"
+        - module_id: "brain_agents_runtime_assets"
+          kind: "verify_only"
+          source_roots:
+            - "/xkagent_infra/brain/agents"
+          target_roots:
+            - "/xkagent_infra/brain/agents"
+          required_paths:
+            - "/xkagent_infra/brain/agents"
+          required_agent_asset_classes:
+            - ".brain"
+            - ".claude"
+          optional_agent_asset_classes:
+            - ".codex"
+            - ".gemini"
+
+  release_artifacts:
+    required:
+      - "resolved_core_publish_manifest.yaml"
+      - "resolved_infrastructure_publish_routing.yaml"
+      - "core_dependency_manifest.yaml"
+      - "change_summary.md"
+      - "activation_report.yaml"
+      - "verification_report.yaml"
+    expectations:
+      - "每次 dry-run / publish 都产出完整清单"
+      - "artifact 必须记录模块版本、路由动作、依赖与验证结果"
+
+  validation:
+    required_checks:
+      - "brain/base target exists"
+      - "brain/platform target exists"
+      - "brain/bin runtime entrypoints exist"
+      - "brain root runtime assets (.claude/.codex/.gemini) exist"
+      - "brain/agents exists and each agent has .brain/.claude"
+      - "selected infrastructure routes either active or explicitly reported as manual gaps"

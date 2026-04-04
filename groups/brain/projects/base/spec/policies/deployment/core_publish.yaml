@@ -1,0 +1,53 @@
+# Brain Core Publish Policy
+
+policy:
+  id: "POLICY-BRAIN-CORE-PUBLISH"
+  version: "0.1"
+  status: "Active"
+  owner: "brain"
+
+intent:
+  summary: "定义 whole-brain core publish：base、platform、bin、agents 以及 core infrastructure services 的统一发布入口。"
+  entrypoint: "/xkagent_infra/groups/brain/projects/base/scripts/publish_core.sh"
+  manifest: "/xkagent_infra/groups/brain/projects/base/config/core_publish_manifest.yaml"
+  routing_matrix: "/xkagent_infra/groups/brain/projects/base/config/infrastructure_publish_routing.yaml"
+
+principles:
+  - "core publish 对应整个 /brain 运行面，而不是单独的 base publish"
+  - "publish_base.sh 是 core publish 的子步骤，不是顶层入口"
+  - "infrastructure 发布必须显式声明 supervisor/registry/skill/mcp/hooks/bin 路由"
+  - "每次发布必须生成 release 清单、依赖清单、变更摘要、激活报告、验证报告"
+  - "manual gap 必须在 dry-run 暴露；正式发布默认禁止忽略 core member 的 manual gap"
+
+required_release_artifacts:
+  - "resolved_core_publish_manifest.yaml"
+  - "resolved_infrastructure_publish_routing.yaml"
+  - "core_dependency_manifest.yaml"
+  - "change_summary.md"
+  - "activation_report.yaml"
+  - "verification_report.yaml"
+
+publish_flow:
+  dry_run:
+    - "publish_core.sh --dry-run --scope all"
+    - "审阅 manual gap、routing targets、dependency manifest、change summary"
+  publish:
+    - "确认 dry-run 无 blocking gap"
+    - "publish_core.sh --publish --scope all"
+    - "按 verification_report 执行发布后核对"
+
+scope_definition:
+  whole_brain_runtime:
+    includes:
+      - "/xkagent_infra/brain/base"
+      - "/xkagent_infra/brain/platform"
+      - "/xkagent_infra/brain/bin"
+      - "/xkagent_infra/brain/.claude"
+      - "/xkagent_infra/brain/.codex"
+      - "/xkagent_infra/brain/.gemini"
+      - "/xkagent_infra/brain/agents"
+      - "/xkagent_infra/brain/infrastructure/service/<core services>"
+
+non_goals:
+  - "不把 secrets/runtime data 视为发布物"
+  - "不允许绕过 routing matrix 直接对 infrastructure 做隐式写入"

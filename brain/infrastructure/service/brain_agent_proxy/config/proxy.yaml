@@ -8,8 +8,8 @@ clients:
   bgw-client-v1-fee4665eb5f723a9a80dd97cbbb3ad27:
     agent_name: agent-brain_frontdesk
     description: Brain 前台接待 Agent
-    provider: copilot
-    model: gpt-5-mini
+    provider: minimax
+    model: minimax-m2.7
   bgw-client-v1-e241c550d39723dd03248d405ce157d5:
     agent_name: agent-brain_devops
     description: brain 的 devops Agent

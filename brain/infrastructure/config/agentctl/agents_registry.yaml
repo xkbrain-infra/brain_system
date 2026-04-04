@@ -1,5 +1,5 @@
 agents_registry:
-  updated: '2026-03-23'
+  updated: '2026-04-04'
   version: '2.2'
 group_meta:
   brain:
@@ -27,12 +27,12 @@ groups:
     status: active
     tmux_session: agent-brain_manager
     transport_mode: proxy
-  - agent_model: copilot/gpt-5-mini
-    agent_type: copilot
+  - agent_model: minimax/minimax-m2.7
+    agent_type: minimax
     description: Brain 前台接待 Agent
     desired_state: running
     group: brain
-    model: copilot/gpt-5-mini
+    model: minimax/minimax-m2.7
     name: agent-brain_frontdesk
     path: /xkagent_infra/brain/agents/agent-brain_frontdesk
     required: false

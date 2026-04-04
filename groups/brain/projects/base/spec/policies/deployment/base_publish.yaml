@@ -16,6 +16,7 @@ principles:
   - "project 源负责开发，brain/base 负责发布态"
   - "root files 与各 domain 一样属于正式发布物"
   - "base 发布与 runtime 配置刷新分离"
+  - "whole-brain core publish 必须走 publish_core.sh；publish_base.sh 只是其中的 base 子步骤"
   - "发布前必须 dry-run"
   - "影响 agent 运行态的变更发布后必须 apply-config + restart"
   - "发布 mcp 域时必须同步 /brain/bin/mcp 运行入口"
