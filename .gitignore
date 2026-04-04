@@ -20,6 +20,7 @@ app/memory/
 tmp/
 brain/runtime/
 brain/platform/docker/docker-data/
+groups/brain/platform/release/packages/*.tar.gz
 
 # Secrets: ignore all by default, keep only safe metadata/templates
 **/secrets/**
