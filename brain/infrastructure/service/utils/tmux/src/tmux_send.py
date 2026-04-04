@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import argparse
 import hashlib
-import os
 import subprocess
 import sys
 import time
@@ -15,16 +14,7 @@ if str(_SRC_DIR) not in sys.path:
     sys.path.insert(0, str(_SRC_DIR))
 
 from audit_log import agent_name_env, build_record, dual_write, session_name_env, truncate
-
-
-def _tmux(*args: str, check: bool = True, capture: bool = False) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        ["tmux", *args],
-        check=check,
-        text=True,
-        stdout=subprocess.PIPE if capture else None,
-        stderr=subprocess.PIPE if capture else None,
-    )
+from tmux_utils import _tmux
 
 
 def _ensure_target_exists(target: str) -> None:
@@ -103,7 +93,7 @@ def _verify_visible(target: str, needle: str) -> bool:
 
 def main(argv: list[str]) -> int:
     p = argparse.ArgumentParser(prog="brain_tmux_send", add_help=True)
-    p.add_argument("-t", "--target", required=True, help="tmux target, e.g. session:window.pane or %pane_id")
+    p.add_argument("-t", "--target", required=True, help="tmux target, e.g. session:window.pane or %%pane_id")
     p.add_argument("--no-clear", action="store_true", help="do not send C-u before first line")
     p.add_argument(
         "--double-enter",

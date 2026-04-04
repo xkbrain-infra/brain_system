@@ -68,6 +68,8 @@ Agent 有两种注册身份，MCP Server 启动时自动选择：
 ```
 1. 等待 [IPC] 通知消息出现
 2. 调用 ipc_recv(ack_mode="manual", max_items=10) 拉取消息
+   - 除非消息正文或系统明确提供 `conversation_id`，否则不要传 `conversation_id`
+   - 通知文本里的 `from agent-x:%54` / `:%66` 是发送方 tmux pane id，不是 conversation_id
 3. 阅读并处理消息内容
 4. 调用 ipc_send(to=发送方, message="回复内容") 回复发送方 ← 必须！
 5. 调用 ipc_ack(msg_ids=[...]) 确认已处理的消息

@@ -1,6 +1,7 @@
 """FastAPI application for brain_agent_proxy."""
 import asyncio
 from collections import deque
+import copy
 import hashlib
 import json
 import os
@@ -13,7 +14,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Any, Dict, Optional
 
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Request, Response, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi import Header
 
@@ -97,6 +98,28 @@ class ProxyPolicyError(Exception):
         self.message = message
 
 
+def _status_code_for_exception(exc: Exception) -> int:
+    text = str(exc or "").strip()
+    lower = text.lower()
+
+    match = re.search(r"provider returned\s+(\d{3})", lower)
+    if match:
+        try:
+            return int(match.group(1))
+        except ValueError:
+            pass
+
+    if "hit your limit" in lower or "rate limit" in lower or "quota" in lower:
+        return 429
+    if "not authenticated" in lower or "please run /login" in lower or "authentication_failed" in lower:
+        return 401
+    if "permission_error" in lower:
+        return 403
+    if "invalid params" in lower or "invalid_request_error" in lower:
+        return 400
+    return 500
+
+
 RATE_LIMIT_SECONDS = float(os.environ.get("BRAIN_AGENT_PROXY_RATE_LIMIT_SECONDS", "0") or 0)
 RATE_LIMIT_WAIT = os.environ.get("BRAIN_AGENT_PROXY_RATE_LIMIT_WAIT", "1").strip().lower() not in ("0", "false", "no")
 MANUAL_APPROVAL = os.environ.get("BRAIN_AGENT_PROXY_MANUAL_APPROVAL", "0").strip().lower() in ("1", "true", "yes")
@@ -119,6 +142,26 @@ STREAM_RETRY_ON_TIMEOUT = os.environ.get(
     "BRAIN_AGENT_PROXY_STREAM_RETRY_ON_TIMEOUT", "1"
 ).strip().lower() not in ("0", "false", "no")
 RECENT_REQUESTS_LIMIT = int(os.environ.get("BRAIN_AGENT_PROXY_RECENT_REQUESTS_LIMIT", "200") or 200)
+SECRETS_ENV_PATHS = (
+    "/xkagent_infra/runtime/config/.env",
+    "/brain/secrets/system/agents/llm_tokens.env",
+)
+KIMI_DEFAULT_BETAS = os.environ.get(
+    "BRAIN_AGENT_PROXY_KIMI_DEFAULT_BETAS",
+    "claude-code-20250219,interleaved-thinking-2025-05-14,context-management-2025-06-27,prompt-caching-scope-2026-01-05,effort-2025-11-24",
+)
+KIMI_DEFAULT_BILLING_HEADER = os.environ.get(
+    "BRAIN_AGENT_PROXY_KIMI_BILLING_HEADER",
+    "cc_version=2.1.76.b57; cc_entrypoint=sdk-cli; cch=00000;",
+)
+KIMI_DEFAULT_USER_AGENT = os.environ.get(
+    "BRAIN_AGENT_PROXY_KIMI_USER_AGENT",
+    "claude-cli/2.1.76 (external, sdk-cli)",
+)
+KIMI_SYSTEM_PROMPT_PATH = os.environ.get(
+    "BRAIN_AGENT_PROXY_KIMI_SYSTEM_PROMPT_PATH",
+    "/xkagent_infra/brain/infrastructure/service/brain_agent_proxy/config/kimi_sdk_system_prompt.json",
+)
 
 # context window 配置已移至 context_windows.py
 # 使用 get_context_window(model_id, provider_id) 查询
@@ -305,24 +348,26 @@ def _default_api_base_url(provider: Any) -> str:
     return "http://127.0.0.1:4141"
 
 
-def _model_token_key(model_name: str) -> str:
-    return re.sub(r"[^a-z0-9]+", "_", str(model_name or "").strip().lower()).strip("_")
+def _canonicalize_upstream_model(provider: Any, model: str) -> str:
+    """Map accepted external model ids to provider-native upstream model ids."""
+    raw = str(model or "").strip()
+    if not raw:
+        return raw
+    resolved = provider.resolve_model(raw) if provider else None
+    if resolved:
+        return resolved.upstream_name()
+    return raw.split("/", 1)[1] if "/" in raw else raw
 
 
-def _resolve_model_from_token(provider: Any, token_model: str, request_model: str) -> str:
-    token_model = str(token_model or "").strip()
-    request_model = str(request_model or "").strip()
-    if not token_model:
-        return request_model
-    if token_model == request_model:
-        return request_model
-    if _model_token_key(request_model) == token_model:
-        return request_model
-    for candidate in getattr(provider, "models", []) or []:
-        candidate_str = str(candidate or "").strip()
-        if candidate_str and _model_token_key(candidate_str) == token_model:
-            return candidate_str
-    return token_model
+def _canonicalize_external_model(provider: Any, model: str) -> str:
+    """Normalize an accepted model id/alias/upstream name to the external canonical id."""
+    raw = str(model or "").strip()
+    if not raw:
+        return raw
+    resolved = provider.resolve_model(raw) if provider else None
+    if resolved:
+        return resolved.id
+    return raw.split("/", 1)[1] if "/" in raw else raw
 
 
 def _resolve_api_key_settings(provider: Any) -> tuple[str, bool, str, str, str]:
@@ -428,6 +473,339 @@ def _build_api_key_headers(provider: Any, require_auth: bool, key_env: str, head
     else:
         headers[header_name] = key
     return headers
+
+
+def _minimax_chain(provider: Any) -> str:
+    if getattr(provider, "id", "") != "minimax":
+        return ""
+    env_chain = os.environ.get("BRAIN_AGENT_PROXY_MINIMAX_CHAIN", "").strip().lower()
+    if env_chain in {"native", "generic"}:
+        return env_chain
+    cfg = getattr(provider, "minimax_config", None) or {}
+    configured = str(cfg.get("chain", "native") or "native").strip().lower()
+    if configured in {"native", "generic"}:
+        return configured
+    return "native"
+
+
+def _build_minimax_provider(provider: Any):
+    from .providers.minimax import MiniMaxProvider
+
+    api_base_url, require_auth, key_env, header_name, auth_scheme = _resolve_api_key_settings(provider)
+    key = ""
+    if provider.credentials and provider.credentials.api_key:
+        key = str(getattr(provider.credentials.api_key, "api_key", "") or "").strip()
+    cfg = getattr(provider, "minimax_config", None) or {}
+    return MiniMaxProvider(
+        provider_id=provider.id,
+        api_key=key,
+        api_key_env=key_env,
+        api_base_url=api_base_url,
+        api_root_url=str(cfg.get("api_root_url", "") or ""),
+        header_name=header_name,
+        auth_scheme=auth_scheme,
+        require_auth=require_auth,
+        strip_ignored_fields=bool(cfg.get("strip_ignored_fields", True)),
+        validate_temperature=bool(cfg.get("validate_temperature", True)),
+        reject_unsupported_content=bool(cfg.get("reject_unsupported_content", True)),
+    )
+
+
+def _apply_passthrough_anthropic_headers(headers: Dict[str, str], source_headers: Any | None) -> Dict[str, str]:
+    """Forward Anthropic client headers that can affect upstream routing/billing."""
+    if not source_headers:
+        return headers
+
+    for name in (
+        "x-anthropic-billing-header",
+        "anthropic-beta",
+        "anthropic-dangerous-direct-browser-access",
+    ):
+        value = source_headers.get(name)
+        if value:
+            headers[name] = value
+    return headers
+
+
+def _resolve_fixed_provider(provider_id: str, api_key: Optional[str]) -> Any:
+    config = get_config()
+    routing_engine = RoutingEngine(config)
+    provider = routing_engine._find_enabled_provider(provider_id)
+    if not provider:
+        raise ValueError(f"Provider '{provider_id}' not found or disabled")
+
+    if not api_key:
+        return provider
+
+    client_provider, client_info = routing_engine.find_provider_by_client_key(api_key)
+    if client_provider:
+        bound = client_provider.id
+    elif client_info:
+        bound = str(client_info.provider or "").strip()
+    else:
+        parsed = routing_engine.parse_client_key(api_key)
+        bound = str((parsed or {}).get("provider") or "").strip()
+
+    if bound and bound != provider_id:
+        raise ValueError(
+            f"Provider mismatch: client key is bound to provider '{bound}', "
+            f"but endpoint requires provider '{provider_id}'"
+        )
+    return provider
+
+
+def _extract_client_key_from_ws(websocket: WebSocket) -> Optional[str]:
+    authorization = websocket.headers.get("authorization")
+    x_api_key = websocket.headers.get("x-api-key")
+    return _extract_client_key(authorization, x_api_key)
+
+
+def _build_minimax_ws_url(provider: Any, path: str) -> str:
+    minimax = _build_minimax_provider(provider)
+    root = minimax.get_api_root_url().rstrip("/")
+    if root.startswith("https://"):
+        root = "wss://" + root[len("https://"):]
+    elif root.startswith("http://"):
+        root = "ws://" + root[len("http://"):]
+    return f"{root}{path}"
+
+
+async def _forward_raw_api_key_post(
+    provider: Any,
+    path: str,
+    body: Dict[str, Any],
+    *,
+    use_root_url: bool = False,
+) -> Any:
+    import httpx
+
+    api_base_url, require_auth, key_env, header_name, auth_scheme = _resolve_api_key_settings(provider)
+    headers = _build_api_key_headers(provider, require_auth, key_env, header_name, auth_scheme)
+    base_url = api_base_url
+    if provider.id == "minimax":
+        minimax = _build_minimax_provider(provider)
+        headers = minimax.build_headers()
+        base_url = minimax.get_api_root_url() if use_root_url else minimax.get_api_base_url()
+
+    async with httpx.AsyncClient(timeout=300.0) as client:
+        resp = await client.post(f"{base_url}{path}", json=body, headers=headers)
+
+    if resp.status_code != 200:
+        raise ValueError(f"Provider returned {resp.status_code}: {resp.text}")
+
+    content_type = str(resp.headers.get("content-type", "") or "").lower()
+    if "json" in content_type:
+        return _parse_json_response(resp)
+    return Response(content=resp.content, media_type=resp.headers.get("content-type"))
+
+
+async def _forward_raw_api_key_get(
+    provider: Any,
+    path: str,
+    query: Dict[str, Any],
+    *,
+    use_root_url: bool = False,
+) -> Any:
+    import httpx
+
+    api_base_url, require_auth, key_env, header_name, auth_scheme = _resolve_api_key_settings(provider)
+    headers = _build_api_key_headers(provider, require_auth, key_env, header_name, auth_scheme)
+    base_url = api_base_url
+    if provider.id == "minimax":
+        minimax = _build_minimax_provider(provider)
+        headers = minimax.build_headers()
+        base_url = minimax.get_api_root_url() if use_root_url else minimax.get_api_base_url()
+
+    async with httpx.AsyncClient(timeout=300.0) as client:
+        resp = await client.get(f"{base_url}{path}", params=query, headers=headers)
+
+    if resp.status_code != 200:
+        raise ValueError(f"Provider returned {resp.status_code}: {resp.text}")
+
+    content_type = str(resp.headers.get("content-type", "") or "").lower()
+    if "json" in content_type:
+        return _parse_json_response(resp)
+    return Response(content=resp.content, media_type=resp.headers.get("content-type"))
+
+
+async def _forward_raw_api_key_multipart(
+    provider: Any,
+    path: str,
+    request: Request,
+    *,
+    use_root_url: bool = False,
+) -> Any:
+    import httpx
+
+    api_base_url, require_auth, key_env, header_name, auth_scheme = _resolve_api_key_settings(provider)
+    headers = _build_api_key_headers(provider, require_auth, key_env, header_name, auth_scheme)
+    headers.pop("Content-Type", None)
+    base_url = api_base_url
+    if provider.id == "minimax":
+        minimax = _build_minimax_provider(provider)
+        headers = minimax.build_headers()
+        headers.pop("Content-Type", None)
+        base_url = minimax.get_api_root_url() if use_root_url else minimax.get_api_base_url()
+
+    form = await request.form()
+    data: list[tuple[str, Any]] = []
+    files: list[tuple[str, tuple[str, bytes, str]]] = []
+
+    items = form.multi_items() if hasattr(form, "multi_items") else form.items()
+    for key, value in items:
+        if isinstance(value, UploadFile) or (
+            hasattr(value, "filename") and hasattr(value, "file") and hasattr(value, "content_type")
+        ):
+            content = await value.read()
+            files.append(
+                (
+                    key,
+                    (
+                        value.filename or "upload.bin",
+                        content,
+                        value.content_type or "application/octet-stream",
+                    ),
+                )
+            )
+        else:
+            data.append((key, value))
+
+    async with httpx.AsyncClient(timeout=300.0) as client:
+        resp = await client.post(f"{base_url}{path}", data=data, files=files, headers=headers)
+
+    if resp.status_code != 200:
+        raise ValueError(f"Provider returned {resp.status_code}: {resp.text}")
+    return _parse_json_response(resp)
+
+
+async def _relay_minimax_websocket(client_ws: WebSocket, provider: Any, path: str) -> None:
+    import websockets
+    from websockets.exceptions import ConnectionClosed
+
+    minimax = _build_minimax_provider(provider)
+    headers = minimax.build_headers()
+    upstream_url = _build_minimax_ws_url(provider, path)
+
+    await client_ws.accept()
+
+    async with websockets.connect(
+        upstream_url,
+        additional_headers=headers,
+        open_timeout=30,
+        close_timeout=10,
+        max_size=None,
+    ) as upstream_ws:
+        async def client_to_upstream() -> None:
+            while True:
+                message = await client_ws.receive()
+                msg_type = message.get("type")
+                if msg_type == "websocket.disconnect":
+                    try:
+                        await upstream_ws.close()
+                    except Exception:
+                        pass
+                    return
+                if message.get("text") is not None:
+                    await upstream_ws.send(message["text"])
+                    continue
+                if message.get("bytes") is not None:
+                    await upstream_ws.send(message["bytes"])
+
+        async def upstream_to_client() -> None:
+            while True:
+                payload = await upstream_ws.recv()
+                if isinstance(payload, bytes):
+                    await client_ws.send_bytes(payload)
+                else:
+                    await client_ws.send_text(payload)
+
+        tasks = (
+            asyncio.create_task(client_to_upstream()),
+            asyncio.create_task(upstream_to_client()),
+        )
+        done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+        for task in pending:
+            task.cancel()
+        for task in done:
+            exc = task.exception()
+            if exc and not isinstance(exc, (WebSocketDisconnect, ConnectionClosed)):
+                raise exc
+
+
+def _ensure_kimi_system_blocks(payload: Dict[str, Any]) -> Dict[str, Any]:
+    system = payload.get("system")
+    if isinstance(system, str):
+        system_blocks = [{"type": "text", "text": system}]
+    elif isinstance(system, list):
+        system_blocks = [item for item in system if isinstance(item, dict)]
+    else:
+        system_blocks = []
+
+    if not system_blocks:
+        try:
+            with open(KIMI_SYSTEM_PROMPT_PATH, encoding="utf-8") as f:
+                template = json.load(f)
+            if isinstance(template, list) and template:
+                payload["system"] = copy.deepcopy(template)
+                return payload
+        except Exception:
+            pass
+
+    billing_text = f"x-anthropic-billing-header: {KIMI_DEFAULT_BILLING_HEADER}"
+    if not any(billing_text in str(block.get("text", "")) for block in system_blocks):
+        system_blocks.insert(0, {"type": "text", "text": billing_text})
+
+    sdk_text = "You are a Claude agent, built on Anthropic's Claude Agent SDK."
+    if not any(sdk_text == str(block.get("text", "")) for block in system_blocks):
+        system_blocks.append(
+            {
+                "type": "text",
+                "text": sdk_text,
+                "cache_control": {"type": "ephemeral"},
+            }
+        )
+
+    payload["system"] = system_blocks
+    return payload
+
+
+def _apply_kimi_upstream_shape(
+    payload: Dict[str, Any],
+    headers: Dict[str, str],
+    source_headers: Any | None,
+) -> tuple[Dict[str, Any], Dict[str, str]]:
+    payload = _ensure_kimi_system_blocks(payload)
+
+    headers["anthropic-beta"] = KIMI_DEFAULT_BETAS
+    headers["User-Agent"] = KIMI_DEFAULT_USER_AGENT
+    headers["x-app"] = "cli"
+
+    if source_headers:
+        for name in (
+            "x-stainless-arch",
+            "x-stainless-lang",
+            "x-stainless-os",
+            "x-stainless-package-version",
+            "x-stainless-retry-count",
+            "x-stainless-runtime",
+            "x-stainless-runtime-version",
+            "x-stainless-timeout",
+            "accept-language",
+            "sec-fetch-mode",
+        ):
+            value = source_headers.get(name)
+            if value:
+                headers[name] = value
+
+    headers.setdefault("x-stainless-arch", "x64")
+    headers.setdefault("x-stainless-lang", "js")
+    headers.setdefault("x-stainless-os", "Linux")
+    headers.setdefault("x-stainless-package-version", "0.74.0")
+    headers.setdefault("x-stainless-retry-count", "0")
+    headers.setdefault("x-stainless-runtime", "node")
+    headers.setdefault("x-stainless-runtime-version", "v24.14.0")
+    headers.setdefault("x-stainless-timeout", "600")
+    return payload, headers
 
 
 def _resolve_provider_secret(
@@ -756,6 +1134,16 @@ def _sse(event: str, payload: Dict[str, Any]) -> bytes:
     return f"event: {event}\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n".encode("utf-8")
 
 
+def _chunk_has_visible_output(chunk: bytes) -> bool:
+    if not chunk:
+        return False
+    return (
+        b"text_delta" in chunk
+        or b"tool_use" in chunk
+        or b"input_json_delta" in chunk
+    )
+
+
 def _display_model(model: str, provider_id: Optional[str]) -> str:
     """Return model name with provider prefix for display, e.g. bytedance/doubao-seed-2-0-pro."""
     if not provider_id or "/" in model:
@@ -767,7 +1155,27 @@ async def _passthrough_inject_context_window(stream_iter, model: str, provider_i
     """Inject context_window into message_start for direct-passthrough SSE streams."""
     cw = get_context_window(model, provider_id)
     display = _display_model(model, provider_id)
+    has_text = False
+    saw_tool_use = False
+    max_block_index = -1
+    buffered_tail: list[bytes] = []
+
     async for chunk in stream_iter:
+        if b"text_delta" in chunk:
+            has_text = True
+        if b"tool_use" in chunk or b"input_json_delta" in chunk:
+            saw_tool_use = True
+
+        if b"content_block_start" in chunk:
+            try:
+                for line in chunk.decode("utf-8").split("\n"):
+                    if line.startswith("data:"):
+                        d = json.loads(line[5:].strip())
+                        if d.get("type") == "content_block_start":
+                            max_block_index = max(max_block_index, d.get("index", 0))
+            except Exception:
+                pass
+
         if b"message_start" in chunk:
             try:
                 text = chunk.decode("utf-8")
@@ -785,7 +1193,23 @@ async def _passthrough_inject_context_window(stream_iter, model: str, provider_i
                         break
             except Exception:
                 pass
-        yield chunk
+
+        if b"message_stop" in chunk or b"message_delta" in chunk:
+            buffered_tail.append(chunk)
+        else:
+            for b in buffered_tail:
+                yield b
+            buffered_tail.clear()
+            yield chunk
+
+    if not has_text and not saw_tool_use:
+        inject_index = max_block_index + 1
+        yield _sse("content_block_start", {"type": "content_block_start", "index": inject_index, "content_block": {"type": "text", "text": ""}})
+        yield _sse("content_block_delta", {"type": "content_block_delta", "index": inject_index, "delta": {"type": "text_delta", "text": "(上游返回空响应，请重试)"}})
+        yield _sse("content_block_stop", {"type": "content_block_stop", "index": inject_index})
+
+    for b in buffered_tail:
+        yield b
 
 
 def _format_stream_error_text(error: Exception) -> str:
@@ -866,6 +1290,101 @@ async def _anthropic_message_to_sse(message: Dict[str, Any], provider_id: Option
         "usage": {"output_tokens": usage.get("output_tokens", 0)},
     })
     yield _sse("message_stop", {"type": "message_stop"})
+
+
+async def _collect_anthropic_sse_to_message(raw_iter, fallback_model: str) -> Dict[str, Any]:
+    """Collect Anthropic SSE events into one non-stream message response."""
+    buffer = ""
+    message: Dict[str, Any] = {
+        "id": f"msg_{uuid.uuid4().hex[:8]}",
+        "type": "message",
+        "role": "assistant",
+        "model": fallback_model,
+        "content": [],
+        "stop_reason": "end_turn",
+        "usage": {"input_tokens": 0, "output_tokens": 0},
+    }
+    blocks: Dict[int, Dict[str, Any]] = {}
+    tool_json_parts: Dict[int, str] = {}
+
+    async for chunk in raw_iter:
+        part = chunk.decode("utf-8", "ignore").replace("\r\n", "\n")
+        buffer += part
+
+        while "\n\n" in buffer:
+            event, buffer = buffer.split("\n\n", 1)
+            data_lines = []
+            for ln in event.splitlines():
+                if ln.startswith("data:"):
+                    data_lines.append(ln[5:].lstrip())
+            if not data_lines:
+                continue
+            data = "\n".join(data_lines).strip()
+            if not data or data == "[DONE]":
+                continue
+
+            try:
+                obj = json.loads(data)
+            except Exception:
+                continue
+
+            etype = str(obj.get("type", "") or "")
+            if etype == "message_start":
+                msg = obj.get("message", {}) or {}
+                message["id"] = msg.get("id", message["id"])
+                message["model"] = msg.get("model", message["model"])
+                if isinstance(msg.get("usage"), dict):
+                    message["usage"].update(msg["usage"])
+            elif etype == "content_block_start":
+                idx = int(obj.get("index", 0) or 0)
+                block = obj.get("content_block", {}) or {}
+                btype = str(block.get("type", "") or "")
+                if btype == "text":
+                    blocks[idx] = {"type": "text", "text": ""}
+                elif btype == "tool_use":
+                    blocks[idx] = {
+                        "type": "tool_use",
+                        "id": block.get("id", f"toolu_{uuid.uuid4().hex[:8]}"),
+                        "name": block.get("name", ""),
+                        "input": {},
+                    }
+                    tool_json_parts[idx] = ""
+            elif etype == "content_block_delta":
+                idx = int(obj.get("index", 0) or 0)
+                delta = obj.get("delta", {}) or {}
+                if delta.get("type") == "text_delta" and idx in blocks:
+                    blocks[idx]["text"] = blocks[idx].get("text", "") + str(delta.get("text", "") or "")
+                elif delta.get("type") == "input_json_delta" and idx in blocks:
+                    tool_json_parts[idx] = tool_json_parts.get(idx, "") + str(delta.get("partial_json", "") or "")
+            elif etype == "content_block_stop":
+                idx = int(obj.get("index", 0) or 0)
+                block = blocks.get(idx)
+                if not block:
+                    continue
+                if block.get("type") == "tool_use":
+                    raw_json = tool_json_parts.get(idx, "").strip()
+                    if raw_json:
+                        try:
+                            parsed = json.loads(raw_json)
+                            if isinstance(parsed, dict):
+                                block["input"] = parsed
+                        except Exception:
+                            pass
+                message["content"].append(block)
+                blocks.pop(idx, None)
+                tool_json_parts.pop(idx, None)
+            elif etype == "message_delta":
+                delta = obj.get("delta", {}) or {}
+                if delta.get("stop_reason"):
+                    message["stop_reason"] = delta["stop_reason"]
+                if isinstance(obj.get("usage"), dict):
+                    message["usage"].update(obj["usage"])
+            elif etype == "message_stop":
+                return message
+
+    for idx in sorted(blocks):
+        message["content"].append(blocks[idx])
+    return message
 
 
 async def _openai_sse_to_anthropic_sse(
@@ -1000,7 +1519,7 @@ async def _openai_sse_to_anthropic_sse(
                 if obj.get("id"):
                     message_id = obj.get("id")
                 if obj.get("model"):
-                    model = obj.get("model")
+                    model = _display_model(obj.get("model"), provider_id)
 
                 event_type = str(obj.get("type", "") or "")
                 _trace_event_type(event_type or "<missing>")
@@ -1010,7 +1529,7 @@ async def _openai_sse_to_anthropic_sse(
                         if response_obj.get("id"):
                             message_id = response_obj.get("id")
                         if response_obj.get("model"):
-                            model = response_obj.get("model")
+                            model = _display_model(response_obj.get("model"), provider_id)
                         if not started:
                             evt = await _emit_message_start(max(0, estimated_input_tokens))
                             if evt:
@@ -1133,7 +1652,8 @@ async def _openai_sse_to_anthropic_sse(
                 prompt_tokens = usage.get("prompt_tokens", 0)
                 cached_tokens = (usage.get("prompt_tokens_details", {}) or {}).get("cached_tokens", 0)
                 if not started:
-                    evt = await _emit_message_start(max(0, prompt_tokens - cached_tokens))
+                    _real = max(0, prompt_tokens - cached_tokens)
+                    evt = await _emit_message_start(_real if _real > 0 else estimated_input_tokens)
                     if evt:
                         _trace_event()
                         yield evt
@@ -1323,18 +1843,14 @@ async def list_models(authorization: Optional[str] = Header(None)):
     seen_model_ids: set[str] = set()
 
     def _append_unique_entries(**kwargs: Any) -> None:
-        before = len(models)
-        _append_model_entries(models, **kwargs)
-        if len(models) == before:
-            return
-        unique_models = []
-        for entry in models:
+        staged: list[Dict[str, Any]] = []
+        _append_model_entries(staged, **kwargs)
+        for entry in staged:
             model_id = str(entry.get("id", "") or "")
             if not model_id or model_id in seen_model_ids:
                 continue
             seen_model_ids.add(model_id)
-            unique_models.append(entry)
-        models[:] = unique_models
+            models.append(entry)
 
     # 尝试从 Copilot API 动态获取模型列表
     copilot_models = await _get_copilot_models()
@@ -1356,11 +1872,13 @@ async def list_models(authorization: Optional[str] = Header(None)):
             continue
         for model in provider.models:
             _append_unique_entries(
-                model_id=model,
+                model_id=model.id,
                 provider_id=provider.id,
                 provider_type=provider.type,
                 cli_type=getattr(provider, "cli_type", "chat_completions"),
                 capabilities=getattr(provider, "capabilities", []) or [],
+                name=getattr(model, "name", "") or "",
+                vendor=getattr(model, "vendor", "") or "",
             )
 
     return {
@@ -1410,11 +1928,25 @@ async def handle_messages(
                 non_stream_normalized = normalized.model_copy(
                     update={"stream": False, "original_request": non_stream_request}
                 )
-                result = await route_and_forward(non_stream_normalized, "messages", handler, api_key)
+                result = await route_and_forward(
+                    non_stream_normalized,
+                    "messages",
+                    handler,
+                    api_key,
+                    source_headers=request.headers,
+                )
                 return StreamingResponse(_anthropic_message_to_sse(result, provider_id=provider.id), media_type="text/event-stream")
-            stream_iter = await route_and_forward_stream(normalized, "messages", api_key)
+            stream_iter = await route_and_forward_stream(
+                normalized,
+                "messages",
+                api_key,
+                resolved_provider=provider,
+                resolved_client_info=None,
+                source_headers=request.headers,
+            )
             if (
                 (provider.type == "api_key" and _provider_supports_protocol(provider, "messages"))
+                or provider.type == "claude_cli"
                 or (provider.id == "copilot" and _copilot_prefers_native_messages(normalized.model))
             ):
                 return StreamingResponse(
@@ -1430,13 +1962,13 @@ async def handle_messages(
                 ),
                 media_type="text/event-stream",
             )
-        result = await route_and_forward(normalized, "messages", handler, api_key)
+        result = await route_and_forward(normalized, "messages", handler, api_key, source_headers=request.headers)
         return result
     except ProxyPolicyError as e:
         return JSONResponse(status_code=e.status_code, content={"error": e.message})
     except Exception as e:
         return JSONResponse(
-            status_code=500,
+            status_code=_status_code_for_exception(e),
             content=handler.format_error(e),
         )
 
@@ -1494,15 +2026,20 @@ async def handle_chat_completions(
         await _enforce_request_policies("/v1/chat/completions", body)
         normalized = handler.parse_request(body)
         if normalized.stream:
-            stream_iter = await route_and_forward_stream(normalized, "chat_completions", api_key)
+            stream_iter = await route_and_forward_stream(
+                normalized,
+                "chat_completions",
+                api_key,
+                source_headers=request.headers,
+            )
             return StreamingResponse(stream_iter, media_type="text/event-stream")
-        result = await route_and_forward(normalized, "chat_completions", handler, api_key)
+        result = await route_and_forward(normalized, "chat_completions", handler, api_key, source_headers=request.headers)
         return result
     except ProxyPolicyError as e:
         return JSONResponse(status_code=e.status_code, content={"error": e.message})
     except Exception as e:
         return JSONResponse(
-            status_code=500,
+            status_code=_status_code_for_exception(e),
             content=handler.format_error(e),
         )
 
@@ -1531,13 +2068,13 @@ async def handle_responses(
     try:
         await _enforce_request_policies("/v1/responses", body)
         normalized = handler.parse_request(body)
-        result = await route_and_forward(normalized, "responses", handler, api_key)
+        result = await route_and_forward(normalized, "responses", handler, api_key, source_headers=request.headers)
         return result
     except ProxyPolicyError as e:
         return JSONResponse(status_code=e.status_code, content={"error": e.message})
     except Exception as e:
         return JSONResponse(
-            status_code=500,
+            status_code=_status_code_for_exception(e),
             content=handler.format_error(e),
         )
 
@@ -1563,7 +2100,7 @@ async def handle_embeddings(
         return JSONResponse(status_code=e.status_code, content={"error": e.message})
     except Exception as e:
         return JSONResponse(
-            status_code=500,
+            status_code=_status_code_for_exception(e),
             content={
                 "error": {
                     "message": str(e),
@@ -1582,6 +2119,356 @@ async def handle_embeddings_alias(
     x_api_key: Optional[str] = Header(None, alias="x-api-key"),
 ):
     return await handle_embeddings(request, authorization, x_api_key)
+
+
+@app.post("/v1/image_generation")
+async def handle_minimax_image_generation(
+    request: Request,
+    authorization: Optional[str] = Header(None),
+    x_api_key: Optional[str] = Header(None, alias="x-api-key"),
+):
+    body = await request.json()
+    api_key = _extract_client_key(authorization, x_api_key)
+    try:
+        provider = _resolve_fixed_provider("minimax", api_key)
+        return await _forward_raw_api_key_post(provider, "/v1/image_generation", body, use_root_url=True)
+    except Exception as e:
+        return JSONResponse(
+            status_code=_status_code_for_exception(e),
+            content={"error": {"type": "api_error", "message": str(e)}},
+        )
+
+
+@app.post("/v1/t2a_v2")
+async def handle_minimax_t2a_v2(
+    request: Request,
+    authorization: Optional[str] = Header(None),
+    x_api_key: Optional[str] = Header(None, alias="x-api-key"),
+):
+    body = await request.json()
+    api_key = _extract_client_key(authorization, x_api_key)
+    try:
+        provider = _resolve_fixed_provider("minimax", api_key)
+        return await _forward_raw_api_key_post(provider, "/v1/t2a_v2", body, use_root_url=True)
+    except Exception as e:
+        return JSONResponse(
+            status_code=_status_code_for_exception(e),
+            content={"error": {"type": "api_error", "message": str(e)}},
+        )
+
+
+@app.post("/v1/t2a_async_v2")
+async def handle_minimax_t2a_async_v2(
+    request: Request,
+    authorization: Optional[str] = Header(None),
+    x_api_key: Optional[str] = Header(None, alias="x-api-key"),
+):
+    body = await request.json()
+    api_key = _extract_client_key(authorization, x_api_key)
+    try:
+        provider = _resolve_fixed_provider("minimax", api_key)
+        return await _forward_raw_api_key_post(provider, "/v1/t2a_async_v2", body, use_root_url=True)
+    except Exception as e:
+        return JSONResponse(
+            status_code=_status_code_for_exception(e),
+            content={"error": {"type": "api_error", "message": str(e)}},
+        )
+
+
+@app.post("/v1/get_voice")
+async def handle_minimax_get_voice(
+    request: Request,
+    authorization: Optional[str] = Header(None),
+    x_api_key: Optional[str] = Header(None, alias="x-api-key"),
+):
+    body = await request.json()
+    api_key = _extract_client_key(authorization, x_api_key)
+    try:
+        provider = _resolve_fixed_provider("minimax", api_key)
+        return await _forward_raw_api_key_post(provider, "/v1/get_voice", body, use_root_url=True)
+    except Exception as e:
+        return JSONResponse(
+            status_code=_status_code_for_exception(e),
+            content={"error": {"type": "api_error", "message": str(e)}},
+        )
+
+
+@app.post("/v1/voice_clone")
+async def handle_minimax_voice_clone(
+    request: Request,
+    authorization: Optional[str] = Header(None),
+    x_api_key: Optional[str] = Header(None, alias="x-api-key"),
+):
+    api_key = _extract_client_key(authorization, x_api_key)
+    try:
+        provider = _resolve_fixed_provider("minimax", api_key)
+        return await _forward_raw_api_key_multipart(provider, "/v1/voice_clone", request, use_root_url=True)
+    except Exception as e:
+        return JSONResponse(
+            status_code=_status_code_for_exception(e),
+            content={"error": {"type": "api_error", "message": str(e)}},
+        )
+
+
+@app.post("/v1/voice_design")
+async def handle_minimax_voice_design(
+    request: Request,
+    authorization: Optional[str] = Header(None),
+    x_api_key: Optional[str] = Header(None, alias="x-api-key"),
+):
+    body = await request.json()
+    api_key = _extract_client_key(authorization, x_api_key)
+    try:
+        provider = _resolve_fixed_provider("minimax", api_key)
+        return await _forward_raw_api_key_post(provider, "/v1/voice_design", body, use_root_url=True)
+    except Exception as e:
+        return JSONResponse(
+            status_code=_status_code_for_exception(e),
+            content={"error": {"type": "api_error", "message": str(e)}},
+        )
+
+
+@app.post("/v1/delete_voice")
+async def handle_minimax_delete_voice(
+    request: Request,
+    authorization: Optional[str] = Header(None),
+    x_api_key: Optional[str] = Header(None, alias="x-api-key"),
+):
+    body = await request.json()
+    api_key = _extract_client_key(authorization, x_api_key)
+    try:
+        provider = _resolve_fixed_provider("minimax", api_key)
+        return await _forward_raw_api_key_post(provider, "/v1/delete_voice", body, use_root_url=True)
+    except Exception as e:
+        return JSONResponse(
+            status_code=_status_code_for_exception(e),
+            content={"error": {"type": "api_error", "message": str(e)}},
+        )
+
+
+@app.get("/v1/query/t2a_async_v2")
+async def handle_minimax_query_t2a_async_v2(
+    request: Request,
+    authorization: Optional[str] = Header(None),
+    x_api_key: Optional[str] = Header(None, alias="x-api-key"),
+):
+    api_key = _extract_client_key(authorization, x_api_key)
+    try:
+        provider = _resolve_fixed_provider("minimax", api_key)
+        return await _forward_raw_api_key_get(
+            provider,
+            "/v1/query/t2a_async_v2",
+            dict(request.query_params),
+            use_root_url=True,
+        )
+    except Exception as e:
+        return JSONResponse(
+            status_code=_status_code_for_exception(e),
+            content={"error": {"type": "api_error", "message": str(e)}},
+        )
+
+
+@app.post("/v1/video_generation")
+async def handle_minimax_video_generation(
+    request: Request,
+    authorization: Optional[str] = Header(None),
+    x_api_key: Optional[str] = Header(None, alias="x-api-key"),
+):
+    body = await request.json()
+    api_key = _extract_client_key(authorization, x_api_key)
+    try:
+        provider = _resolve_fixed_provider("minimax", api_key)
+        return await _forward_raw_api_key_post(provider, "/v1/video_generation", body, use_root_url=True)
+    except Exception as e:
+        return JSONResponse(
+            status_code=_status_code_for_exception(e),
+            content={"error": {"type": "api_error", "message": str(e)}},
+        )
+
+
+@app.get("/v1/query/video_generation")
+async def handle_minimax_query_video_generation(
+    request: Request,
+    authorization: Optional[str] = Header(None),
+    x_api_key: Optional[str] = Header(None, alias="x-api-key"),
+):
+    api_key = _extract_client_key(authorization, x_api_key)
+    try:
+        provider = _resolve_fixed_provider("minimax", api_key)
+        return await _forward_raw_api_key_get(
+            provider,
+            "/v1/query/video_generation",
+            dict(request.query_params),
+            use_root_url=True,
+        )
+    except Exception as e:
+        return JSONResponse(
+            status_code=_status_code_for_exception(e),
+            content={"error": {"type": "api_error", "message": str(e)}},
+        )
+
+
+@app.post("/v1/video_template_generation")
+async def handle_minimax_video_template_generation(
+    request: Request,
+    authorization: Optional[str] = Header(None),
+    x_api_key: Optional[str] = Header(None, alias="x-api-key"),
+):
+    body = await request.json()
+    api_key = _extract_client_key(authorization, x_api_key)
+    try:
+        provider = _resolve_fixed_provider("minimax", api_key)
+        return await _forward_raw_api_key_post(provider, "/v1/video_template_generation", body, use_root_url=True)
+    except Exception as e:
+        return JSONResponse(
+            status_code=_status_code_for_exception(e),
+            content={"error": {"type": "api_error", "message": str(e)}},
+        )
+
+
+@app.get("/v1/query/video_template_generation")
+async def handle_minimax_query_video_template_generation(
+    request: Request,
+    authorization: Optional[str] = Header(None),
+    x_api_key: Optional[str] = Header(None, alias="x-api-key"),
+):
+    api_key = _extract_client_key(authorization, x_api_key)
+    try:
+        provider = _resolve_fixed_provider("minimax", api_key)
+        return await _forward_raw_api_key_get(
+            provider,
+            "/v1/query/video_template_generation",
+            dict(request.query_params),
+            use_root_url=True,
+        )
+    except Exception as e:
+        return JSONResponse(
+            status_code=_status_code_for_exception(e),
+            content={"error": {"type": "api_error", "message": str(e)}},
+        )
+
+
+@app.post("/v1/music_generation")
+async def handle_minimax_music_generation(
+    request: Request,
+    authorization: Optional[str] = Header(None),
+    x_api_key: Optional[str] = Header(None, alias="x-api-key"),
+):
+    body = await request.json()
+    api_key = _extract_client_key(authorization, x_api_key)
+    try:
+        provider = _resolve_fixed_provider("minimax", api_key)
+        return await _forward_raw_api_key_post(provider, "/v1/music_generation", body, use_root_url=True)
+    except Exception as e:
+        return JSONResponse(
+            status_code=_status_code_for_exception(e),
+            content={"error": {"type": "api_error", "message": str(e)}},
+        )
+
+
+@app.post("/v1/lyrics_generation")
+async def handle_minimax_lyrics_generation(
+    request: Request,
+    authorization: Optional[str] = Header(None),
+    x_api_key: Optional[str] = Header(None, alias="x-api-key"),
+):
+    body = await request.json()
+    api_key = _extract_client_key(authorization, x_api_key)
+    try:
+        provider = _resolve_fixed_provider("minimax", api_key)
+        return await _forward_raw_api_key_post(provider, "/v1/lyrics_generation", body, use_root_url=True)
+    except Exception as e:
+        return JSONResponse(
+            status_code=_status_code_for_exception(e),
+            content={"error": {"type": "api_error", "message": str(e)}},
+        )
+
+
+@app.post("/v1/files/upload")
+async def handle_minimax_files_upload(
+    request: Request,
+    authorization: Optional[str] = Header(None),
+    x_api_key: Optional[str] = Header(None, alias="x-api-key"),
+):
+    api_key = _extract_client_key(authorization, x_api_key)
+    try:
+        provider = _resolve_fixed_provider("minimax", api_key)
+        return await _forward_raw_api_key_multipart(provider, "/v1/files/upload", request, use_root_url=True)
+    except Exception as e:
+        return JSONResponse(
+            status_code=_status_code_for_exception(e),
+            content={"error": {"type": "api_error", "message": str(e)}},
+        )
+
+
+@app.get("/v1/files/list")
+async def handle_minimax_files_list(
+    request: Request,
+    authorization: Optional[str] = Header(None),
+    x_api_key: Optional[str] = Header(None, alias="x-api-key"),
+):
+    api_key = _extract_client_key(authorization, x_api_key)
+    try:
+        provider = _resolve_fixed_provider("minimax", api_key)
+        return await _forward_raw_api_key_get(provider, "/v1/files/list", dict(request.query_params), use_root_url=True)
+    except Exception as e:
+        return JSONResponse(
+            status_code=_status_code_for_exception(e),
+            content={"error": {"type": "api_error", "message": str(e)}},
+        )
+
+
+@app.get("/v1/files/retrieve")
+async def handle_minimax_files_retrieve(
+    request: Request,
+    authorization: Optional[str] = Header(None),
+    x_api_key: Optional[str] = Header(None, alias="x-api-key"),
+):
+    api_key = _extract_client_key(authorization, x_api_key)
+    try:
+        provider = _resolve_fixed_provider("minimax", api_key)
+        return await _forward_raw_api_key_get(provider, "/v1/files/retrieve", dict(request.query_params), use_root_url=True)
+    except Exception as e:
+        return JSONResponse(
+            status_code=_status_code_for_exception(e),
+            content={"error": {"type": "api_error", "message": str(e)}},
+        )
+
+
+@app.post("/v1/files/delete")
+async def handle_minimax_files_delete(
+    request: Request,
+    authorization: Optional[str] = Header(None),
+    x_api_key: Optional[str] = Header(None, alias="x-api-key"),
+):
+    body = await request.json()
+    api_key = _extract_client_key(authorization, x_api_key)
+    try:
+        provider = _resolve_fixed_provider("minimax", api_key)
+        return await _forward_raw_api_key_post(provider, "/v1/files/delete", body, use_root_url=True)
+    except Exception as e:
+        return JSONResponse(
+            status_code=_status_code_for_exception(e),
+            content={"error": {"type": "api_error", "message": str(e)}},
+        )
+
+
+@app.websocket("/ws/v1/t2a_v2")
+async def handle_minimax_t2a_v2_ws(websocket: WebSocket):
+    try:
+        api_key = _extract_client_key_from_ws(websocket)
+        provider = _resolve_fixed_provider("minimax", api_key)
+        await _relay_minimax_websocket(websocket, provider, "/ws/v1/t2a_v2")
+    except Exception as e:
+        try:
+            await websocket.accept()
+            await websocket.send_json({"error": {"type": "api_error", "message": str(e)}})
+        except Exception:
+            pass
+        try:
+            await websocket.close(code=1011)
+        except Exception:
+            pass
 
 
 def _normalize_content(content: Any) -> str:
@@ -1797,10 +2684,13 @@ def _provider_supports_protocol(provider: Any, protocol: str) -> bool:
     return protocol in protocols if protocols else False
 
 
-def _build_anthropic_messages_payload(normalized: Any) -> Dict[str, Any]:
+THINKING_BUDGET_TOKENS = int(os.environ.get("BRAIN_AGENT_PROXY_THINKING_BUDGET_TOKENS", "30000") or 30000)
+
+
+def _build_anthropic_messages_payload(normalized: Any, provider: Optional[Any] = None) -> Dict[str, Any]:
     """Build Anthropic messages payload while preserving original block structure."""
     payload = dict(getattr(normalized, "original_request", {}) or {})
-    payload["model"] = normalized.model
+    payload["model"] = _canonicalize_upstream_model(provider, normalized.model) if provider else normalized.model
     if "messages" not in payload:
         messages_data = []
         for m in normalized.messages:
@@ -1815,6 +2705,10 @@ def _build_anthropic_messages_payload(normalized: Any) -> Dict[str, Any]:
         payload["max_tokens"] = normalized.max_tokens
     if "temperature" not in payload and normalized.temperature is not None:
         payload["temperature"] = normalized.temperature
+    if isinstance(payload.get("thinking"), dict) and payload["thinking"].get("type") == "enabled":
+        budget = payload["thinking"].get("budget_tokens")
+        if budget is None or budget > THINKING_BUDGET_TOKENS:
+            payload["thinking"]["budget_tokens"] = THINKING_BUDGET_TOKENS
     return payload
 
 
@@ -1858,6 +2752,7 @@ async def route_and_forward(
     protocol: str,
     handler: Any,
     api_key: Optional[str] = None,
+    source_headers: Any | None = None,
 ) -> Dict[str, Any]:
     """Route request and forward to provider."""
     config = get_config()
@@ -1869,7 +2764,7 @@ async def route_and_forward(
 
     # Forward request
     try:
-        response = await forward_to_provider(provider, normalized, protocol)
+        response = await forward_to_provider(provider, normalized, protocol, source_headers=source_headers)
     except Exception as e:
         err_text = str(e)
         # Preserve upstream Copilot 4xx semantic errors.
@@ -1884,82 +2779,92 @@ async def route_and_forward(
 
 def _resolve_provider(normalized: Any, protocol: str, api_key: Optional[str]):
     """Resolve provider and optional client info from request context.
-    严格前后端分离: 前端配置什么就用什么, 服务端只做校验, 不做自动兜底
+    Prefer explicit provider/model selectors. When a request comes through a
+    client key bound to exactly one provider, accept bare model names as a
+    compatibility fallback for Claude Code follow-up requests.
     """
     config = get_config()
     routing_engine = RoutingEngine(config)
     provider = None
     client_info = None
 
-    # 1. 优先从请求的model字段解析provider (前端指定的优先级最高)
+    # 1. Parse model selector if explicitly provided as provider/model.
     model_selector = str(getattr(normalized, "model", "") or "")
-    provider_hint, _, selected_model = model_selector.partition("/")
+    provider_hint, selected_model = routing_engine.parse_model_selector(model_selector)
 
-    if provider_hint and selected_model:
-        # 前端明确指定了provider, 必须严格匹配, 不做兜底
-        provider = routing_engine._find_enabled_provider(provider_hint)
-        if not provider:
-            raise ValueError(f"Provider '{provider_hint}' specified in model selector '{model_selector}' not found or disabled")
-
-        # canonical token 已编码 provider+model 时跳过白名单校验，token 本身即权威。
-        # 无 token 的直接调用仍走白名单保护。
-        token_parsed = routing_engine.parse_client_key(api_key) if api_key else None
-        token_authorizes = token_parsed and token_parsed.get("provider") == provider_hint
-        if not token_authorizes and selected_model not in provider.models:
-            raise ValueError(f"Model '{selected_model}' is not supported by provider '{provider_hint}'. Supported models: {provider.models}")
-
-        print(f"[brain_agent_proxy] DEBUG: model_selector={model_selector} -> provider={provider.id}, model={selected_model} (strict match from model prefix)")
-
-        # 更新normalized.model为去掉前缀的模型名
-        normalized.model = selected_model
-        if isinstance(getattr(normalized, "original_request", None), dict):
-            normalized.original_request["model"] = selected_model
-
-        return provider, client_info
-
-    # 2. 如果model里没有provider前缀, 必须从token解析, 不做兜底
+    # 2. Resolve provider binding from client key when available.
+    client_provider = ""
     if api_key:
-        parsed = routing_engine.parse_client_key(api_key)
-        if not parsed:
-            raise ValueError(f"Invalid API key format. Expected canonical format: bgw-apx-v1--p-{{provider}}--m-{{model}}--n-{{name}}")
-
-        # 校验provider存在
-        provider = routing_engine._find_enabled_provider(parsed["provider"])
-        if not provider:
-            raise ValueError(f"Provider '{parsed['provider']}' from API key not found or disabled")
-
-        parsed_model = _resolve_model_from_token(provider, parsed.get("model", ""), normalized.model)
-
-        # 校验token里的模型和请求的模型一致
-        if parsed_model and parsed_model != normalized.model:
-            raise ValueError(f"Model mismatch: API key specifies model '{parsed['model']}', but request specifies model '{normalized.model}'")
-
-        # canonical token 已编码 provider+model，token 本身即权威，跳过 provider.models 白名单校验。
-        # 白名单只对 provider/model 前缀路由（path 1）有意义。
-        if not parsed_model and normalized.model not in provider.models:
-            raise ValueError(f"Model '{normalized.model}' is not supported by provider '{provider.id}'. Supported models: {provider.models}")
-
-        if parsed_model:
-            print(f"[brain_agent_proxy] DEBUG: client_key={api_key} -> provider={provider.id}, model={normalized.model} (strict match from token)")
+        provider_from_key, client_info = routing_engine.find_provider_by_client_key(api_key)
+        if provider_from_key:
+            client_provider = provider_from_key.id
+        elif client_info:
+            client_provider = str(client_info.provider or "").strip()
         else:
-            print(f"[brain_agent_proxy] DEBUG: client_key={api_key} -> provider={provider.id}, model={normalized.model} (legacy token without model)")
-        return provider, client_info
+            parsed = routing_engine.parse_client_key(api_key)
+            if parsed:
+                client_provider = str(parsed.get("provider") or "").strip()
 
-    # 3. 两者都没有的话直接报错, 不做任何自动路由兜底
-    raise ValueError(
-        "No provider specified. You must either:\n"
-        "1. Specify provider in model selector format: 'provider/model_name'\n"
-        "2. Use a valid canonical API key that includes provider information"
+    # 3. Bare model compatibility fallback for bound client keys.
+    if (not provider_hint or not selected_model) and client_provider and model_selector.strip():
+        provider_hint = client_provider
+        selected_model = model_selector.strip()
+        print(
+            f"[brain_agent_proxy] DEBUG: bare model selector '{model_selector}' "
+            f"resolved via client key to provider={provider_hint}"
+        )
+
+    if not provider_hint or not selected_model:
+        raise ValueError(
+            f"Invalid model selector '{model_selector}'. Expected format 'provider/model'. "
+            "Bare model names are only supported when the client key is bound to a provider."
+        )
+
+    # 4. If both explicit provider and client provider exist, they must match.
+    if client_provider and client_provider != provider_hint:
+        raise ValueError(
+            f"Provider mismatch: client key is bound to provider '{client_provider}', "
+            f"but request specifies provider '{provider_hint}'"
+        )
+
+    # 5. Canonicalize the selected model against the resolved provider.
+    provider = routing_engine._find_enabled_provider(provider_hint)
+    if not provider:
+        raise ValueError(f"Provider '{provider_hint}' specified in model selector '{model_selector}' not found or disabled")
+
+    resolved_selected = provider.resolve_model(selected_model)
+    if not resolved_selected:
+        raise ValueError(
+            f"Model '{selected_model}' is not supported by provider '{provider_hint}'. "
+            f"Supported models: {provider.supported_model_ids()}"
+        )
+
+    canonical_selected = resolved_selected.id
+    print(
+        f"[brain_agent_proxy] DEBUG: model_selector={model_selector} -> "
+        f"provider={provider.id}, model={canonical_selected} (explicit provider/model)"
     )
+
+    normalized.model = canonical_selected
+    if isinstance(getattr(normalized, "original_request", None), dict):
+        normalized.original_request["model"] = canonical_selected
+
+    return provider, client_info
 
 
 async def route_and_forward_stream(
     normalized: Any,
     protocol: str,
     api_key: Optional[str] = None,
+    resolved_provider: Any | None = None,
+    resolved_client_info: Any | None = None,
+    source_headers: Any | None = None,
 ):
     """Route and forward streaming request; returns async bytes iterator."""
-    provider, client_info = _resolve_provider(normalized, protocol, api_key)
+    provider = resolved_provider
+    client_info = resolved_client_info
+    if provider is None:
+        provider, client_info = _resolve_provider(normalized, protocol, api_key)
     if client_info:
         print(f"[brain_agent_proxy] Client: {client_info.agent_name} ({api_key})")
 
@@ -2007,17 +2912,104 @@ async def route_and_forward_stream(
         )
         return gemini.forward_stream(normalized.original_request, protocol)
 
+    if provider.type == "claude_cli":
+        from .providers.claude_cli import ClaudeCLIProvider
+
+        cfg = getattr(provider, "claude_cli_config", None) or {}
+        cli_provider = ClaudeCLIProvider(
+            provider_id=provider.id,
+            workdir=cfg.get("workdir"),
+            permission_mode=str(cfg.get("permission_mode", "default") or "default"),
+            cli_path=cfg.get("cli_path"),
+        )
+        return await cli_provider.forward_stream(normalized.original_request, protocol)
+
+    if provider.id == "minimax" and _minimax_chain(provider) == "native":
+        return _build_api_key_stream_iter(provider, normalized, "messages", source_headers=source_headers)
+
     if provider.type == "api_key":
-        return _build_api_key_stream_iter(provider, normalized, protocol)
+        return _build_api_key_stream_iter(provider, normalized, protocol, source_headers=source_headers)
 
     raise ValueError(f"Streaming not supported for provider type {provider.type}")
 
 
-def _build_api_key_stream_iter(provider: Any, normalized: Any, protocol: str):
+def _build_api_key_stream_iter(provider: Any, normalized: Any, protocol: str, source_headers: Any | None = None):
     import httpx
+
+    if provider.id == "minimax" and _minimax_chain(provider) == "native":
+        if protocol != "messages":
+            raise ValueError("MiniMax native chain supports only /v1/messages")
+        minimax = _build_minimax_provider(provider)
+        headers = minimax.build_headers()
+        headers = _apply_passthrough_anthropic_headers(headers, source_headers)
+        payload = minimax.build_messages_payload(
+            getattr(normalized, "original_request", {}) or {},
+            _canonicalize_upstream_model(provider, normalized.model),
+        )
+        payload["stream"] = True
+        _rewrite_tool_names_for_provider(payload, provider)
+
+        async def _iter():
+            url = f"{minimax.get_api_base_url()}/v1/messages"
+            timeout = httpx.Timeout(
+                connect=STREAM_CONNECT_TIMEOUT_SECONDS,
+                read=STREAM_IDLE_TIMEOUT_SECONDS,
+                write=STREAM_CONNECT_TIMEOUT_SECONDS,
+                pool=STREAM_CONNECT_TIMEOUT_SECONDS,
+            )
+            for attempt in range(STREAM_MAX_RETRIES + 1):
+                try:
+                    async with httpx.AsyncClient(timeout=timeout) as upstream:
+                        async with upstream.stream("POST", url, json=payload, headers=headers) as resp:
+                            if resp.status_code == 429:
+                                body = (await resp.aread()).decode("utf-8", "ignore")
+                                if attempt < STREAM_MAX_RETRIES:
+                                    delay = STREAM_RETRY_BASE_DELAY * (2 ** attempt)
+                                    print(f"[brain_agent_proxy] 429 from upstream, retry {attempt+1}/{STREAM_MAX_RETRIES} after {delay}s")
+                                    await asyncio.sleep(delay)
+                                    continue
+                                raise ValueError(f"Provider returned 429 after {STREAM_MAX_RETRIES} retries: {body}")
+                            if resp.status_code != 200:
+                                body = (await resp.aread()).decode("utf-8", "ignore")
+                                raise ValueError(f"Provider returned {resp.status_code}: {body}")
+                            saw_visible_output = False
+                            pending_chunks: list[bytes] = []
+                            async for chunk in resp.aiter_bytes():
+                                if not chunk:
+                                    continue
+                                if saw_visible_output:
+                                    yield chunk
+                                    continue
+                                pending_chunks.append(chunk)
+                                if _chunk_has_visible_output(chunk):
+                                    saw_visible_output = True
+                                    for pending in pending_chunks:
+                                        yield pending
+                                    pending_chunks.clear()
+                            if not saw_visible_output and attempt < STREAM_MAX_RETRIES:
+                                delay = STREAM_RETRY_BASE_DELAY * (2 ** attempt)
+                                print(
+                                    f"[brain_agent_proxy] Empty semantic SSE from upstream, retry "
+                                    f"{attempt+1}/{STREAM_MAX_RETRIES} after {delay}s"
+                                )
+                                await asyncio.sleep(delay)
+                                continue
+                            for pending in pending_chunks:
+                                yield pending
+                            return
+                except httpx.ReadTimeout:
+                    if STREAM_RETRY_ON_TIMEOUT and attempt < STREAM_MAX_RETRIES:
+                        delay = STREAM_RETRY_BASE_DELAY * (2 ** attempt)
+                        print(f"[brain_agent_proxy] ReadTimeout, retry {attempt+1}/{STREAM_MAX_RETRIES} after {delay}s")
+                        await asyncio.sleep(delay)
+                        continue
+                    raise
+
+        return _iter()
 
     api_base_url, require_auth, key_env, header_name, auth_scheme = _resolve_api_key_settings(provider)
     headers = _build_api_key_headers(provider, require_auth, key_env, header_name, auth_scheme)
+    headers = _apply_passthrough_anthropic_headers(headers, source_headers)
 
     effective_protocol = protocol
     can_messages = _provider_supports_protocol(provider, "messages")
@@ -2033,13 +3025,15 @@ def _build_api_key_stream_iter(provider: Any, normalized: Any, protocol: str):
         endpoint = "/v1/chat/completions"
 
     if effective_protocol == "messages":
-        payload = _build_anthropic_messages_payload(normalized)
+        payload = _build_anthropic_messages_payload(normalized, provider)
         payload["stream"] = True
         headers["anthropic-version"] = "2023-06-01"
     else:
         payload = dict(normalized.original_request or {})
-        payload["model"] = normalized.model
+        payload["model"] = _canonicalize_upstream_model(provider, normalized.model)
         payload["stream"] = True
+    if provider.id == "kimi" and effective_protocol == "messages":
+        payload, headers = _apply_kimi_upstream_shape(payload, headers, source_headers)
     _rewrite_tool_names_for_provider(payload, provider)
 
     async def _iter():
@@ -2134,7 +3128,12 @@ async def route_and_forward_embeddings(model: str, body: Dict[str, Any], api_key
     raise ValueError(f"Embeddings not supported for provider type {provider.type}")
 
 
-async def forward_to_provider(provider: Any, normalized: Any, protocol: str) -> Dict[str, Any]:
+async def forward_to_provider(
+    provider: Any,
+    normalized: Any,
+    protocol: str,
+    source_headers: Any | None = None,
+) -> Dict[str, Any]:
     """Forward request to provider."""
     import httpx
 
@@ -2165,8 +3164,60 @@ async def forward_to_provider(provider: Any, normalized: Any, protocol: str) -> 
         )
         return await oauth_device.forward(normalized.original_request, protocol)
 
+    elif provider.type == "claude_cli":
+        from .providers.claude_cli import ClaudeCLIProvider
+
+        cfg = getattr(provider, "claude_cli_config", None) or {}
+        cli_provider = ClaudeCLIProvider(
+            provider_id=provider.id,
+            workdir=cfg.get("workdir"),
+            permission_mode=str(cfg.get("permission_mode", "default") or "default"),
+            cli_path=cfg.get("cli_path"),
+        )
+        return await cli_provider.forward(normalized.original_request, protocol)
+
     # Handle API Key providers (new format)
     elif provider.type == "api_key":
+        if provider.id == "minimax" and _minimax_chain(provider) == "native":
+            minimax = _build_minimax_provider(provider)
+            payload = minimax.build_messages_payload(
+                getattr(normalized, "original_request", {}) or {},
+                _canonicalize_upstream_model(provider, normalized.model),
+            )
+            headers = minimax.build_headers()
+            headers = _apply_passthrough_anthropic_headers(headers, source_headers)
+            alias_to_original = _rewrite_tool_names_for_provider(payload, provider)
+
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                resp = await client.post(
+                    f"{minimax.get_api_base_url()}/v1/messages",
+                    json=payload,
+                    headers=headers,
+                )
+
+            if resp.status_code != 200:
+                raise ValueError(f"Provider returned {resp.status_code}: {resp.text}")
+            result = _parse_json_response(resp)
+            if alias_to_original:
+                _restore_tool_names_in_response(result, alias_to_original)
+
+            raw_content = result.get("content")
+            content_blocks = raw_content if isinstance(raw_content, list) else []
+            content_text = ""
+            for block in content_blocks:
+                if isinstance(block, dict) and block.get("type") == "text":
+                    content_text += block.get("text", "")
+            return {
+                "id": result.get("id", f"msg_{uuid.uuid4().hex[:8]}"),
+                "model": normalized.model,
+                "content": content_blocks,
+                "messages": [Message(role="assistant", content=content_text)],
+                "stop_reason": result.get("stop_reason", "end_turn"),
+                "input_tokens": result.get("usage", {}).get("input_tokens", 0),
+                "output_tokens": result.get("usage", {}).get("output_tokens", 0),
+                "created": int(datetime.now().timestamp()),
+            }
+
         api_base_url, require_auth, key_env, header_name, auth_scheme = _resolve_api_key_settings(provider)
 
         # Select endpoint based on protocol
@@ -2186,6 +3237,7 @@ async def forward_to_provider(provider: Any, normalized: Any, protocol: str) -> 
             endpoint = "/v1/embeddings"
         else:
             endpoint = "/v1/chat/completions"
+
     else:
         if provider.type == "gemini":
             from .providers.gemini import GeminiProvider
@@ -2214,12 +3266,15 @@ async def forward_to_provider(provider: Any, normalized: Any, protocol: str) -> 
     # Build payload based on protocol
     if provider.type == "api_key":
         headers = _build_api_key_headers(provider, require_auth, key_env, header_name, auth_scheme)
+        headers = _apply_passthrough_anthropic_headers(headers, source_headers)
     else:
         headers = {"Content-Type": "application/json"}
 
     if effective_protocol == "messages":
-        payload = _build_anthropic_messages_payload(normalized)
+        payload = _build_anthropic_messages_payload(normalized, provider)
         headers["anthropic-version"] = "2023-06-01"
+        if provider.id == "kimi":
+            payload, headers = _apply_kimi_upstream_shape(payload, headers, source_headers)
 
     elif effective_protocol == "responses":
         # OpenAI responses format
@@ -2231,7 +3286,7 @@ async def forward_to_provider(provider: Any, normalized: Any, protocol: str) -> 
                 input_data.append({"type": "message", "role": m.get("role", "user"), "content": m.get("content", "")})
 
         payload = {
-            "model": normalized.model,
+            "model": _canonicalize_upstream_model(provider, normalized.model),
             "input": input_data,
             "stream": normalized.stream,
         }
@@ -2250,7 +3305,7 @@ async def forward_to_provider(provider: Any, normalized: Any, protocol: str) -> 
                 messages_data.append({"role": m.get("role", "user"), "content": content})
 
         payload = {
-            "model": normalized.model,
+            "model": _canonicalize_upstream_model(provider, normalized.model),
             "messages": messages_data,
             "stream": normalized.stream,
         }
@@ -2273,7 +3328,6 @@ async def forward_to_provider(provider: Any, normalized: Any, protocol: str) -> 
 
     if resp.status_code != 200:
         raise ValueError(f"Provider returned {resp.status_code}: {resp.text}")
-
     result = _parse_json_response(resp)
     if provider.type == "api_key" and alias_to_original:
         _restore_tool_names_in_response(result, alias_to_original)
@@ -2281,16 +3335,17 @@ async def forward_to_provider(provider: Any, normalized: Any, protocol: str) -> 
     # Normalize response based on effective_protocol (actual API format used)
     if effective_protocol == "messages":
         # Anthropic messages response
-        content = ""
-        if result.get("content"):
-            for block in result["content"]:
-                if block.get("type") == "text":
-                    content += block.get("text", "")
+        raw_content = result.get("content")
+        content_blocks = raw_content if isinstance(raw_content, list) else []
+        content_text = ""
+        for block in content_blocks:
+            if isinstance(block, dict) and block.get("type") == "text":
+                content_text += block.get("text", "")
         return {
             "id": result.get("id", f"msg_{uuid.uuid4().hex[:8]}"),
             "model": normalized.model,
-            "content": content,
-            "messages": [Message(role="assistant", content=content)],
+            "content": content_blocks,
+            "messages": [Message(role="assistant", content=content_text)],
             "stop_reason": result.get("stop_reason", "end_turn"),
             "input_tokens": result.get("usage", {}).get("input_tokens", 0),
             "output_tokens": result.get("usage", {}).get("output_tokens", 0),
@@ -2505,29 +3560,33 @@ async def reload_config_endpoint():
 
 @app.post("/reload-secrets")
 async def reload_secrets():
-    """Reload secrets from the runtime .env file into os.environ without restarting."""
-    env_path = "/xkagent_infra/runtime/config/.env"
+    """Reload secrets from the configured env files into os.environ without restarting."""
     updated = []
     errors = []
-    try:
-        with open(env_path) as f:
-            for line in f:
-                line = line.strip()
-                if not line or line.startswith("#"):
-                    continue
-                if "=" not in line:
-                    continue
-                key, _, val = line.partition("=")
-                key = key.strip()
-                val = val.strip().strip('"').strip("'")
-                if key:
-                    os.environ[key] = val
-                    updated.append(key)
-    except FileNotFoundError:
-        return {"ok": False, "error": f"secrets file not found: {env_path}"}
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
-    return {"ok": True, "updated": len(updated), "keys": updated}
+    for env_path in SECRETS_ENV_PATHS:
+        try:
+            with open(env_path) as f:
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith("#"):
+                        continue
+                    if "=" not in line:
+                        continue
+                    key, _, val = line.partition("=")
+                    key = key.strip()
+                    val = val.strip().strip('"').strip("'")
+                    if key:
+                        os.environ[key] = val
+                        updated.append(key)
+        except FileNotFoundError:
+            errors.append(f"secrets file not found: {env_path}")
+        except Exception as e:
+            errors.append(f"{env_path}: {e}")
+
+    if not updated:
+        return {"ok": False, "error": "; ".join(errors) or "no secrets loaded"}
+
+    return {"ok": True, "updated": len(updated), "keys": updated, "errors": errors}
 
 
 if __name__ == "__main__":
@@ -2540,6 +3599,4 @@ if __name__ == "__main__":
         port=config.port,
         log_level=config.log_level.lower(),
         reload=False,
-        workers=2,
-        limit_max_requests=1000,
     )

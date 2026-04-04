@@ -56,6 +56,6 @@ class ProviderRegistry:
     def find_by_model(self, model: str) -> Optional[BaseProvider]:
         """Find provider that supports the model."""
         for provider_config in self.config.providers:
-            if provider_config.enabled and model in provider_config.models:
+            if provider_config.enabled and provider_config.supports_model(model):
                 return self._providers.get(provider_config.id)
         return None

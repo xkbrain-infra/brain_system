@@ -46,11 +46,71 @@ DEFAULT_MCP_SERVER = {
         },
     },
 }
+_SANDBOX_MCP_SERVER_COMMANDS = {
+    "mcp-brain_ipc": "/xkagent_infra/runtime/sandbox/_services/bin/mcp/mcp-brain_ipc_c",
+    "mcp-brain_google_api": "/xkagent_infra/runtime/sandbox/_services/bin/mcp/mcp-brain-google-api",
+    "mcp-brain_task_manager": "/xkagent_infra/runtime/sandbox/_services/bin/mcp/mcp-brain_task_manager",
+}
+_SANDBOX_HOOK_BIN_DIR = "/xkagent_infra/runtime/sandbox/_services/base/hooks"
+_SANDBOX_BASE_DIR = "/xkagent_infra/runtime/sandbox/_services/base"
+_SANDBOX_INIT_PATH = "/xkagent_infra/runtime/sandbox/_services/INIT.yaml"
 
-TEMPLATE_DIR = Path("/brain/base/spec/templates/agent")
-CORE_TEMPLATE_DIR = Path("/brain/base/spec/templates/core")
-ROLE_TEMPLATE_DIR = Path("/brain/base/spec/templates/roles")
-LEGACY_TEMPLATE_DIR = Path("/brain/base/spec/templates/agent")
+_AGENT_TYPE_ALIASES = {
+    "anthropic": "claude",
+    "claude_code": "claude",
+}
+
+_CLAUDE_MODEL_ALIASES = {
+    "sonnet": "claude-sonnet-4.6",
+    "opus": "claude-opus-4.6",
+    "haiku": "claude-haiku-4.5",
+    "claude-sonnet-4-6": "claude-sonnet-4.6",
+    "claude-opus-4-6": "claude-opus-4.6",
+    "claude-haiku-4-5": "claude-haiku-4.5",
+}
+
+
+def _first_existing_path(*candidates: str) -> Path:
+    for raw in candidates:
+        path = Path(raw)
+        if path.exists():
+            return path
+    return Path(candidates[0])
+
+
+def _normalize_agent_type(agent_type: str) -> str:
+    normalized = str(agent_type or "").strip().lower()
+    if not normalized:
+        return ""
+    return _AGENT_TYPE_ALIASES.get(normalized, normalized)
+
+
+def _normalize_model_name(model: str, agent_type: str) -> str:
+    normalized_model = str(model or "").strip()
+    if not normalized_model:
+        return ""
+    normalized_type = _normalize_agent_type(agent_type)
+    if normalized_type == "claude":
+        return _CLAUDE_MODEL_ALIASES.get(normalized_model.lower(), normalized_model)
+    return normalized_model
+
+
+TEMPLATE_DIR = _first_existing_path(
+    "/brain/base/spec/templates/agent",
+    "/xkagent_infra/brain/base/spec/templates/agent",
+    "/xkagent_infra/runtime/sandbox/_services/base/spec/templates/agent",
+)
+CORE_TEMPLATE_DIR = _first_existing_path(
+    "/brain/base/spec/templates/core",
+    "/xkagent_infra/brain/base/spec/templates/core",
+    "/xkagent_infra/runtime/sandbox/_services/base/spec/templates/core",
+)
+ROLE_TEMPLATE_DIR = _first_existing_path(
+    "/brain/base/spec/templates/roles",
+    "/xkagent_infra/brain/base/spec/templates/roles",
+    "/xkagent_infra/runtime/sandbox/_services/base/spec/templates/roles",
+)
+LEGACY_TEMPLATE_DIR = TEMPLATE_DIR
 RUNTIME_MANIFEST_RELATIVE_PATH = ".brain/agent_runtime.json"
 _CONFIG_LOADER = YAMLConfigLoader()
 _MANAGED_SKILL_ENV_VARS = {
@@ -74,6 +134,44 @@ _MANAGED_BINDING_ENV_VARS = _MANAGED_SKILL_ENV_VARS | _MANAGED_LEP_ENV_VARS
 # MCP config generation
 # ------------------------------------------------------------------
 
+def _agent_tmux_session(agent_name: str, spec: dict[str, Any]) -> str:
+    session = str(spec.get("tmux_session") or "").strip()
+    sandbox_id = str(spec.get("sandbox_id") or "").strip()
+    if not sandbox_id:
+        env_map = spec.get("env") or {}
+        if isinstance(env_map, dict):
+            sandbox_id = str(env_map.get("BRAIN_SANDBOX_ID") or "").strip()
+    if sandbox_id:
+        preferred = f"sbx_{sandbox_id}__{agent_name}"
+        if not session or session == agent_name or session == preferred:
+            return preferred
+    return session or agent_name
+
+
+def _is_sandbox_spec(spec: dict[str, Any], cwd: str | None = None) -> bool:
+    sandbox_id = str(spec.get("sandbox_id") or "").strip()
+    if sandbox_id:
+        return True
+
+    env_map = spec.get("env") or {}
+    if isinstance(env_map, dict):
+        if str(env_map.get("IS_SANDBOX") or "").strip() == "1":
+            return True
+        if str(env_map.get("BRAIN_SANDBOX_ID") or "").strip():
+            return True
+
+    path = str(cwd or spec.get("cwd") or spec.get("path") or "").strip()
+    return "/runtime/sandbox/" in path
+
+
+def _default_mcp_servers_for_spec(spec: dict[str, Any], cwd: str) -> dict[str, Any]:
+    servers = copy.deepcopy(DEFAULT_MCP_SERVER)
+    if _is_sandbox_spec(spec, cwd):
+        for name, command in _SANDBOX_MCP_SERVER_COMMANDS.items():
+            if name in servers:
+                servers[name]["command"] = command
+    return servers
+
 def generate_mcp_config(
     agent_name: str,
     agent_type: str,
@@ -90,11 +188,12 @@ def generate_mcp_config(
     """
     if not agent_type or not agent_name or not cwd:
         return
+    agent_type = _normalize_agent_type(agent_type)
 
-    mcp_servers = copy.deepcopy(DEFAULT_MCP_SERVER)
+    mcp_servers = _default_mcp_servers_for_spec(spec, cwd)
     mcp_servers["mcp-brain_ipc"]["env"] = {
         "BRAIN_AGENT_NAME": agent_name,
-        "BRAIN_TMUX_SESSION": agent_name,  # session name == agent name
+        "BRAIN_TMUX_SESSION": _agent_tmux_session(agent_name, spec),
         "BRAIN_DAEMON_AUTOSTART": "0",
     }
 
@@ -149,7 +248,7 @@ def load_runtime_manifest(cwd: str) -> dict[str, Any] | None:
 
 
 def _uses_claude_cli_from_strings(agent_type: str, cli_type: str) -> bool:
-    normalized_type = str(agent_type or "").strip()
+    normalized_type = _normalize_agent_type(agent_type)
     normalized_cli = str(cli_type or "").strip().lower()
     return normalized_cli in ("claude", "claude_code") or (
         not normalized_cli
@@ -260,6 +359,33 @@ def _read_json_dict(path: Path) -> dict[str, Any]:
 def _write_json_dict(path: Path, data: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    _sync_file_to_container(path)
+
+
+def _sync_file_to_container(path: Path) -> None:
+    container = str(os.environ.get("AGENTCTL_DOCKER_CONTAINER") or "").strip()
+    if not container or not path.exists() or not path.is_file():
+        return
+
+    mkdir_proc = subprocess.run(
+        ["docker", "exec", "-i", container, "sh", "-lc", f"mkdir -p {shlex.quote(str(path.parent))}"],
+        capture_output=True,
+        text=True,
+        timeout=15,
+        check=False,
+    )
+    if mkdir_proc.returncode != 0:
+        raise RuntimeError((mkdir_proc.stderr or mkdir_proc.stdout or "").strip() or f"failed to mkdir {path.parent} in {container}")
+
+    copy_proc = subprocess.run(
+        ["docker", "cp", str(path), f"{container}:{path}"],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    if copy_proc.returncode != 0:
+        raise RuntimeError((copy_proc.stderr or copy_proc.stdout or "").strip() or f"failed to sync {path} to {container}")
 
 
 def _preseed_local_claude_bootstrap_state(cwd: str) -> None:
@@ -337,7 +463,7 @@ def preseed_claude_bootstrap_state(cwd: str, spec: dict[str, Any]) -> None:
 
 
 def _resolve_runtime_command(spec: dict[str, Any]) -> tuple[str, bool]:
-    agent_type = str(spec.get("agent_type") or "").strip()
+    agent_type = _normalize_agent_type(spec.get("agent_type") or "")
     cli_type = str(spec.get("cli_type") or spec.get("agent_cli") or "").strip().lower()
     if cli_type in ("claude", "claude_code"):
         return "claude", True
@@ -412,7 +538,7 @@ def generate_runtime_manifest(spec: dict[str, Any]) -> str | None:
     """Persist launch-time runtime details into the agent directory."""
     cwd = str(spec.get("cwd") or spec.get("path") or "").strip()
     agent_name = str(spec.get("name") or "").strip()
-    agent_type = str(spec.get("agent_type") or "").strip()
+    agent_type = _normalize_agent_type(spec.get("agent_type") or "")
     if not cwd or not agent_name or not agent_type:
         return None
 
@@ -421,55 +547,14 @@ def generate_runtime_manifest(spec: dict[str, Any]) -> str | None:
         return None
 
     cli_args = [str(arg).strip() for arg in (spec.get("cli_args") or []) if str(arg).strip()]
-    model = str(spec.get("model") or spec.get("agent_model") or "").strip()
-    initial_prompt = str(spec.get("initial_prompt") or "").strip()
-    reasoning_effort = str(spec.get("reasoning_effort") or "").strip().lower()
+    model = _normalize_model_name(str(spec.get("model") or spec.get("agent_model") or "").strip(), agent_type)
+    env_map: dict[str, str] = {}
     skill_bindings = spec.get("_skill_bindings") or {}
     lep_bindings = spec.get("_lep_bindings") or {}
-    env_map: dict[str, str] = {}
-
-    raw_env = spec.get("env") or {}
-    if isinstance(raw_env, dict):
-        for key, value in raw_env.items():
-            key = str(key).strip()
-            value = str(value).strip()
-            if key and key not in _MANAGED_BINDING_ENV_VARS:
-                env_map[key] = value
-
-    raw_export = spec.get("export_cmd") or {}
-    if isinstance(raw_export, dict):
-        for key, value in raw_export.items():
-            key = str(key).strip()
-            value = str(value).strip()
-            if key:
-                env_map[key] = value
-
-    if agent_type == "codex":
-        env_map.setdefault("CODEX_HOME", f"{cwd}/.codex")
-    elif agent_type == "kimi":
-        env_map.setdefault("KIMI_HOME", f"{cwd}/.kimi")
-
-    # Claude Code launch-time env must include the same transport env as settings.local.json.
-    # Otherwise proxy mode silently falls back to direct because runtime.env wins at process start.
-    if use_claude_cli:
-        for key, value in _build_settings_env(agent_type, spec).items():
-            if key not in _MANAGED_BINDING_ENV_VARS and value:
-                env_map[key] = value
-
     resolved_skills = [str(item).strip() for item in (skill_bindings.get("resolved_skills") or []) if str(item).strip()]
     role_skills = [str(item).strip() for item in (skill_bindings.get("role_skills") or []) if str(item).strip()]
     agent_skills = [str(item).strip() for item in (skill_bindings.get("agent_skills") or []) if str(item).strip()]
     workflow_skills = [str(item).strip() for item in (skill_bindings.get("workflow_skills") or []) if str(item).strip()]
-    if resolved_skills:
-        env_map["BRAIN_SKILL_BINDINGS_FILE"] = str(skill_bindings.get("source") or "")
-        env_map["BRAIN_ENABLED_SKILLS"] = ",".join(resolved_skills)
-        if role_skills:
-            env_map["BRAIN_ROLE_DEFAULT_SKILLS"] = ",".join(role_skills)
-        if agent_skills:
-            env_map["BRAIN_AGENT_EXTRA_SKILLS"] = ",".join(agent_skills)
-        if workflow_skills:
-            env_map["BRAIN_WORKFLOW_REQUIRED_SKILLS"] = ",".join(workflow_skills)
-
     resolved_lep_profiles = [
         str(item).strip() for item in (lep_bindings.get("resolved_lep_profiles") or []) if str(item).strip()
     ]
@@ -482,15 +567,48 @@ def generate_runtime_manifest(spec: dict[str, Any]) -> str | None:
     workflow_lep_profiles = [
         str(item).strip() for item in (lep_bindings.get("workflow_lep_profiles") or []) if str(item).strip()
     ]
-    if resolved_lep_profiles:
-        env_map["BRAIN_LEP_BINDINGS_FILE"] = str(lep_bindings.get("source") or "")
-        env_map["BRAIN_ENABLED_LEP_PROFILES"] = ",".join(resolved_lep_profiles)
-        if role_lep_profiles:
-            env_map["BRAIN_ROLE_DEFAULT_LEP_PROFILES"] = ",".join(role_lep_profiles)
-        if agent_lep_profiles:
-            env_map["BRAIN_AGENT_EXTRA_LEP_PROFILES"] = ",".join(agent_lep_profiles)
-        if workflow_lep_profiles:
-            env_map["BRAIN_WORKFLOW_REQUIRED_LEP_PROFILES"] = ",".join(workflow_lep_profiles)
+
+    if not use_claude_cli:
+        raw_env = spec.get("env") or {}
+        if isinstance(raw_env, dict):
+            for key, value in raw_env.items():
+                key = str(key).strip()
+                value = str(value).strip()
+                if key and key not in _MANAGED_BINDING_ENV_VARS:
+                    env_map[key] = value
+
+        raw_export = spec.get("export_cmd") or {}
+        if isinstance(raw_export, dict):
+            for key, value in raw_export.items():
+                key = str(key).strip()
+                value = str(value).strip()
+                if key:
+                    env_map[key] = value
+
+        if agent_type == "codex":
+            env_map.setdefault("CODEX_HOME", f"{cwd}/.codex")
+        elif agent_type == "kimi":
+            env_map.setdefault("KIMI_HOME", f"{cwd}/.kimi")
+
+        if resolved_skills:
+            env_map["BRAIN_SKILL_BINDINGS_FILE"] = str(skill_bindings.get("source") or "")
+            env_map["BRAIN_ENABLED_SKILLS"] = ",".join(resolved_skills)
+            if role_skills:
+                env_map["BRAIN_ROLE_DEFAULT_SKILLS"] = ",".join(role_skills)
+            if agent_skills:
+                env_map["BRAIN_AGENT_EXTRA_SKILLS"] = ",".join(agent_skills)
+            if workflow_skills:
+                env_map["BRAIN_WORKFLOW_REQUIRED_SKILLS"] = ",".join(workflow_skills)
+
+        if resolved_lep_profiles:
+            env_map["BRAIN_LEP_BINDINGS_FILE"] = str(lep_bindings.get("source") or "")
+            env_map["BRAIN_ENABLED_LEP_PROFILES"] = ",".join(resolved_lep_profiles)
+            if role_lep_profiles:
+                env_map["BRAIN_ROLE_DEFAULT_LEP_PROFILES"] = ",".join(role_lep_profiles)
+            if agent_lep_profiles:
+                env_map["BRAIN_AGENT_EXTRA_LEP_PROFILES"] = ",".join(agent_lep_profiles)
+            if workflow_lep_profiles:
+                env_map["BRAIN_WORKFLOW_REQUIRED_LEP_PROFILES"] = ",".join(workflow_lep_profiles)
 
     raw_env_spec = spec.get("env") or {}
     spec_sandbox_flag = ""
@@ -501,26 +619,17 @@ def generate_runtime_manifest(spec: dict[str, Any]) -> str | None:
     sandbox_flag = str(env_map.get("IS_SANDBOX") or spec_sandbox_flag or "").strip()
     if model and not use_claude_cli and agent_type in ("kimi", "gemini"):
         args.extend(["--model", model])
-    if use_claude_cli and reasoning_effort and "--effort" not in cli_args:
-        args.extend(["--effort", reasoning_effort])
-
-    if agent_type == "kimi" and not use_claude_cli:
+    if use_claude_cli:
+        args = ["--dangerously-skip-permissions"]
+    elif agent_type == "kimi" and not use_claude_cli:
         args.extend(["--mcp-config-file", f"{cwd}/.kimi/mcp.json"])
         kimi_subcommand = str(spec.get("kimi_subcommand") or "").strip()
         args.append(kimi_subcommand or "acp")
-
-    args.extend(cli_args)
-    initial_prompt = _strip_managed_prompt_block(initial_prompt, "[Brain Skill Bindings]")
-    initial_prompt = _strip_managed_prompt_block(initial_prompt, "[Brain LEP Profiles]")
-    skill_prompt = _build_skill_bindings_initial_prompt(skill_bindings)
-    lep_prompt = _build_lep_profiles_initial_prompt(lep_bindings)
-    if use_claude_cli:
-        managed_prompts = [prompt for prompt in (skill_prompt, lep_prompt) if prompt]
-        if managed_prompts:
-            managed_block = "\n\n".join(managed_prompts)
-            initial_prompt = f"{initial_prompt}\n\n{managed_block}".strip() if initial_prompt else managed_block
-    if initial_prompt and use_claude_cli:
-        args.append(initial_prompt)
+        args.extend(cli_args)
+    else:
+        if model and agent_type in ("kimi", "gemini"):
+            args.extend(["--model", model])
+        args.extend(cli_args)
 
     payload = {
         "version": 1,
@@ -551,6 +660,7 @@ def generate_runtime_manifest(spec: dict[str, Any]) -> str | None:
     path = runtime_manifest_path(cwd)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    _sync_file_to_container(path)
     return str(path)
 
 
@@ -612,6 +722,7 @@ def _write_claude_mcp(cwd: str, mcp_servers: dict[str, Any]) -> None:
     mcp_path = Path(cwd) / ".mcp.json"
     mcp_payload = {"mcpServers": mcp_servers}
     mcp_path.write_text(json.dumps(mcp_payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    _sync_file_to_container(mcp_path)
 
 
 def _write_codex_mcp(cwd: str, mcp_servers: dict[str, Any], spec: dict[str, Any]) -> None:
@@ -624,6 +735,7 @@ def _write_codex_mcp(cwd: str, mcp_servers: dict[str, Any], spec: dict[str, Any]
     mcp_path = Path(cwd) / ".mcp.json"
     mcp_payload = {"mcpServers": mcp_servers}
     mcp_path.write_text(json.dumps(mcp_payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    _sync_file_to_container(mcp_path)
 
     # Then write .codex/config.toml
     codex_home = Path(cwd) / ".codex"
@@ -677,6 +789,7 @@ def _write_codex_mcp(cwd: str, mcp_servers: dict[str, Any], spec: dict[str, Any]
 
     lines.append("")
     config_path.write_text("\n".join(lines))
+    _sync_file_to_container(config_path)
 
 
 def _write_kimi_mcp(cwd: str, mcp_servers: dict[str, Any], spec: dict[str, Any]) -> None:
@@ -740,10 +853,12 @@ def _write_kimi_mcp(cwd: str, mcp_servers: dict[str, Any], spec: dict[str, Any])
 
     lines.append("")
     config_path.write_text("\n".join(lines), encoding="utf-8")
+    _sync_file_to_container(config_path)
 
     # Kimi CLI interactive MCP registry
     mcp_payload = {"mcpServers": mcp_servers}
     mcp_path.write_text(json.dumps(mcp_payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    _sync_file_to_container(mcp_path)
 
 
 def _write_gemini_mcp(cwd: str, mcp_servers: dict[str, Any], spec: dict[str, Any]) -> None:
@@ -792,6 +907,7 @@ def _write_gemini_mcp(cwd: str, mcp_servers: dict[str, Any], spec: dict[str, Any
         }
     }
     settings_path.write_text(json.dumps(settings, ensure_ascii=False, indent=2), encoding="utf-8")
+    _sync_file_to_container(settings_path)
 
 
 # ------------------------------------------------------------------
@@ -1048,6 +1164,9 @@ def generate_claude_md(
     # Process conditionals
     rendered = _process_conditionals(rendered, role)
 
+    if _is_sandbox_spec(spec, cwd):
+        rendered = _sandboxize_markdown_paths(rendered)
+
     # Append resolved skill bindings for visibility in generated agent docs.
     resolved_skills = list((bound_skills or {}).get("resolved_skills") or [])
     if resolved_skills:
@@ -1062,6 +1181,14 @@ def generate_claude_md(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(rendered, encoding="utf-8")
     return str(output_path)
+
+
+def _sandboxize_markdown_paths(rendered: str) -> str:
+    return (
+        rendered
+        .replace("/brain/INIT.yaml", _SANDBOX_INIT_PATH)
+        .replace("/brain/base", _SANDBOX_BASE_DIR)
+    )
 
 
 # ------------------------------------------------------------------
@@ -1323,6 +1450,13 @@ def resolve_proxy_base_url_for_launch(sandbox_flag: str, *, target_in_container:
         return "http://host.docker.internal:8210"
     return "http://127.0.0.1:8210"
 
+
+def _settings_target_in_container(spec: dict[str, Any]) -> bool:
+    if str(os.environ.get("AGENTCTL_DOCKER_CONTAINER") or "").strip():
+        return True
+    cwd = str(spec.get("cwd") or spec.get("path") or "").strip()
+    return _is_sandbox_spec(spec, cwd)
+
 # agent_type -> provider_id in brain_agent_proxy (proxy-first defaults)
 _AGENT_TYPE_PROXY_PROVIDER_MAP: dict[str, str] = {
     "claude": "claude",
@@ -1462,7 +1596,8 @@ def _resolve_model_name(spec: dict[str, Any]) -> str:
 
     Registry model might be 'kimi-code/kimi-for-coding' — extract the short name.
     """
-    model = str(spec.get("model") or "").strip()
+    agent_type = _normalize_agent_type(spec.get("agent_type") or "")
+    model = _normalize_model_name(str(spec.get("model") or "").strip(), agent_type)
     if "/" in model:
         return model.split("/")[-1]
     return model
@@ -1491,6 +1626,7 @@ def _build_proxy_auth_token(agent_type: str, spec: dict[str, Any]) -> str:
     The token is only a client identifier for proxy-side registry lookup.
     It must not encode provider/model semantics.
     """
+    agent_type = _normalize_agent_type(agent_type)
     provider = _AGENT_TYPE_PROXY_PROVIDER_MAP.get(agent_type, "").strip()
     if not provider:
         return ""
@@ -1511,6 +1647,7 @@ def _build_model_selector(agent_type: str, spec: dict[str, Any]) -> str:
     Format: provider/model
     Example: minimax/MiniMax-M2.5
     """
+    agent_type = _normalize_agent_type(agent_type)
     model_name = _resolve_model_name(spec)
     if _resolve_transport_mode(spec) == "direct":
         return model_name
@@ -1524,6 +1661,7 @@ def _build_model_selector(agent_type: str, spec: dict[str, Any]) -> str:
 
 def _uses_claude_cli(agent_type: str, spec: dict[str, Any]) -> bool:
     """Return whether this agent runs through Claude Code CLI."""
+    agent_type = _normalize_agent_type(agent_type)
     cli_type = str(spec.get("cli_type") or spec.get("agent_cli") or "").strip().lower()
     if cli_type in ("claude", "claude_code"):
         return True
@@ -1544,7 +1682,7 @@ def _uses_claude_cli(agent_type: str, spec: dict[str, Any]) -> bool:
 
 def _build_proxy_client_entry(group_name: str, spec: dict[str, Any]) -> tuple[str, dict[str, str]] | None:
     """Build one proxy client mapping entry from an agent registry spec."""
-    agent_type = str(spec.get("agent_type") or "").strip()
+    agent_type = _normalize_agent_type(spec.get("agent_type") or "")
     if not agent_type or not _uses_claude_cli(agent_type, spec):
         return None
     if _resolve_transport_mode(spec) != "proxy":
@@ -1647,6 +1785,7 @@ def _resolve_transport_mode(spec: dict[str, Any]) -> str:
 
 
 def _build_settings_env(agent_type: str, spec: dict[str, Any]) -> dict[str, str]:
+    agent_type = _normalize_agent_type(agent_type)
     """Build env dict for settings.local.json.
 
     For non-claude agent_types running via Claude Code CLI, injects:
@@ -1663,7 +1802,7 @@ def _build_settings_env(agent_type: str, spec: dict[str, Any]) -> dict[str, str]
     proxy_token = _build_proxy_auth_token(agent_type, spec)
     if proxy_token and transport_mode != "direct":
         sandbox_flag = str(spec.get("env", {}).get("IS_SANDBOX") or os.environ.get("IS_SANDBOX") or "").strip()
-        target_in_container = bool(str(os.environ.get("AGENTCTL_DOCKER_CONTAINER") or "").strip())
+        target_in_container = _settings_target_in_container(spec)
         default_proxy_url = resolve_proxy_base_url_for_launch(
             sandbox_flag,
             target_in_container=target_in_container,
@@ -1720,15 +1859,12 @@ def _build_settings_env(agent_type: str, spec: dict[str, Any]) -> dict[str, str]
 
 def _build_mcp_servers(agent_name: str, spec: dict[str, Any]) -> dict[str, Any]:
     """Build mcpServers config for settings.local.json."""
-    mcp_servers: dict[str, Any] = {
-        "mcp-brain_ipc": {
-            "command": DEFAULT_MCP_SERVER["mcp-brain_ipc"]["command"],
-            "args": [],
-            "env": {
-                "BRAIN_AGENT_NAME": agent_name,
-                "BRAIN_DAEMON_AUTOSTART": "0",
-            },
-        },
+    cwd = str(spec.get("cwd") or spec.get("path") or "").strip()
+    mcp_servers = _default_mcp_servers_for_spec(spec, cwd)
+    mcp_servers["mcp-brain_ipc"]["env"] = {
+        "BRAIN_AGENT_NAME": agent_name,
+        "BRAIN_TMUX_SESSION": _agent_tmux_session(agent_name, spec),
+        "BRAIN_DAEMON_AUTOSTART": "0",
     }
     # Merge extra mcp_servers from registry spec
     extra = spec.get("mcp_servers") or {}
@@ -1790,49 +1926,23 @@ def _generate_settings_local(
         "defaultMode": permission_mode,
     }
 
-    # 2. Env (non-claude agent types need API credential + model mapping)
+    # 2. Claude Code CLI provider/model routing lives in settings.local.json.
     env_map = _build_settings_env(agent_type, spec)
     if env_map:
         settings["env"] = env_map
-    elif agent_type == "claude" and transport_mode == "direct":
+    else:
         settings.pop("env", None)
-    elif "env" in settings and isinstance(settings["env"], dict):
-        settings["env"] = dict(settings["env"])
 
-    settings.setdefault("env", {})
-    if isinstance(settings["env"], dict):
+    if isinstance(settings.get("env"), dict):
         for key in _MANAGED_BINDING_ENV_VARS:
             settings["env"].pop(key, None)
 
     skill_bindings = spec.get("_skill_bindings") or {}
-    resolved_skills = skill_bindings.get("resolved_skills") or []
-    if resolved_skills:
-        settings["env"]["BRAIN_SKILL_BINDINGS_FILE"] = str(skill_bindings.get("source") or "")
-        settings["env"]["BRAIN_ENABLED_SKILLS"] = ",".join(resolved_skills)
-        role_skills = skill_bindings.get("role_skills") or []
-        agent_skills = skill_bindings.get("agent_skills") or []
-        workflow_skills = skill_bindings.get("workflow_skills") or []
-        if role_skills:
-            settings["env"]["BRAIN_ROLE_DEFAULT_SKILLS"] = ",".join(role_skills)
-        if agent_skills:
-            settings["env"]["BRAIN_AGENT_EXTRA_SKILLS"] = ",".join(agent_skills)
-        if workflow_skills:
-            settings["env"]["BRAIN_WORKFLOW_REQUIRED_SKILLS"] = ",".join(workflow_skills)
-
     lep_bindings = spec.get("_lep_bindings") or {}
-    resolved_lep_profiles = lep_bindings.get("resolved_lep_profiles") or []
-    if resolved_lep_profiles:
-        settings["env"]["BRAIN_LEP_BINDINGS_FILE"] = str(lep_bindings.get("source") or "")
-        settings["env"]["BRAIN_ENABLED_LEP_PROFILES"] = ",".join(resolved_lep_profiles)
-        role_lep_profiles = lep_bindings.get("role_lep_profiles") or []
-        agent_lep_profiles = lep_bindings.get("agent_lep_profiles") or []
-        workflow_lep_profiles = lep_bindings.get("workflow_lep_profiles") or []
-        if role_lep_profiles:
-            settings["env"]["BRAIN_ROLE_DEFAULT_LEP_PROFILES"] = ",".join(role_lep_profiles)
-        if agent_lep_profiles:
-            settings["env"]["BRAIN_AGENT_EXTRA_LEP_PROFILES"] = ",".join(agent_lep_profiles)
-        if workflow_lep_profiles:
-            settings["env"]["BRAIN_WORKFLOW_REQUIRED_LEP_PROFILES"] = ",".join(workflow_lep_profiles)
+    resolved_lep_profiles = [str(item).strip() for item in (lep_bindings.get("resolved_lep_profiles") or []) if str(item).strip()]
+    role_lep_profiles = [str(item).strip() for item in (lep_bindings.get("role_lep_profiles") or []) if str(item).strip()]
+    agent_lep_profiles = [str(item).strip() for item in (lep_bindings.get("agent_lep_profiles") or []) if str(item).strip()]
+    workflow_lep_profiles = [str(item).strip() for item in (lep_bindings.get("workflow_lep_profiles") or []) if str(item).strip()]
 
     # 3. Status line
     settings["statusLine"] = copy.deepcopy(_STATUS_LINE)
@@ -1859,9 +1969,10 @@ def _generate_settings_local(
     if hooks_list:
         hooks_config: dict[str, Any] = {}
 
-        # hooks 部署路径：/brain/base/hooks/ 是当前唯一有效路径
-        # hooks_version pinning 已废弃（agent_abilities 构建系统不再使用）
-        hook_bin_dir = "/brain/base/hooks"
+        if _is_sandbox_spec(spec, cwd):
+            hook_bin_dir = _SANDBOX_HOOK_BIN_DIR
+        else:
+            hook_bin_dir = "/brain/base/hooks"
 
         role_group = f"{role}-{group}" if role and group else role or "default"
         scope_path = str(_resolve_group_scope_path(group))
@@ -1873,19 +1984,26 @@ def _generate_settings_local(
             "BRAIN_AGENT_GROUP": group or "",
             "BRAIN_SCOPE_PATH": scope_path,
         }
-        project_id = settings.get("env", {}).get("BRAIN_PROJECT_ID") if isinstance(settings.get("env"), dict) else None
-        sandbox_id = settings.get("env", {}).get("BRAIN_SANDBOX_ID") if isinstance(settings.get("env"), dict) else None
-        agent_scope = settings.get("env", {}).get("BRAIN_AGENT_SCOPE") if isinstance(settings.get("env"), dict) else None
+        if _is_sandbox_spec(spec, cwd):
+            hook_env["HOOK_ROOT"] = _SANDBOX_HOOK_BIN_DIR
+        project_id = str(spec.get("project") or spec.get("project_id") or "").strip() or None
+        sandbox_id = str(spec.get("sandbox_id") or "").strip() or None
+        agent_scope = str(spec.get("scope") or "").strip() or None
         if project_id:
             hook_env["BRAIN_PROJECT_ID"] = str(project_id)
         if sandbox_id:
             hook_env["BRAIN_SANDBOX_ID"] = str(sandbox_id)
         if agent_scope:
             hook_env["BRAIN_AGENT_SCOPE"] = str(agent_scope)
-        for key in _MANAGED_LEP_ENV_VARS:
-            value = settings.get("env", {}).get(key) if isinstance(settings.get("env"), dict) else None
-            if value:
-                hook_env[key] = value
+        if resolved_lep_profiles:
+            hook_env["BRAIN_LEP_BINDINGS_FILE"] = str(lep_bindings.get("source") or "")
+            hook_env["BRAIN_ENABLED_LEP_PROFILES"] = ",".join(resolved_lep_profiles)
+        if role_lep_profiles:
+            hook_env["BRAIN_ROLE_DEFAULT_LEP_PROFILES"] = ",".join(role_lep_profiles)
+        if agent_lep_profiles:
+            hook_env["BRAIN_AGENT_EXTRA_LEP_PROFILES"] = ",".join(agent_lep_profiles)
+        if workflow_lep_profiles:
+            hook_env["BRAIN_WORKFLOW_REQUIRED_LEP_PROFILES"] = ",".join(workflow_lep_profiles)
 
         if "pre_tool_use" in hooks_list:
             hooks_config["PreToolUse"] = [{
@@ -1953,4 +2071,5 @@ def _generate_settings_local(
         json.dumps(settings, indent=2, ensure_ascii=False) + "\n",
         encoding="utf-8",
     )
+    _sync_file_to_container(settings_path)
     return str(settings_path)

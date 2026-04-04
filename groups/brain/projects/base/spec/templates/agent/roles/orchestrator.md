@@ -147,20 +147,22 @@ phase_playbook:
 ### 4. Worker Spawn 协议
 
 ```yaml
-spawn_protocol:
+  spawn_protocol:
   naming:
     format: "agent_{group_id}_{project_key}_{role_key}_{slot}"
     example: "agent_brain_dashboard_developer_01"
     slot_rule: "同 role 多实例时递增序号，两位数字"
 
   pre_spawn_checklist:
-    - "mkdir -p /xkagent_infra/runtime/sandbox/{sandbox_id}/agents/{agent_id}"
-    - "从 template_bundle 渲染 provider-specific config（AGENTS.md / .mcp.json）"
-    - "写入 runtime_meta.yaml（含 project_id / sandbox_id / orchestrator_id）"
-    - "在 sandbox registry bridge 注册 agent entry"
+    - "确定 agent_id / role / slot，避免与现有 project agent 重名"
+    - "确认 sandbox-local registry bridge 可写：/xkagent_infra/runtime/sandbox/{sandbox_id}/config/agentctl/agents_registry.yaml"
+    - "根据目标 provider/model 准备 add 参数；若 profile 输出 provider/model 组合，先拆成 --agent-type 与 --model"
+    - "仅在 agent 不存在时执行 agentctl add；已存在 agent 只执行 start/restart"
 
   spawn_command:
-    method: "agentctl start --apply {agent_id}"
+    create: "agentctl add {agent_id} --group {group_id} --role {role_key} --agent-type <provider> --model <model_name> --scope project --project {project_id} --sandbox-id {sandbox_id} --desired-state stopped --apply"
+    start: "agentctl start {agent_id} --apply"
+    cleanup: "临时 validator / smoke agent 用完后执行 agentctl purge {agent_id} --apply --force"
     forbidden: "禁止直接 tmux new-session 绕过 agentctl"
 
   context_injection:
@@ -310,9 +312,11 @@ forbidden:
   - "kill -9 worker 进程"
 
 correct:
+  create:  "agentctl add {agent_id} --group {group_id} --role {role_key} --agent-type <provider> --model <model_name> --scope project --project {project_id} --sandbox-id {sandbox_id} --desired-state stopped --apply"
   start:   "agentctl start --apply {agent_id}"
   stop:    "agentctl stop --apply {agent_id}"
   restart: "agentctl restart --apply {agent_id}"
+  purge:   "agentctl purge --apply --force {agent_id}"
 ```
 
 ### G-DISPATCH-PERSIST - 先持久化再 dispatch

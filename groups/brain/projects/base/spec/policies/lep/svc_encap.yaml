@@ -30,7 +30,7 @@ enforcement:
     Agent 应通过 CLI 黑盒方式使用服务，不应读取其 Python 实现。
 
     ✅ 正确操作：
-    ▸ 通过 CLI 接口使用服务（agentctl、brain-publish 等）
+    ▸ 通过 CLI 接口使用服务（agentctl、brain-publish 等；brain-publish 负责整个 Brain 内部发布入口）
     ▸ 读取服务配置文件：/brain/infrastructure/service/*/config/**
     ▸ 需要修改服务行为：走 pending 流程提交 brain-manager 审核
 

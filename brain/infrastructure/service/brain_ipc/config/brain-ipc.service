@@ -5,7 +5,7 @@ Documentation=file:///brain/base/knowledge/architecture/ipc_guide.md
 
 [Service]
 Type=simple
-ExecStart=/xkagent_infra/brain/infrastructure/service/brain_ipc/bin/brain_ipc_wrapper.sh
+ExecStart=/xkagent_infra/brain/infrastructure/service/brain_ipc/bin/brain_ipc
 Restart=always
 RestartSec=3
 StandardOutput=journal

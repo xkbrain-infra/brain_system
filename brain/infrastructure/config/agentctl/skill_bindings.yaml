@@ -16,14 +16,9 @@ skill_bindings:
   roles:
     manager:
       default_skills:
-        - preset
-        - brain-publish
         - lep
-        - agentctl
         - ipc
         - workflow-orchestrator
-        - task-manager
-        - spawn-orchestrator
 
     pmo:
       default_skills:
@@ -71,10 +66,6 @@ skill_bindings:
         - task-manager
 
   agents:
-    agent-brain_manager:
-      extra_skills:
-        - validate-alignment
-
     agent-brain_codex_foos:
       extra_skills:
         - doc-search

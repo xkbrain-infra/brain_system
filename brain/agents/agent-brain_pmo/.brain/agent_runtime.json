@@ -32,27 +32,9 @@
   "runtime": {
     "command": "claude",
     "args": [
-      "--dangerously-skip-permissions",
-      "[Brain Skill Bindings]\nEnabled skills: lep, ipc, task-manager, spawn-orchestrator.\nWhen a task matches these skills or the bound workflow, load and follow the corresponding skill before execution.\nRole defaults: lep, ipc, task-manager, spawn-orchestrator.\n\n[Brain LEP Profiles]\nEnabled LEP profiles: delivery-governance.\nThese LEP profiles tighten hook enforcement and should be treated as mandatory operating constraints.\nRole defaults: delivery-governance."
+      "--dangerously-skip-permissions"
     ],
-    "env": {
-      "BRAIN_AGENT_SCOPE": "group",
-      "ANTHROPIC_BASE_URL": "http://127.0.0.1:8210",
-      "ANTHROPIC_AUTH_TOKEN": "bgw-client-v1-f7be31cba1b6db9b2b6294dc97104f0d",
-      "ANTHROPIC_MODEL": "minimax/minimax-m2.7",
-      "ANTHROPIC_SMALL_FAST_MODEL": "minimax/minimax-m2.7",
-      "ANTHROPIC_DEFAULT_SONNET_MODEL": "minimax/minimax-m2.7",
-      "ANTHROPIC_DEFAULT_OPUS_MODEL": "minimax/minimax-m2.7",
-      "ANTHROPIC_DEFAULT_HAIKU_MODEL": "minimax/minimax-m2.7",
-      "API_TIMEOUT_MS": "3000000",
-      "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
-      "BRAIN_SKILL_BINDINGS_FILE": "/xkagent_infra/brain/infrastructure/config/agentctl/skill_bindings.yaml",
-      "BRAIN_ENABLED_SKILLS": "lep,ipc,task-manager,spawn-orchestrator",
-      "BRAIN_ROLE_DEFAULT_SKILLS": "lep,ipc,task-manager,spawn-orchestrator",
-      "BRAIN_LEP_BINDINGS_FILE": "/xkagent_infra/brain/infrastructure/config/agentctl/lep_bindings.yaml",
-      "BRAIN_ENABLED_LEP_PROFILES": "delivery-governance",
-      "BRAIN_ROLE_DEFAULT_LEP_PROFILES": "delivery-governance"
-    },
+    "env": {},
     "agent_type": "minimax",
     "use_claude_cli": true
   }

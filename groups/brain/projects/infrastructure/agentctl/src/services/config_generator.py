@@ -28,6 +28,19 @@ DEFAULT_MCP_SERVER = {
             "GOOGLE_CREDENTIALS_PATH": "/brain/secrets/brain_google_api/credentials.json",
         },
     },
+    "mcp-brain_task_manager": {
+        "command": "/brain/infrastructure/service/brain_task_manager/bin/mcp-brain_task_manager",
+        "args": [],
+        "env": {
+            "TASK_MANAGER_SERVICE": "service-brain_task_manager",
+            "DAEMON_SOCKET": "/tmp/brain_ipc.sock",
+        },
+    },
+}
+_SANDBOX_MCP_SERVER_COMMANDS = {
+    "mcp-brain_ipc_c": "/xkagent_infra/runtime/sandbox/_services/bin/mcp/mcp-brain_ipc_c",
+    "mcp-brain_google_api": "/xkagent_infra/runtime/sandbox/_services/bin/mcp/mcp-brain-google-api",
+    "mcp-brain_task_manager": "/xkagent_infra/runtime/sandbox/_services/bin/mcp/mcp-brain_task_manager",
 }
 
 TEMPLATE_DIR = Path("/brain/base/spec/templates/agent")
@@ -57,6 +70,35 @@ _MANAGED_BINDING_ENV_VARS = _MANAGED_SKILL_ENV_VARS | _MANAGED_LEP_ENV_VARS
 # MCP config generation
 # ------------------------------------------------------------------
 
+def _agent_tmux_session(agent_name: str, spec: dict[str, Any]) -> str:
+    session = str(spec.get("tmux_session") or "").strip()
+    return session or agent_name
+
+
+def _is_sandbox_spec(spec: dict[str, Any], cwd: str | None = None) -> bool:
+    sandbox_id = str(spec.get("sandbox_id") or "").strip()
+    if sandbox_id:
+        return True
+
+    env_map = spec.get("env") or {}
+    if isinstance(env_map, dict):
+        if str(env_map.get("IS_SANDBOX") or "").strip() == "1":
+            return True
+        if str(env_map.get("BRAIN_SANDBOX_ID") or "").strip():
+            return True
+
+    path = str(cwd or spec.get("cwd") or spec.get("path") or "").strip()
+    return "/runtime/sandbox/" in path
+
+
+def _default_mcp_servers_for_spec(spec: dict[str, Any], cwd: str) -> dict[str, Any]:
+    servers = copy.deepcopy(DEFAULT_MCP_SERVER)
+    if _is_sandbox_spec(spec, cwd):
+        for name, command in _SANDBOX_MCP_SERVER_COMMANDS.items():
+            if name in servers:
+                servers[name]["command"] = command
+    return servers
+
 def generate_mcp_config(
     agent_name: str,
     agent_type: str,
@@ -74,10 +116,10 @@ def generate_mcp_config(
     if not agent_type or not agent_name or not cwd:
         return
 
-    mcp_servers = copy.deepcopy(DEFAULT_MCP_SERVER)
+    mcp_servers = _default_mcp_servers_for_spec(spec, cwd)
     mcp_servers["mcp-brain_ipc_c"]["env"] = {
         "BRAIN_AGENT_NAME": agent_name,
-        "BRAIN_TMUX_SESSION": agent_name,  # session name == agent name
+        "BRAIN_TMUX_SESSION": _agent_tmux_session(agent_name, spec),
         "BRAIN_DAEMON_AUTOSTART": "0",
     }
 
@@ -1153,6 +1195,13 @@ def _resolve_transport_mode(spec: dict[str, Any]) -> str:
     return "proxy"
 
 
+def _settings_target_in_container(spec: dict[str, Any]) -> bool:
+    if str(os.environ.get("AGENTCTL_DOCKER_CONTAINER") or "").strip():
+        return True
+    cwd = str(spec.get("cwd") or spec.get("path") or "").strip()
+    return _is_sandbox_spec(spec, cwd)
+
+
 def _build_settings_env(agent_type: str, spec: dict[str, Any]) -> dict[str, str]:
     """Build env dict for settings.local.json.
 
@@ -1169,7 +1218,12 @@ def _build_settings_env(agent_type: str, spec: dict[str, Any]) -> dict[str, str]
     # 1. Proxy-first defaults for provider-backed agent types.
     proxy_token = _build_proxy_auth_token(agent_type, spec)
     if proxy_token and transport_mode != "direct":
-        env["ANTHROPIC_BASE_URL"] = os.environ.get("BRAIN_PROXY_BASE_URL", "http://127.0.0.1:8210")
+        if str(os.environ.get("BRAIN_PROXY_BASE_URL") or "").strip():
+            env["ANTHROPIC_BASE_URL"] = str(os.environ.get("BRAIN_PROXY_BASE_URL") or "").strip()
+        elif _settings_target_in_container(spec):
+            env["ANTHROPIC_BASE_URL"] = "http://host.docker.internal:8210"
+        else:
+            env["ANTHROPIC_BASE_URL"] = "http://127.0.0.1:8210"
         env["ANTHROPIC_AUTH_TOKEN"] = proxy_token
     else:
         # 1b. Legacy direct mode for non-proxy agent types.
@@ -1207,15 +1261,12 @@ def _build_settings_env(agent_type: str, spec: dict[str, Any]) -> dict[str, str]
 
 def _build_mcp_servers(agent_name: str, spec: dict[str, Any]) -> dict[str, Any]:
     """Build mcpServers config for settings.local.json."""
-    mcp_servers: dict[str, Any] = {
-        "mcp-brain_ipc_c": {
-            "command": DEFAULT_MCP_SERVER["mcp-brain_ipc_c"]["command"],
-            "args": [],
-            "env": {
-                "BRAIN_AGENT_NAME": agent_name,
-                "BRAIN_DAEMON_AUTOSTART": "0",
-            },
-        },
+    cwd = str(spec.get("cwd") or spec.get("path") or "").strip()
+    mcp_servers = _default_mcp_servers_for_spec(spec, cwd)
+    mcp_servers["mcp-brain_ipc_c"]["env"] = {
+        "BRAIN_AGENT_NAME": agent_name,
+        "BRAIN_TMUX_SESSION": _agent_tmux_session(agent_name, spec),
+        "BRAIN_DAEMON_AUTOSTART": "0",
     }
     # Merge extra mcp_servers from registry spec
     extra = spec.get("mcp_servers") or {}

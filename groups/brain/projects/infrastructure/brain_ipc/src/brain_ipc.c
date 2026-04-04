@@ -55,6 +55,9 @@ static const char *TMUX_AGENT_PREFIXES[] = {"claude", "codex", "codex-cli", NULL
 
 // Global state
 static volatile int g_shutdown = 0;
+static volatile sig_atomic_t g_shutdown_signal = 0;
+static volatile sig_atomic_t g_shutdown_sender_pid = -1;
+static volatile sig_atomic_t g_shutdown_sender_uid = -1;
 static MsgQueue g_msgqueue;
 static AgentRegistry g_registry;
 static DelayedQueue g_delayed_queue;
@@ -185,6 +188,7 @@ static void notify_server_start(void) {
         close(fd);
         return;
     }
+    chmod(g_notify_socket_path, 0666);
     if (listen(fd, 64) < 0) {
         ipc_log("WARN", "notify listen() failed: %s", strerror(errno));
         close(fd);
@@ -535,9 +539,14 @@ static int phase2_security_check(json_t *data, const char **error_msg) {
     return 1;
 }
 
-static void signal_handler(int sig) {
-    (void)sig;
+static void signal_handler(int sig, siginfo_t *info, void *ucontext) {
+    (void)ucontext;
     g_shutdown = 1;
+    g_shutdown_signal = sig;
+    if (info) {
+        g_shutdown_sender_pid = info->si_pid;
+        g_shutdown_sender_uid = info->si_uid;
+    }
 }
 
 // ============ JSON Helpers ============
@@ -952,8 +961,8 @@ static void tmux_notify(const char *pane, const char *from, const char *msg_id) 
     if (pid == 0) {
         char prompt[512];
         snprintf(prompt, sizeof(prompt),
-            "[IPC] New message from %s (msg_id=%s). Call ipc_recv to get messages, then ipc_send to reply. These are MCP tools, NOT shell commands.",
-            from ? from : "unknown", msg_id);
+            "[IPC] New message from %s (msg_id=%s). Call ipc_recv(message_id=\"%s\") for exact fetch, or ipc_recv for queue fetch. Then ipc_send to reply. These are MCP tools, NOT shell commands.",
+            from ? from : "unknown", msg_id, msg_id);
 
         if (access(TMUX_SEND_BIN, X_OK) == 0) {
             /* --no-clear: skip Escape+C-u which interrupts busy agents.
@@ -978,8 +987,8 @@ static void pty_notify(const char *pty_path, const char *from, const char *msg_i
     }
     char msg[512];
     int n = snprintf(msg, sizeof(msg),
-        "\n[IPC] New message from %s (msg_id=%s). Call ipc_recv to get messages, then ipc_send to reply. These are MCP tools, NOT shell commands.\n\n",
-        from ? from : "unknown", msg_id);
+        "\n[IPC] New message from %s (msg_id=%s). Call ipc_recv(message_id=\"%s\") for exact fetch, or ipc_recv for queue fetch. Then ipc_send to reply. These are MCP tools, NOT shell commands.\n\n",
+        from ? from : "unknown", msg_id, msg_id);
     ssize_t w = write(fd, msg, n);
     if (w < 0) {
         LOG_WARN("pty_notify: write(%s) failed: %s", pty_path, strerror(errno));
@@ -1220,6 +1229,7 @@ static char* handle_ipc_send(json_t *data, int client_fd) {
 static char* handle_ipc_recv(json_t *data) {
     const char *agent = json_string_value(json_object_get(data, "agent"));
     const char *conv_id = json_string_value(json_object_get(data, "conversation_id"));
+    const char *message_id = json_string_value(json_object_get(data, "message_id"));
 
     if (!agent || !agent[0]) {
         return json_error("missing 'agent' field");
@@ -1262,19 +1272,28 @@ static char* handle_ipc_recv(json_t *data) {
     const char *logical_name = parsed_name[0] ? parsed_name : agent;
     int need_fallback = (strcmp(resolved, logical_name) != 0);
 
-    // Consume messages immediately (recv = ack)
-    Message *msgs = conv_id && conv_id[0] ?
-        msgqueue_recv_filtered(&g_msgqueue, resolved, conv_id) :
-        msgqueue_recv(&g_msgqueue, resolved);
-
-    // Fallback: also check logical name queue (offline-queued messages)
-    if (!msgs && need_fallback) {
+    Message *msgs = NULL;
+    if (message_id && message_id[0]) {
+        msgs = msgqueue_recv_by_id(&g_msgqueue, resolved, logical_name, message_id);
+        if (!msgs && need_fallback) {
+            LOG_INFO("IPC recv by message_id miss: agent=%s resolved=%s logical=%s msg_id=%s",
+                     agent, resolved, logical_name, message_id);
+        }
+    } else {
+        // Consume messages immediately (recv = ack)
         msgs = conv_id && conv_id[0] ?
-            msgqueue_recv_filtered(&g_msgqueue, logical_name, conv_id) :
-            msgqueue_recv(&g_msgqueue, logical_name);
-        if (msgs) {
-            LOG_INFO("IPC recv fallback: %s consuming from logical queue '%s'",
-                     agent, logical_name);
+            msgqueue_recv_filtered(&g_msgqueue, resolved, conv_id) :
+            msgqueue_recv(&g_msgqueue, resolved);
+
+        // Fallback: also check logical name queue (offline-queued messages)
+        if (!msgs && need_fallback) {
+            msgs = conv_id && conv_id[0] ?
+                msgqueue_recv_filtered(&g_msgqueue, logical_name, conv_id) :
+                msgqueue_recv(&g_msgqueue, logical_name);
+            if (msgs) {
+                LOG_INFO("IPC recv fallback: %s consuming from logical queue '%s'",
+                         agent, logical_name);
+            }
         }
     }
 
@@ -2095,8 +2114,13 @@ static int run_server(void) {
         return 1;
     }
 
-    signal(SIGTERM, signal_handler);
-    signal(SIGINT, signal_handler);
+    struct sigaction sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_sigaction = signal_handler;
+    sa.sa_flags = SA_SIGINFO;
+    sigemptyset(&sa.sa_mask);
+    sigaction(SIGTERM, &sa, NULL);
+    sigaction(SIGINT, &sa, NULL);
     signal(SIGPIPE, SIG_IGN);
     signal(SIGCHLD, SIG_IGN); // Prevent zombie processes from tmux_notify
 
@@ -2161,7 +2185,7 @@ static int run_server(void) {
         return 1;
     }
 
-    chmod(socket_path, 0600);  // Phase 1a: owner-only (brain_ipc group not available)
+    chmod(socket_path, 0666);  // Shared local IPC; access is enforced at the protocol layer.
 
     if (listen(server_fd, MAX_CLIENTS) < 0) {
         LOG_ERROR("listen() failed: %s", strerror(errno));
@@ -2235,7 +2259,14 @@ static int run_server(void) {
     }
 
     // Shutdown
-    LOG_INFO("Shutting down...");
+    if (g_shutdown_signal != 0) {
+        LOG_INFO("Shutting down due to signal=%d sender_pid=%d sender_uid=%d",
+                 (int)g_shutdown_signal,
+                 (int)g_shutdown_sender_pid,
+                 (int)g_shutdown_sender_uid);
+    } else {
+        LOG_INFO("Shutting down...");
+    }
 
     sched_shutdown(&g_scheduled_queue);
     delayed_queue_shutdown(&g_delayed_queue);

@@ -1,0 +1,271 @@
+# BS-028-T002: Project-Sandbox Binding Data Model
+# Task: 定义 Project ↔ Sandbox 绑定数据模型
+# Owner: agent-brain_manager
+# Created: 2026-03-29
+
+project_sandbox_binding:
+  version: "1.0"
+  description: |
+    定义 project 与 sandbox 的绑定关系数据结构。
+    用于 dashboard 展示项目中使用的 sandbox 及其运行时状态。
+
+  # ── 核心绑定记录 ──────────────────────────────────────────────────────────
+  binding_record:
+    schema_version: "1.0"
+    fields:
+      binding_id:
+        type: string
+        description: "全局唯一绑定ID，格式: bind_{project_id}_{sandbox_id}"
+        example: "bind_BS-028_sandbox-abc123"
+        required: true
+
+      project_id:
+        type: string
+        description: "项目ID，对应 task_manager 的 spec_id"
+        example: "BS-028"
+        required: true
+        source: "task_manager.spec.spec_id"
+
+      project_title:
+        type: string
+        description: "项目名称"
+        example: "Dashboard Sandbox 集成展示"
+        required: true
+
+      sandbox_id:
+        type: string
+        description: "Sandbox 实例ID"
+        example: "sandbox-abc123"
+        required: true
+        source: "sandboxctl create 时生成"
+
+      sandbox_status:
+        type: enum
+        description: "Sandbox 运行时状态"
+        enum_values:
+          - "creating"      # 正在创建
+          - "bootstrapping" # 正在初始化
+          - "running"       # 运行中
+          - "paused"        # 暂停
+          - "stopping"      # 正在停止
+          - "stopped"       # 已停止
+          - "error"         # 异常
+        required: true
+
+      runtime_root:
+        type: string
+        description: "Sandbox runtime 根路径"
+        example: "/xkagent_infra/runtime/sandbox/{sandbox_id}"
+        required: true
+        source: "project_agent_runtime_creation.contract.runtime_paths.runtime_root"
+
+      registry_bridge_path:
+        type: string
+        description: "Sandbox 内 agents_registry bridge 文件路径"
+        example: "/xkagent_infra/runtime/sandbox/{sandbox_id}/config/agentctl/agents_registry.yaml"
+        required: true
+        source: "project_agent_runtime_creation.contract.runtime_paths.registry_bridge_file"
+
+      created_at:
+        type: datetime
+        description: "绑定创建时间（sandboxctl create 时间）"
+        format: ISO8601
+        required: true
+
+      bound_at:
+        type: datetime
+        description: "项目与 sandbox 绑定的时间"
+        format: ISO8601
+        required: true
+
+      updated_at:
+        type: datetime
+        description: "最后更新时间"
+        format: ISO8601
+        required: true
+
+      # ── 绑定 agents ────────────────────────────────────────────────────────
+      bound_agents:
+        type: array
+        description: "该项目绑定的所有 agent 列表"
+        items:
+          type: object
+          fields:
+            agent_id:
+              type: string
+              description: "Agent ID"
+              example: "agent_brain_BS028_orchestrator_01"
+              required: true
+
+            agent_role:
+              type: string
+              description: "Agent 角色"
+              example: "orchestrator | developer | researcher | qa"
+              required: true
+
+            agent_status:
+              type: enum
+              description: "Agent 运行时状态"
+              enum_values:
+                - "online"      # 在线
+                - "offline"     # 离线
+                - "busy"        # 工作中
+                - "error"       # 异常
+              required: true
+
+            spawned_at:
+              type: datetime
+              description: "Agent 启动时间"
+              format: ISO8601
+
+            tmux_session:
+              type: string
+              description: "Tmux session name"
+              example: "bs028-orch-01"
+
+      # ── Sandbox 技术信息 ──────────────────────────────────────────────────
+      sandbox_config:
+        type: object
+        description: "Sandbox 配置信息"
+        fields:
+          baseline_image:
+            type: string
+            description: "Docker 基础镜像"
+            example: "brain-sandbox-base:latest"
+
+          provider:
+            type: string
+            description: "Agent provider"
+            example: "claude | codex | gemini"
+
+          model:
+            type: string
+            description: "使用的模型"
+            example: "claude-opus-4-6"
+
+          project_root:
+            type: string
+            description: "项目根路径（宿主机）"
+            example: "/xkagent_infra/groups/brain/projects/BS-028"
+
+          git_branch:
+            type: string
+            description: "Git 分支"
+            example: "feature/BS-028-sandbox-dashboard"
+
+      # ── Dashboard 展示用字段 ──────────────────────────────────────────────
+      dashboard_display:
+        type: object
+        description: "Dashboard 展示专用字段"
+        fields:
+          display_name:
+            type: string
+            description: "展示名称"
+            example: "BS-028 Dev Sandbox"
+
+          is_active:
+            type: boolean
+            description: "是否活跃（最近24h有活动）"
+
+          last_activity:
+            type: datetime
+            description: "最后活动时间"
+            format: ISO8601
+
+          agent_count:
+            type: integer
+            description: "当前 agent 数量"
+
+  # ── 存储位置 ──────────────────────────────────────────────────────────────
+  storage:
+    primary_location: "/xkagent_infra/runtime/data/project_sandbox_bindings/"
+    index_file: "bindings_index.yaml"
+    per_binding_file: "{binding_id}.yaml"
+
+  # ── API 接口定义 ──────────────────────────────────────────────────────────
+  api_contracts:
+    create_binding:
+      method: "POST"
+      path: "/api/v1/bindings"
+      description: "创建新的 project-sandbox 绑定"
+      triggered_by: "sandboxctl create --with-agent orchestrator 成功后"
+
+    update_binding:
+      method: "PUT"
+      path: "/api/v1/bindings/{binding_id}"
+      description: "更新绑定状态（sandbox status 变化时）"
+      triggered_by: "sandbox status 变化、bound_agents 变化"
+
+    get_binding:
+      method: "GET"
+      path: "/api/v1/bindings/{binding_id}"
+      description: "获取单个绑定详情"
+
+    list_bindings_by_project:
+      method: "GET"
+      path: "/api/v1/projects/{project_id}/sandboxes"
+      description: "获取项目所有绑定的 sandbox（Dashboard 核心 API）"
+      response_schema:
+        project_id: string
+        sandboxes:
+          - $ref: "#/binding_record"
+        total_count: integer
+
+    list_active_sandboxes:
+      method: "GET"
+      path: "/api/v1/sandboxes"
+      description: "获取所有运行中的 sandbox（Dashboard 全局视图）"
+      filters:
+        - "status=running"
+        - "project_id={project_id}"
+        - "is_active=true"
+
+    delete_binding:
+      method: "DELETE"
+      path: "/api/v1/bindings/{binding_id}"
+      description: "删除绑定（sandbox 销毁时）"
+      triggered_by: "sandboxctl destroy"
+
+  # ── 数据写入时机 ──────────────────────────────────────────────────────────
+  write_triggers:
+    - event: "sandboxctl create --with-agent orchestrator 成功"
+      action: "创建新 binding_record"
+      writer: "brain_devops 或 sandbox bootstrap 流程"
+
+    - event: "sandbox 内 spawn 新 agent"
+      action: "向 bound_agents 添加 agent 记录"
+      writer: "orchestrator spawn_protocol"
+
+    - event: "agent 上线/下线/状态变化"
+      action: "更新 agent_status"
+      writer: "agentctl 或 orchestrator"
+
+    - event: "sandboxctl stop/destroy"
+      action: "更新 sandbox_status"
+      writer: "brain_devops"
+
+  # ── Dashboard 展示映射 ─────────────────────────────────────────────────────
+  dashboard_mapping:
+    project_list_page:
+      - field: "project_id"
+        label: "项目ID"
+      - field: "sandbox_id"
+        label: "Sandbox"
+      - field: "sandbox_status"
+        label: "状态"
+      - field: "bound_agents"
+        label: "Agents"
+        render: "badge_list"
+      - field: "last_activity"
+        label: "最后活动"
+
+    project_detail_page:
+      panel_title: "Sandbox 实例"
+      panel_id: "sandbox-panel"
+      items:
+        - sandbox_id
+        - sandbox_status (colored badge)
+        - runtime_root
+        - bound_agents (expandable list)
+        - created_at
+        - is_active

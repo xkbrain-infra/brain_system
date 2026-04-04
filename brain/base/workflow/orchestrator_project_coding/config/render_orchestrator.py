@@ -8,7 +8,7 @@
     --workflow-root /path/to/workflow
 
 功能:
-  1. 解析 provider_profiles.yaml 获取 coordinator profile
+  1. 解析 provider_profiles.yaml 获取 project_orchestrator 对应 profile
   2. 渲染 AGENTS.md、.mcp.json、settings.local.json、agent_runtime.json
   3. 创建 orchestrator runtime 目录并写入配置文件
 """
@@ -23,7 +23,7 @@ import yaml
 
 
 def load_provider_profiles(workflow_root: str) -> dict:
-    """加载 provider_profiles.yaml，解析 orchestrator 的 profile"""
+    """加载 provider_profiles.yaml，解析 project_orchestrator 的 profile"""
     profile_file = Path(workflow_root) / "config" / "provider_profiles.yaml"
     with open(profile_file) as f:
         cfg = yaml.safe_load(f)
@@ -35,8 +35,8 @@ def load_provider_profiles(workflow_root: str) -> dict:
     profile_key = role_profile_map.get(role, "coordinator")
     profile = profiles.get(profile_key, {})
 
-    resolved_provider = profile.get("provider", "anthropic")
-    resolved_model = profile.get("model", "claude-sonnet-4-6")
+    resolved_provider = profile.get("provider", "minimax")
+    resolved_model = profile.get("model", "minimax-m2.7")
     fallback = profile.get("fallback", {})
 
     return {

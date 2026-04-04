@@ -137,8 +137,14 @@
                 - {id: "CHK-08", type: "field_assert", field: "role_roster",          assert: "非空数组"}
                 - {id: "CHK-09", type: "field_assert", field: "planning_decision",    assert: "== PASS"}
           "2_spawn_validator":
-            command: "agentctl start --role step_validator --model {validator_model} --ephemeral"
-            note: "validator_model 由 model_selection 规则确定，与 orchestrator 不同"
+            command: |
+              # 从 {validator_model} 拆出 <provider> / <model_name> 后创建 validator。
+              agentctl add {validator_agent_id} --group {group_id} --role step_validator \
+                --agent-type <provider> --model <model_name> \
+                --scope project --project {project_id} --sandbox-id {sandbox_id} \
+                --desired-state stopped --apply
+              agentctl start {validator_agent_id} --apply
+            note: "validator_model 由 model_selection 规则确定，与 orchestrator 不同；完成验证后由 orchestrator 执行 agentctl purge {validator_agent_id} --apply --force"
           "3_wait_result":
             wait_for: "IPC: VALIDATE_COMPLETE"
             timeout: "120s"
@@ -305,8 +311,14 @@
                    source: "state/project_plan.yaml",
                    rule: "每个 milestones[] 都能在 spec_checklist.items 中找到对应 source_ref"}
           "2_spawn_validator":
-            command: "agentctl start --role step_validator --model {validator_model} --ephemeral"
-            note: "validator_model 由 model_selection 规则确定，与 orchestrator 不同"
+            command: |
+              # 从 {validator_model} 拆出 <provider> / <model_name> 后创建 validator。
+              agentctl add {validator_agent_id} --group {group_id} --role step_validator \
+                --agent-type <provider> --model <model_name> \
+                --scope project --project {project_id} --sandbox-id {sandbox_id} \
+                --desired-state stopped --apply
+              agentctl start {validator_agent_id} --apply
+            note: "validator_model 由 model_selection 规则确定，与 orchestrator 不同；完成验证后由 orchestrator 执行 agentctl purge {validator_agent_id} --apply --force"
           "3_wait_result":
             wait_for: "IPC: VALIDATE_COMPLETE"
             timeout: "120s"
@@ -360,5 +372,4 @@
     on_success: "MWF-OPC:4_1:model_tasks"
     on_retry: "checklist 不完整 → 补充遗漏项"
     on_blocked: "project_plan 不完整 → 回到 define_plan"
-
 

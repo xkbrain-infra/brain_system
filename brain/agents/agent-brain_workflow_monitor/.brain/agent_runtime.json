@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "agent_name": "agent-brain_workflow_monitor",
+  "skill_bindings": {
+    "source": "/xkagent_infra/brain/infrastructure/config/agentctl/skill_bindings.yaml",
+    "resolved_skills": [],
+    "role_skills": [],
+    "agent_skills": [],
+    "workflow_skills": []
+  },
+  "lep_bindings": {
+    "source": "/xkagent_infra/brain/infrastructure/config/agentctl/lep_bindings.yaml",
+    "resolved_lep_profiles": [],
+    "role_lep_profiles": [],
+    "agent_lep_profiles": [],
+    "workflow_lep_profiles": []
+  },
+  "runtime": {
+    "command": "claude",
+    "args": [
+      "--dangerously-skip-permissions"
+    ],
+    "env": {},
+    "agent_type": "claude",
+    "use_claude_cli": true
+  }
+}

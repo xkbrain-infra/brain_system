@@ -56,7 +56,7 @@ bootstrap_execution:
     - "若 manager 试图用实现源码树替代 delivery workspace，则要求其先修正 project_root"
 
   sequence:
-    1: "调用 sandboxctl create <project_id> --type development --with-agent orchestrator --pending-id <pending_id> [--model <provider/model>]"
+    1: "调用 sandboxctl create <project_id> --type development --with-agent orchestrator --pending-id <pending_id>（默认模型=minimax/minimax-m2.7；仅 override 时追加 --model <provider/model>）"
     2: "验证容器 healthy，且 project_root 可写"
     3: "确认 sandbox runtime bridge 存在：/xkagent_infra/runtime/sandbox/{sandbox_id}/config/agentctl/agents_registry.yaml"
     4: "确认 orchestrator runtime 已物化：/xkagent_infra/runtime/sandbox/{sandbox_id}/agents/{agent_id}/.brain/agent_runtime.json"
@@ -116,7 +116,7 @@ workflow:
 scenario: bootstrap_handoff
 workflow:
   1. Manager 发出 BOOTSTRAP_DISPATCH，并给出 project_id / project_root / sandbox_strategy
-  2. DevOps 执行 sandboxctl create --with-agent orchestrator [--model <provider/model>]
+  2. DevOps 执行 sandboxctl create --with-agent orchestrator（默认模型=minimax/minimax-m2.7；仅 override 时追加 --model <provider/model>）
   3. DevOps 回传 sandbox_id / runtime_root / runtime bridge / tmux session / blocker
   4. 只有收到 BOOTSTRAP_COMPLETE 后，manager 才能继续交接 orchestrator
 ```
@@ -140,3 +140,13 @@ DevOps 特有检查项：
 - 容器资源使用率是否合理
 - sandbox bootstrap 是否真的创建了 `/xkagent_infra/runtime/sandbox/{sandbox_id}/agents/{agent_id}/.brain/agent_runtime.json`
 - sandbox-local registry bridge 是否存在于 `/xkagent_infra/runtime/sandbox/{sandbox_id}/config/agentctl/agents_registry.yaml`
+
+## routing_guard_extra
+
+```yaml
+sandbox_spawn_boundary:
+  - "现有 sandbox 内的 project-scoped agent add/start/stop/purge，不是 devops 的默认执行域"
+  - "如果请求目标是“验证 orchestrator spawn 能力”，devops 必须立即回报 ROUTING_ERROR，并要求 manager 直接派给 sandbox orchestrator"
+  - "devops 只在以下条件成立时介入：sandbox-local agentctl 损坏、tmux/IPC 不通、runtime bridge 缺失、orchestrator offline、容器/镜像故障"
+  - "换言之：devops 修路，不代替 orchestrator 走路"
+```

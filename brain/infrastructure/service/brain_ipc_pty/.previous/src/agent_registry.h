@@ -6,9 +6,9 @@
 #include <pthread.h>
 
 #define MAX_AGENTS 256
-#define MAX_AGENT_NAME 64
-#define MAX_INSTANCE_ID 128
-#define MAX_TMUX_SESSION 64
+#define MAX_AGENT_NAME 256
+#define MAX_INSTANCE_ID 512
+#define MAX_TMUX_SESSION 256
 #define MAX_TMUX_PANE 32
 #define MAX_PTY_PATH 256
 #define MAX_METADATA_SIZE 1024

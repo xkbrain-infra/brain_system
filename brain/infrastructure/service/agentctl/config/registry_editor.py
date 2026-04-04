@@ -37,6 +37,7 @@ class AgentEntry:
     cli_type: str = ""
     model: str = ""
     transport_mode: str = ""
+    run_as_user: str = ""
     effort: str = ""
     cli_args: list[str] | None = None
     env: dict[str, str] | None = None
@@ -108,6 +109,8 @@ def render_agent_yaml_v2(entry: AgentEntry) -> str:
         lines.append(f"  model: {entry.model}")
     if entry.transport_mode:
         lines.append(f"  transport_mode: {entry.transport_mode}")
+    if entry.run_as_user:
+        lines.append(f"  run_as_user: {entry.run_as_user}")
     if entry.effort:
         lines.append(f"  effort: {entry.effort}")
     lines.append(f"  tmux_session: {entry.tmux_session}")

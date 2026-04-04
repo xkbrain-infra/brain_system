@@ -28,6 +28,9 @@ services:
     volumes:
       # Brain 核心只读共享
       - /xkagent_infra/brain:/brain:ro,z
+      # 显式挂载 base/ 与 INIT.yaml，避免上层 /brain 绑定在部分环境里缺失子树
+      - /xkagent_infra/brain/base:/brain/base:ro,z
+      - /xkagent_infra/brain/INIT.yaml:/brain/INIT.yaml:ro,z
       # Groups 可写共享（项目代码）
       - /xkagent_infra/groups:/groups:rw,z
       # Sandbox runtime 实例目录（仅实例数据，_services 来自镜像）
@@ -57,6 +60,8 @@ services:
       - PROJECT_ID=${PROJECT_NAME}
       - PROJECT_VERSION=${PROJECT_VERSION}
       - GROUP_ID=${GROUP_NAME}
+      - SANDBOX_RUNTIME=/xkagent_infra/runtime/sandbox/${INSTANCE_ID}
+      - TMUX_TMPDIR=/xkagent_infra/runtime/sandbox/${INSTANCE_ID}/.tmux
       - AGENTCTL_CONFIG_DIR=/xkagent_infra/runtime/sandbox/${INSTANCE_ID}/config/agentctl
 
       # Brain 集成
@@ -79,16 +84,6 @@ services:
     ports:
       - "${HOST_PORT_APP}:${CONTAINER_PORT_APP:-8080}"
       - "${HOST_PORT_DEBUG}:${CONTAINER_PORT_DEBUG:-5678}"
-
-    # 资源限制
-    deploy:
-      resources:
-        limits:
-          cpus: '${CPU_LIMIT:-2.0}'
-          memory: ${MEMORY_LIMIT:-2G}
-        reservations:
-          cpus: '0.5'
-          memory: 512M
 
     # 健康检查
     healthcheck:

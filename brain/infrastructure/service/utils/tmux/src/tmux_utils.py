@@ -29,20 +29,41 @@ if str(_SRC_DIR) not in sys.path:
 from audit_log import agent_name_env, build_record, dual_write, session_name_env
 
 
-def _tmux(*args: str, check: bool = True, capture: bool = True) -> subprocess.CompletedProcess[str]:
-    # TMUX_SOCKET 支持：允许使用自定义 tmux socket 路径（用于跨容器共享）
-    # tmux 识别 TMUX 环境变量，格式: socket_path,pid,flags
-    socket_path = os.environ.get("TMUX_SOCKET")
+def _tmux_env() -> dict[str, str]:
+    env = os.environ.copy()
+    socket_path = os.environ.get("TMUX_SOCKET", "").strip()
     if socket_path:
-        env = os.environ.copy()
         env["TMUX"] = f"{socket_path},0,0"
+    else:
+        env.pop("TMUX", None)
+    tmux_tmpdir = os.environ.get("TMUX_TMPDIR", "").strip()
+    if tmux_tmpdir:
+        env["TMUX_TMPDIR"] = tmux_tmpdir
+    else:
+        env.pop("TMUX_TMPDIR", None)
+    return env
+
+
+def _tmux(*args: str, check: bool = True, capture: bool = True) -> subprocess.CompletedProcess[str]:
+    env = _tmux_env()
+    container = os.environ.get("BRAIN_TMUX_CONTAINER", "").strip()
+    if container:
+        # Some sandbox containers have an invalid default WorkingDir in their
+        # OCI config. Force a safe cwd so docker exec can reliably reach tmux.
+        cmd = ["docker", "exec", "-i", "-w", "/", container, "env"]
+        tmux_tmpdir = env.get("TMUX_TMPDIR", "").strip()
+        tmux_socket = env.get("TMUX", "").strip()
+        if tmux_tmpdir:
+            cmd.append(f"TMUX_TMPDIR={tmux_tmpdir}")
+        if tmux_socket:
+            cmd.append(f"TMUX={tmux_socket}")
+        cmd.extend(["tmux", *args])
         return subprocess.run(
-            ["tmux", *args],
+            cmd,
             check=check,
             text=True,
             stdout=subprocess.PIPE if capture else None,
             stderr=subprocess.PIPE if capture else None,
-            env=env,
         )
     return subprocess.run(
         ["tmux", *args],
@@ -50,6 +71,7 @@ def _tmux(*args: str, check: bool = True, capture: bool = True) -> subprocess.Co
         text=True,
         stdout=subprocess.PIPE if capture else None,
         stderr=subprocess.PIPE if capture else None,
+        env=env,
     )
 def _audit(tool_name: str, tool_input: dict) -> None:
     """Write audit record."""

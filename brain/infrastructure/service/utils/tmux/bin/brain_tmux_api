@@ -9,6 +9,7 @@
 #   brain_tmux_api display-message -t <tgt>   显示 tmux 变量
 #   brain_tmux_api new-session -s <name> [-c cwd] [-- command]
 #   brain_tmux_api send -t <tgt> "message"    发送消息到 pane
+#   brain_tmux_api raw -- <tmux args...>      执行原始 tmux 子命令
 
 set -euo pipefail
 
@@ -134,6 +135,29 @@ print(new_session(
     exec python3 "$SRC_DIR/tmux_send.py" "$@"
     ;;
 
+  raw)
+    shift
+    if [[ "${1:-}" == "--" ]]; then
+      shift
+    fi
+    exec python3 - "$SRC_DIR" "$@" <<'PY'
+import sys
+
+src_dir = sys.argv[1]
+tmux_args = sys.argv[2:]
+sys.path.insert(0, src_dir)
+
+from tmux_utils import _tmux
+
+result = _tmux(*tmux_args, check=False, capture=True)
+if result.stdout:
+    sys.stdout.write(result.stdout)
+if result.stderr:
+    sys.stderr.write(result.stderr)
+raise SystemExit(result.returncode)
+PY
+    ;;
+
   help|--help|-h)
     cat <<'USAGE'
 brain_tmux_api - tmux 操作统一入口 (G-GATE-TMUX-PROXY)
@@ -147,6 +171,7 @@ brain_tmux_api - tmux 操作统一入口 (G-GATE-TMUX-PROXY)
   new-session (new) -s <name> [-c cwd] [-- command]
                                          创建 detached tmux session
   send -t <target> "message"            发送消息到 pane
+  raw -- <tmux args...>                 执行原始 tmux 子命令
 
 所有操作自动记录审计日志。
 禁止直接使用 tmux 命令 (G-GATE-TMUX-PROXY)。

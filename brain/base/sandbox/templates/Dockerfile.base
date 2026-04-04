@@ -24,6 +24,10 @@ RUN mkdir -p /xkagent_infra/runtime/sandbox/_services/service \
 # 复制基础设施服务到 _services
 COPY brain/infrastructure/service/agentctl /xkagent_infra/runtime/sandbox/_services/service/agentctl
 COPY brain/infrastructure/service/brain_ipc /xkagent_infra/runtime/sandbox/_services/service/brain_ipc
+COPY brain/infrastructure/service/brain_task_manager /xkagent_infra/runtime/sandbox/_services/service/brain_task_manager
+COPY brain/infrastructure/service/utils/tmux /xkagent_infra/runtime/sandbox/_services/service/utils/tmux
+COPY brain/infrastructure/service/brain_task_manager /brain/infrastructure/service/brain_task_manager
+COPY brain/infrastructure/service/brain_google_api /brain/infrastructure/service/brain_google_api
 
 # 复制 MCP 服务器到 _services/bin/mcp
 COPY brain/bin/brain_ipc_c_mcp_server /xkagent_infra/runtime/sandbox/_services/bin/mcp/mcp-brain_ipc_c

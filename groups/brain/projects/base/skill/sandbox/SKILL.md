@@ -91,6 +91,25 @@ $SANDBOX_SERVICE spawn-agent <project_name> --instance <instance_id> --role <des
   [--model <provider/model>]
 ```
 
+```bash
+# sandbox 容器内部如需直接做 agentctl smoke / lifecycle 验证，使用 sandbox-local bridge
+export AGENTCTL_CONFIG_DIR=/xkagent_infra/runtime/sandbox/<instance_id>/config/agentctl
+
+agentctl --config-dir "$AGENTCTL_CONFIG_DIR" add <agent_id> \
+  --group brain \
+  --role <developer|qa|researcher|architect|devops|step_validator> \
+  --agent-type <provider> \
+  --model <model_name> \
+  --scope project \
+  --project <project_id> \
+  --sandbox-id <instance_id> \
+  --desired-state stopped \
+  --apply
+agentctl --config-dir "$AGENTCTL_CONFIG_DIR" start <agent_id> --apply
+agentctl --config-dir "$AGENTCTL_CONFIG_DIR" stop <agent_id> --apply
+agentctl --config-dir "$AGENTCTL_CONFIG_DIR" purge <agent_id> --apply --force
+```
+
 <!-- L1.5 -->
 ## 路径架构
 

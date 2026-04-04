@@ -1,3 +1,16 @@
 #!/bin/bash
-cd /xkagent_infra/brain/infrastructure/service/brain_task_manager
-exec /opt/venv/bin/python3 mcp_server.py "$@"
+set -euo pipefail
+
+for service_root in \
+    /xkagent_infra/runtime/sandbox/_services/service/brain_task_manager \
+    /brain/infrastructure/service/brain_task_manager \
+    /xkagent_infra/brain/infrastructure/service/brain_task_manager
+do
+    if [ -f "${service_root}/mcp_server.py" ]; then
+        cd "${service_root}"
+        exec /opt/venv/bin/python3 mcp_server.py "$@"
+    fi
+done
+
+echo "mcp-brain_task_manager: unable to locate brain_task_manager service root" >&2
+exit 1

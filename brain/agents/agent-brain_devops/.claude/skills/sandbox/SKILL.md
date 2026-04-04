@@ -39,8 +39,8 @@ SANDBOX_SERVICE="/xkagent_infra/brain/bin/sandboxctl"
 ```
 
 > **⚠️ 重要**: sandbox 只能通过 `/xkagent_infra/brain/bin/sandboxctl` 调用。
-> 内部实现（`sandbox_service.py`、compose 模板、Dockerfile、providers）全部视为黑盒。
-> **禁止**在命令里直接引用 `groups/.../sandbox/service/sandbox_service.py`、`compose.base.yaml`、`Dockerfile.base` 等实现文件。
+> 内部实现由 `/xkagent_infra/brain/infrastructure/service/brain_sandbox_service/` 提供；`sandbox_service.py`、compose 模板、Dockerfile、providers 全部视为黑盒。
+> **禁止**在命令里直接引用 `brain_sandbox_service/current/sandbox_service.py`、旧的 `groups/.../sandbox/service/sandbox_service.py`、`compose.base.yaml`、`Dockerfile.base` 等实现文件。
 > 这样可以保持 LEP scope 正常生效，同时给 agent 提供稳定入口。
 
 ## 使用规则
@@ -53,10 +53,11 @@ SANDBOX_SERVICE="/xkagent_infra/brain/bin/sandboxctl"
 $SANDBOX_SERVICE <subcommand> ...
 ```
 
-4. 允许的子命令只有：`create` `start` `stop` `list` `exec` `validate` `destroy`
+4. 允许的子命令只有：`create` `start` `stop` `list` `exec` `validate` `destroy` `spawn-agent`
 5. 禁止的做法：
    - 直接运行 `docker ...`
-   - 直接运行 `python3 /xkagent_infra/groups/brain/projects/base/sandbox/service/sandbox_service.py ...`
+   - 直接运行 `python3 /xkagent_infra/brain/infrastructure/service/brain_sandbox_service/current/sandbox_service.py ...`
+   - 直接运行旧兼容路径 `python3 /xkagent_infra/groups/brain/projects/base/sandbox/service/sandbox_service.py ...`
    - 直接读取或修改 sandbox 模板、provider、compose 实现文件
 
 ## 角色边界
@@ -69,6 +70,7 @@ $SANDBOX_SERVICE <subcommand> ...
 ## 命令模板
 
 ```bash
+# host 上的 sandbox lifecycle / bootstrap 统一走 published wrapper
 $SANDBOX_SERVICE create <project_name> --type <development|testing|staging|audit> [--with-agent orchestrator] [--pending-id <pending_id>] [--model <provider/model>]
 $SANDBOX_SERVICE start <project_name> --instance <instance_id>
 $SANDBOX_SERVICE stop <project_name> --instance <instance_id>
@@ -76,7 +78,66 @@ $SANDBOX_SERVICE list <project_name>
 $SANDBOX_SERVICE exec <project_name> --instance <instance_id> --command "<cmd>"
 $SANDBOX_SERVICE validate <project_name>
 $SANDBOX_SERVICE destroy <project_name> --instance <instance_id> --force
+$SANDBOX_SERVICE spawn-agent <project_name> --instance <instance_id> --role <designer|dev|qa|researcher|devops|architect> [--slot <NN>] [--model <provider/model>]
 ```
+
+```bash
+# sandbox 容器内部 spawn project agents 时，走 sandbox-local service bundle
+/xkagent_infra/runtime/sandbox/_services/service/brain_sandbox_service/bin/brain_sandbox_service \
+  spawn-agent <project_name> \
+  --instance <instance_id> \
+  --role <designer|dev|qa|researcher|devops|architect> \
+  [--slot <NN>] \
+  [--model <provider/model>]
+```
+
+```bash
+# sandbox 容器内部如需直接做 agentctl smoke / lifecycle 验证，使用 sandbox-local bridge
+export AGENTCTL_CONFIG_DIR=/xkagent_infra/runtime/sandbox/<instance_id>/config/agentctl
+
+agentctl --config-dir "$AGENTCTL_CONFIG_DIR" add <agent_id> \
+  --group brain \
+  --role <developer|qa|researcher|architect|devops|step_validator> \
+  --agent-type <provider> \
+  --model <model_name> \
+  --scope project \
+  --project <project_id> \
+  --sandbox-id <instance_id> \
+  --desired-state stopped \
+  --apply
+agentctl --config-dir "$AGENTCTL_CONFIG_DIR" start <agent_id> --apply
+agentctl --config-dir "$AGENTCTL_CONFIG_DIR" stop <agent_id> --apply
+agentctl --config-dir "$AGENTCTL_CONFIG_DIR" purge <agent_id> --apply --force
+```
+
+<!-- L1.5 -->
+## 路径架构
+
+> ⚠️ **关键说明**：Brain 系统运行在嵌套 Docker 环境，host 路径与容器内路径不同。
+
+| 用途 | 容器内路径 | Host 路径 |
+|------|-----------|-----------|
+| Brain 核心（只读） | `/brain` | `/services/xkagent_infra/brain` |
+| Groups 项目（可写） | `/groups` | `/services/xkagent_infra/groups` |
+| Sandbox Runtime（隔离） | `/xkagent_infra/runtime/sandbox/{instance_id}` | `/services/xkagent_infra/runtime/sandbox/{instance_id}` |
+| Services（只读） | `/xkagent_infra/runtime/sandbox/_services` | （来自镜像） |
+
+**挂载关系**：
+```
+/brain      → /services/xkagent_infra/brain              (ro)
+/groups     → /services/xkagent_infra/groups             (rw)
+/tmp        → /tmp                                      (rw)
+/xkagent_infra/runtime/sandbox/{instance_id} → /services/xkagent_infra/runtime/sandbox/{instance_id}  (rw)
+```
+
+**容器内有效路径**：
+- `/brain/base/spec/` - Brain 规范
+- `/brain/agents/` - Agent 配置
+- `/groups/brain/projects/<project>/` - 项目代码（可写）
+- `/xkagent_infra/runtime/sandbox/{instance_id}/agents/` - Sandbox 实例 agent
+- `/xkagent_infra/runtime/sandbox/{instance_id}/config/` - Sandbox 实例配置
+- `/xkagent_infra/runtime/sandbox/{instance_id}/.bootstrap/instance.yaml` - Sandbox 实例状态文件
+- `/xkagent_infra/runtime/sandbox/_services/` - Sandbox 服务（来自镜像）
 
 <!-- L2 -->
 ## 创建 Sandbox
@@ -140,7 +201,13 @@ $SANDBOX_SERVICE create <project_name> \
 - sandbox 内 `tmux has-session -t <agent_name>` 成功
 - sandbox 内 `/tmp/brain_ipc.sock` 可连通，且 `{"action":"ping"}` 返回 `{"status":"ok"...}`
 - 如果 project agent 使用 Claude Code CLI，必须预写 `/root/.claude.json` 的 `projects[{runtime cwd}]` trust/onboarding 状态；不得把 theme / `Yes, I trust this folder` prompt 留给人工首登
-- 未在 host `/xkagent_infra/brain/agents` 创建任何 project-scoped agent
+- `/groups/brain/projects/<project_name>/src` 存在且可读（验证 groups mount 工作）
+
+### 项目路径
+
+项目直接在 `/groups/brain/projects/<project_name>/`，不需要 `/workspace/project` 中间层。
+
+**注意**：项目修改在容器内 `/groups/` 下进行，会直接反映到 host。
 
 ---
 
@@ -249,8 +316,6 @@ sandbox:
     MY_VAR: value
   ports:
     - "${HOST_PORT_REDIS}:6379"
-  volumes:
-    - ${PROJECT_ROOT}/data:/workspace/data/custom
 ```
 
 详细规则参见：`/xkagent_infra/groups/brain/projects/base/sandbox/PROJECT_EXTENSION.md`

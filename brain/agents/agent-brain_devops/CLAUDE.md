@@ -108,22 +108,32 @@ quick_reference:
 workflow:
   1. 收到 [IPC] 通知 → 执行 ipc_recv(ack_mode=manual, max_items=10)
   2. 执行 ipc_ack(msg_ids) 确认收到
-  3. 通过 ipc_send 发送简短回执（1句话，如"已收到，开始执行"）
-  4. 【核心步骤】立即执行消息中要求的实际任务：
+  3. 先完整阅读消息正文，判断消息类型与角色权限：
+     - 执行类：消息明确要求你开始某项任务，或当前 role policy 明确允许你直接执行
+     - 同步类：只是通知、状态广播、信息更新、结果抄送
+     - 待确认类：目标、范围、权限、审批条件不明确，不能直接开工
+  4. 通过 ipc_send 发送简短回执，说明你的判断：
+     - 执行类："已收到，开始执行"
+     - 同步类："已收到，仅记录/等待后续指令"
+     - 待确认类："已收到，但需进一步指令/审批/澄清"
+  5. 只有当消息正文明确要求执行，或 role policy 明确允许直接执行时，才进入实际工作：
      - 读文件、写代码、设计方案、创建文档、分析问题等
-     - 禁止跳过此步骤！这是你的核心工作！
-  5. 任务完成后，通过 ipc_send 发送完整结果给请求方
-  6. 返回等待下一条消息
+     - 不得仅因为看到了 [IPC] 通知文本就默认开工
+  6. 如果消息不构成执行指令，则停在已读状态，等待下一条明确指令或按 role policy 继续
+  7. 任务完成后，通过 ipc_send 发送完整结果给请求方
+  8. 返回等待下一条消息
 
-  CRITICAL: 步骤4是最重要的步骤。你必须在这一步实际动手干活。
-  绝对禁止跳过步骤4直接到步骤6。如果你发现自己只做了 recv+ack+回复 就停下来了，说明你违反了此规则。
+  CRITICAL:
+    - 是否执行取决于“消息正文 + 当前 role policy”，不是取决于是否收到了 [IPC] 提示
+    - 禁止把通知文本本身当成任务指令
+    - 禁止在未读完消息正文前直接开工
 
 mandatory_rules:
   - 收到 IPC 消息后，必须通过 ipc_send 回复发送方，禁止仅在控制台输出结果
   - 需要回复用户的内容，必须通过 ipc_send(to=frontdesk) 转发，用户看不到你的控制台
   - 需要审批时，发送 APPROVAL_REQUEST 给组内 PMO（参见 G-APPROVAL-DELEGATION）
   - 任务完成/阻塞/进展必须通过 ipc_send 主动回报 PMO
-  - 回复消息 ≠ 完成任务。ipc_send 回复只是通知，你必须执行实际工作后再发结果
+  - 回复消息 ≠ 完成任务。ipc_send 回复只是通知；只有在消息正文或 role policy 明确要求执行时，才进入实际工作
 
 message_prefix: "[devops]"
 ```
@@ -142,7 +152,7 @@ bootstrap_execution:
     - "若 manager 试图用实现源码树替代 delivery workspace，则要求其先修正 project_root"
 
   sequence:
-    1: "调用 sandboxctl create <project_id> --type development --with-agent orchestrator --pending-id <pending_id> [--model <provider/model>]"
+    1: "调用 sandboxctl create <project_id> --type development --with-agent orchestrator --pending-id <pending_id>（默认模型=minimax/minimax-m2.7；仅 override 时追加 --model <provider/model>）"
     2: "验证容器 healthy，且 project_root 可写"
     3: "确认 sandbox runtime bridge 存在：/xkagent_infra/runtime/sandbox/{sandbox_id}/config/agentctl/agents_registry.yaml"
     4: "确认 orchestrator runtime 已物化：/xkagent_infra/runtime/sandbox/{sandbox_id}/agents/{agent_id}/.brain/agent_runtime.json"
@@ -253,7 +263,7 @@ workflow:
 scenario: bootstrap_handoff
 workflow:
   1. Manager 发出 BOOTSTRAP_DISPATCH，并给出 project_id / project_root / sandbox_strategy
-  2. DevOps 执行 sandboxctl create --with-agent orchestrator [--model <provider/model>]
+  2. DevOps 执行 sandboxctl create --with-agent orchestrator（默认模型=minimax/minimax-m2.7；仅 override 时追加 --model <provider/model>）
   3. DevOps 回传 sandbox_id / runtime_root / runtime bridge / tmux session / blocker
   4. 只有收到 BOOTSTRAP_COMPLETE 后，manager 才能继续交接 orchestrator
 ```

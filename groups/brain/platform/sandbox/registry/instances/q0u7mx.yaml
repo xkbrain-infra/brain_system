@@ -1,0 +1,16 @@
+bootstrap_error: '[Errno 13] Permission denied: ''/xkagent_infra/groups/brain/projects/dash-001/payload'''
+compose_file: /xkagent_infra/groups/brain/platform/sandbox/instances/dev-q0u7mx/q0u7mx.yaml
+compose_project: sandbox-q0u7mx
+container_name: brain-dash-001-development-q0u7mx
+created_at: '2026-04-02T16:33:34.933466'
+group: brain
+host_ports:
+  app: 18386
+  debug: 18387
+instance_id: q0u7mx
+project: dash-001
+project_root: /xkagent_infra/groups/brain/projects/dash-001
+runtime_root: /xkagent_infra/runtime/sandbox/q0u7mx
+status: bootstrap_failed
+type: development
+updated_at: '2026-04-02T16:34:05.181587'

@@ -100,8 +100,14 @@
                 - {id: "CHK-06", type: "field_assert", field: "release_decision",      assert: "== RELEASED"}
                 - {id: "CHK-07", type: "field_assert", field: "release_candidate_version", assert: "非空字符串"}
           "2_spawn_validator":
-            command: "agentctl start --role step_validator --model {validator_model} --ephemeral"
-            note: "validator_model 由 model_selection 规则确定，与 orchestrator 不同"
+            command: |
+              # 从 {validator_model} 拆出 <provider> / <model_name> 后创建 validator。
+              agentctl add {validator_agent_id} --group {group_id} --role step_validator \
+                --agent-type <provider> --model <model_name> \
+                --scope project --project {project_id} --sandbox-id {sandbox_id} \
+                --desired-state stopped --apply
+              agentctl start {validator_agent_id} --apply
+            note: "validator_model 由 model_selection 规则确定，与 orchestrator 不同；完成验证后由 orchestrator 执行 agentctl purge {validator_agent_id} --apply --force"
           "3_wait_result":
             wait_for: "IPC: VALIDATE_COMPLETE"
             timeout: "120s"
@@ -139,4 +145,3 @@
     on_success: "MWF-OPC:7_1:run_audit"
     on_retry: "staging 或 smoke 失败 → fix → 重新部署"
     on_blocked: "prod 审批被拒或回滚也失败 → CRITICAL escalate"
-

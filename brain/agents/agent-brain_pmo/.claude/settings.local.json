@@ -15,24 +15,6 @@
     ],
     "defaultMode": "bypassPermissions"
   },
-  "env": {
-    "ANTHROPIC_BASE_URL": "http://127.0.0.1:8210",
-    "ANTHROPIC_AUTH_TOKEN": "bgw-client-v1-f7be31cba1b6db9b2b6294dc97104f0d",
-    "ANTHROPIC_MODEL": "minimax/minimax-m2.7",
-    "ANTHROPIC_SMALL_FAST_MODEL": "minimax/minimax-m2.7",
-    "ANTHROPIC_DEFAULT_SONNET_MODEL": "minimax/minimax-m2.7",
-    "ANTHROPIC_DEFAULT_OPUS_MODEL": "minimax/minimax-m2.7",
-    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "minimax/minimax-m2.7",
-    "API_TIMEOUT_MS": "3000000",
-    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
-    "BRAIN_AGENT_SCOPE": "group",
-    "BRAIN_SKILL_BINDINGS_FILE": "/xkagent_infra/brain/infrastructure/config/agentctl/skill_bindings.yaml",
-    "BRAIN_ENABLED_SKILLS": "lep,ipc,task-manager,spawn-orchestrator",
-    "BRAIN_ROLE_DEFAULT_SKILLS": "lep,ipc,task-manager,spawn-orchestrator",
-    "BRAIN_LEP_BINDINGS_FILE": "/xkagent_infra/brain/infrastructure/config/agentctl/lep_bindings.yaml",
-    "BRAIN_ENABLED_LEP_PROFILES": "delivery-governance",
-    "BRAIN_ROLE_DEFAULT_LEP_PROFILES": "delivery-governance"
-  },
   "statusLine": {
     "type": "command",
     "command": "input=$(cat); model=$(echo \"$input\" | jq -r '.model.display_name // \"Claude\"'); dir=$(echo \"$input\" | jq -r '.workspace.current_dir // \"~\"'); used=$(echo \"$input\" | jq -r 'def token_pct($ctx): if (($ctx.context_window_size // 0) | tonumber) > 0 then ((($ctx.current_usage.input_tokens // $ctx.total_input_tokens // 0) + ($ctx.current_usage.output_tokens // $ctx.total_output_tokens // 0) + ($ctx.current_usage.cache_creation_input_tokens // 0) + ($ctx.current_usage.cache_read_input_tokens // 0)) / ($ctx.context_window_size | tonumber) * 100) else empty end; (.context_window.used_percentage // .context_window.percent_used // .contextWindow.usedPercentage // .contextWindow.percentUsed // .session.context_window.used_percentage // .usage.context_window.used_percentage // empty) as $reported_raw | (.context_window // .contextWindow // .session.context_window // .usage.context_window // {}) as $ctx | (($ctx.context_window_size // 0) | tonumber? // 0) as $window_size | (if ($reported_raw | tostring | length) > 0 then ($reported_raw | tonumber?) else null end) as $reported | if $reported != null and ($reported > 0 or $window_size > 0) then $reported elif $window_size > 0 then token_pct($ctx) else empty end'); if [ -n \"$used\" ]; then printf \"%s | %s | Context: %.1f%% used\" \"$model\" \"$dir\" \"$used\"; else printf \"%s | %s | Context: n/a\" \"$model\" \"$dir\"; fi"
@@ -57,7 +39,23 @@
       "args": [],
       "env": {
         "BRAIN_AGENT_NAME": "agent-brain_pmo",
+        "BRAIN_TMUX_SESSION": "agent-brain_pmo",
         "BRAIN_DAEMON_AUTOSTART": "0"
+      }
+    },
+    "mcp-brain_google_api": {
+      "command": "/brain/bin/mcp/mcp-brain_google_api",
+      "args": [],
+      "env": {
+        "GOOGLE_CREDENTIALS_PATH": "/brain/secrets/brain_google_api/credentials.json"
+      }
+    },
+    "mcp-brain_task_manager": {
+      "command": "/brain/infrastructure/service/brain_task_manager/bin/mcp-brain_task_manager",
+      "args": [],
+      "env": {
+        "TASK_MANAGER_SERVICE": "service-brain_task_manager",
+        "DAEMON_SOCKET": "/tmp/brain_ipc.sock"
       }
     }
   },
@@ -79,31 +77,8 @@
               "BRAIN_AGENT_GROUP": "brain",
               "BRAIN_SCOPE_PATH": "/xkagent_infra/brain",
               "BRAIN_AGENT_SCOPE": "group",
-              "BRAIN_ENABLED_LEP_PROFILES": "delivery-governance",
               "BRAIN_LEP_BINDINGS_FILE": "/xkagent_infra/brain/infrastructure/config/agentctl/lep_bindings.yaml",
-              "BRAIN_ROLE_DEFAULT_LEP_PROFILES": "delivery-governance"
-            }
-          }
-        ]
-      }
-    ],
-    "PostToolUse": [
-      {
-        "matcher": "Bash|Edit|Glob|Grep|Read|Write",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "/brain/base/hooks/post_tool_use",
-            "timeout": 5000,
-            "description": "LEP Engine - pmo-brain PostToolUse audit",
-            "env": {
-              "BRAIN_AGENT_NAME": "agent-brain_pmo",
-              "BRAIN_AGENT_ROLE": "pmo",
-              "BRAIN_AGENT_GROUP": "brain",
-              "BRAIN_SCOPE_PATH": "/xkagent_infra/brain",
-              "BRAIN_AGENT_SCOPE": "group",
               "BRAIN_ENABLED_LEP_PROFILES": "delivery-governance",
-              "BRAIN_LEP_BINDINGS_FILE": "/xkagent_infra/brain/infrastructure/config/agentctl/lep_bindings.yaml",
               "BRAIN_ROLE_DEFAULT_LEP_PROFILES": "delivery-governance"
             }
           }
@@ -124,13 +99,25 @@
               "BRAIN_AGENT_GROUP": "brain",
               "BRAIN_SCOPE_PATH": "/xkagent_infra/brain",
               "BRAIN_AGENT_SCOPE": "group",
-              "BRAIN_ENABLED_LEP_PROFILES": "delivery-governance",
               "BRAIN_LEP_BINDINGS_FILE": "/xkagent_infra/brain/infrastructure/config/agentctl/lep_bindings.yaml",
+              "BRAIN_ENABLED_LEP_PROFILES": "delivery-governance",
               "BRAIN_ROLE_DEFAULT_LEP_PROFILES": "delivery-governance"
             }
           }
         ]
       }
     ]
+  },
+  "env": {
+    "ANTHROPIC_BASE_URL": "http://127.0.0.1:8210",
+    "ANTHROPIC_AUTH_TOKEN": "bgw-client-v1-f7be31cba1b6db9b2b6294dc97104f0d",
+    "ANTHROPIC_MODEL": "minimax/minimax-m2.7",
+    "ANTHROPIC_SMALL_FAST_MODEL": "minimax/minimax-m2.7",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "minimax/minimax-m2.7",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "minimax/minimax-m2.7",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "minimax/minimax-m2.7",
+    "API_TIMEOUT_MS": "3000000",
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+    "BRAIN_AGENT_SCOPE": "group"
   }
 }

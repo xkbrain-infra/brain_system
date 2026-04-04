@@ -27,6 +27,26 @@ LEP_FILE_DEFAULT = "/brain/base/spec/core/lep.yaml"
 LEP_FILE_LOCAL = "/brain/.claude/lep.yaml"
 
 
+def _hook_root() -> Path | None:
+    hook_root = os.environ.get("HOOK_ROOT", "").strip()
+    if not hook_root:
+        return None
+    try:
+        return Path(hook_root).resolve()
+    except Exception:
+        return Path(hook_root)
+
+
+def _hook_relative_lep_path() -> str | None:
+    hook_root = _hook_root()
+    if hook_root is None:
+        return None
+    candidate = (hook_root.parent / "spec" / "core" / "lep.yaml").resolve()
+    if candidate.exists():
+        return str(candidate)
+    return None
+
+
 @dataclass(frozen=True)
 class LepConfig:
     actions: dict[str, list[str]]
@@ -47,6 +67,10 @@ def get_lep_path() -> str:
     # Check local config first (agent-specific rules)
     if os.path.exists(LEP_FILE_LOCAL):
         return LEP_FILE_LOCAL
+
+    hook_relative = _hook_relative_lep_path()
+    if hook_relative:
+        return hook_relative
 
     # Fall back to global config
     return LEP_FILE_DEFAULT

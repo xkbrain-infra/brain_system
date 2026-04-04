@@ -522,9 +522,9 @@ audit_strategy:
     model_selection:
       rule: "validator 模型必须与 orchestrator 当前使用的模型不同"
       examples:
-        - orchestrator: claude-sonnet  →  validator: gemini-pro 或 doubao-pro
-        - orchestrator: gemini-pro     →  validator: claude-sonnet
-        - orchestrator: doubao-pro     →  validator: claude-sonnet 或 gemini-pro
+        - orchestrator: minimax/minimax-m2.7  →  validator: gemini-pro 或 claude-sonnet
+        - orchestrator: gemini-pro            →  validator: minimax/minimax-m2.7 或 claude-sonnet
+        - orchestrator: claude-sonnet         →  validator: minimax/minimax-m2.7 或 gemini-pro
       resolver: "从 provider_profiles.yaml 获取 orchestrator 当前模型，选第一个可用的不同模型"
       fallback: "备选模型不可用 → 降级为 same_model_isolated（策略 3）"
 
@@ -643,18 +643,27 @@ audit_strategy:
 
       "step_2: orchestrator 启动 validator agent":
         executor: orchestrator
-        action: "通过 agentctl 启动 ephemeral validator"
+        action: "通过 agentctl add + start 启动 project-scoped validator"
         command: |
-          agentctl start \
+          # 从 {validator_model} 拆出 <provider> / <model_name>，
+          # 例如 minimax/minimax-m2.7 → minimax + minimax-m2.7。
+          agentctl add {validator_agent_id} \
+            --group {group_id} \
             --role step_validator \
-            --model {validator_model} \
-            --task-file {project_root}/state/step_results/{step_id_safe}/validation_request.yaml \
-            --report-to {orchestrator_agent_id} \
-            --ephemeral
+            --agent-type <provider> \
+            --model <model_name> \
+            --scope project \
+            --project {project_id} \
+            --sandbox-id {sandbox_id} \
+            --desired-state stopped \
+            --apply
+          agentctl start {validator_agent_id} --apply
         agent_id_pattern: "agent_{group_id}_{project_id}_validator_{step_short_id}"
+        validator_agent_id: "{agent_id_pattern}"
         note: |
           step_short_id: 取 step_id 最后一段，如 capture_requirement
-          --ephemeral: 验证完成后 agentctl 自动销毁，不留驻
+          validation_request.yaml 与 report_to 写入 validator runtime prompt / runtime manifest，
+          不再依赖不存在的 agentctl shorthand 参数。
 
       "step_3: validator 独立执行验证":
         executor: "validator agent（不同模型，冷启动，无 orchestrator 执行上下文）"
@@ -686,7 +695,7 @@ audit_strategy:
               status: "ok | fail"
               detail: "fail 时说明具体不一致之处"
           validated_at: "{ISO8601}"
-        note: "回报后 validator agent 自动销毁（--ephemeral）"
+        note: "回报后由 orchestrator 执行 agentctl purge {validator_agent_id} --apply --force；超时降级时同样清理 validator runtime"
 
       "step_5: orchestrator 写 completion_check":
         executor: orchestrator

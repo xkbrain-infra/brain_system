@@ -1,0 +1,16 @@
+bootstrap_error: '[Errno 13] Permission denied: ''/root/.claude'''
+compose_file: /xkagent_infra/groups/brain/platform/sandbox/instances/dev-5f5al8/5f5al8.yaml
+compose_project: sandbox-5f5al8
+container_name: brain-dash-001-development-5f5al8
+created_at: '2026-04-02T16:35:27.491247'
+group: brain
+host_ports:
+  app: 19889
+  debug: 19890
+instance_id: 5f5al8
+project: dash-001
+project_root: /xkagent_infra/groups/brain/projects/dash-001
+runtime_root: /xkagent_infra/runtime/sandbox/5f5al8
+status: bootstrap_failed
+type: development
+updated_at: '2026-04-02T16:35:57.823862'

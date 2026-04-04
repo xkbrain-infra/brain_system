@@ -17,6 +17,7 @@ import socket
 import string
 import subprocess
 import sys
+import tempfile
 import time
 from datetime import datetime
 from pathlib import Path
@@ -53,9 +54,71 @@ class SandboxConfig:
     }
 
     @classmethod
+    def projects_root(cls) -> Path:
+        return Path("/xkagent_infra/groups") / cls.GROUP / "projects"
+
+    @classmethod
+    def normalize_project_name(cls, project: str) -> str:
+        value = str(project or "").strip().lower().replace("_", "-")
+        value = re.sub(r"[^a-z0-9-]+", "-", value)
+        value = re.sub(r"-{2,}", "-", value).strip("-")
+        return value
+
+    @classmethod
+    def project_lookup_key(cls, project: str) -> str:
+        return re.sub(r"[^a-z0-9]+", "", cls.normalize_project_name(project))
+
+    @classmethod
+    def resolve_project_name(cls, project: str) -> str:
+        raw = str(project or "").strip()
+        if not raw:
+            return raw
+
+        projects_root = cls.projects_root()
+        direct = projects_root / raw
+        if direct.exists():
+            return raw
+
+        normalized = cls.normalize_project_name(raw)
+        if normalized:
+            normalized_path = projects_root / normalized
+            if normalized_path.exists():
+                return normalized
+
+        lookup_key = cls.project_lookup_key(normalized)
+        if projects_root.exists():
+            for child in projects_root.iterdir():
+                if not child.is_dir():
+                    continue
+                child_normalized = cls.normalize_project_name(child.name)
+                if child_normalized == normalized:
+                    return child.name
+                if lookup_key and cls.project_lookup_key(child.name) == lookup_key:
+                    return child.name
+
+        return normalized or raw
+
+    @classmethod
     def get_project_alias(cls, project: str) -> str:
-        """获取项目别名，如果没有别名则返回原名"""
-        return cls.PROJECT_ALIAS_MAP.get(project, project)
+        """获取用于容器命名的项目别名"""
+        resolved = cls.resolve_project_name(project)
+        candidates = (
+            str(project or "").strip(),
+            resolved,
+            cls.normalize_project_name(project),
+            cls.normalize_project_name(resolved),
+            cls.normalize_project_name(resolved).replace("-", "_"),
+        )
+        for candidate in candidates:
+            alias = cls.PROJECT_ALIAS_MAP.get(candidate)
+            if alias:
+                return cls.normalize_project_name(alias)
+
+        alias = cls.normalize_project_name(resolved or project)
+        group_prefix = f"{cls.GROUP}-"
+        if alias.startswith(group_prefix):
+            alias = alias[len(group_prefix):]
+        return alias
 
     @classmethod
     def load_platform_config(cls) -> Dict:
@@ -68,7 +131,8 @@ class SandboxConfig:
     @classmethod
     def load_project_config(cls, project: str) -> Optional[Dict]:
         """加载项目级配置"""
-        config_path = Path(f"/xkagent_infra/groups/{cls.GROUP}/projects") / project / ".sandbox" / "config.yaml"
+        resolved_project = cls.resolve_project_name(project)
+        config_path = cls.projects_root() / resolved_project / ".sandbox" / "config.yaml"
         if config_path.exists():
             with open(config_path) as f:
                 return yaml.safe_load(f)
@@ -230,9 +294,13 @@ class SandboxManager:
     """Sandbox 管理主类"""
 
     ORCHESTRATOR_ROLE = "orchestrator"
-    PROJECT_ROLE_ALIASES = {
+    DEFAULT_ATTACHED_AGENT_ROLE = ORCHESTRATOR_ROLE
+    DEFAULT_ORCHESTRATOR_MODEL = "minimax/minimax-m2.7"
+    DEFAULT_PROJECT_ROLE_ALIASES = {
         "orchestrator": ("orchestrator", "project_orchestrator"),
         "project_orchestrator": ("orchestrator", "project_orchestrator"),
+        "auditor": ("auditor", "project_auditor"),
+        "project_auditor": ("auditor", "project_auditor"),
         "designer": ("designer", "dev_ui"),
         "ui_dev": ("designer", "dev_ui"),
         "dev": ("dev", "developer"),
@@ -245,7 +313,7 @@ class SandboxManager:
     }
     PUBLISHED_SERVICE_ROOT = Path("/xkagent_infra/brain/infrastructure/service/brain_sandbox_service")
     IPC_BRIDGE_SCRIPT_HOST = PUBLISHED_SERVICE_ROOT / "current" / "ipc_socket_bridge.py"
-    IPC_BRIDGE_SCRIPT_CONTAINER = "/brain/infrastructure/service/brain_sandbox_service/current/ipc_socket_bridge.py"
+    IPC_BRIDGE_SCRIPT_CONTAINER = "/xkagent_infra/runtime/sandbox/_services/service/brain_sandbox_service/current/ipc_socket_bridge.py"
     IPC_BRIDGE_STATE_ROOT = Path("/xkagent_infra/runtime/sandbox/_services/ipc_bridge")
     HOST_IPC_SOCKET = "/brain/tmp_ipc/brain_ipc.sock"
     HOST_NOTIFY_SOCKET = "/tmp/brain_ipc_notify.sock"
@@ -263,10 +331,20 @@ class SandboxManager:
     AGENTCTL_SERVICE_BUNDLE_CONTAINER = "/xkagent_infra/runtime/sandbox/_services/service/agentctl"
     SANDBOX_SERVICE_BUNDLE_HOST = Path("/xkagent_infra/brain/infrastructure/service/brain_sandbox_service")
     SANDBOX_SERVICE_BUNDLE_CONTAINER = "/xkagent_infra/runtime/sandbox/_services/service/brain_sandbox_service"
+    TMUX_UTILS_BUNDLE_HOST = Path("/xkagent_infra/brain/infrastructure/service/utils/tmux")
+    TMUX_UTILS_BUNDLE_CONTAINER = "/xkagent_infra/runtime/sandbox/_services/service/utils/tmux"
+    BASE_BUNDLE_HOST = Path("/xkagent_infra/brain/base")
+    BASE_BUNDLE_CONTAINER = "/xkagent_infra/runtime/sandbox/_services/base"
     BASE_SKILL_BUNDLE_HOST = Path("/xkagent_infra/brain/base/skill")
     BASE_SKILL_BUNDLE_CONTAINER = "/xkagent_infra/runtime/sandbox/_services/base/skill"
+    BASE_HOOK_BUNDLE_HOST = Path("/xkagent_infra/brain/base/hooks")
+    BASE_HOOK_BUNDLE_CONTAINER = "/xkagent_infra/runtime/sandbox/_services/base/hooks"
+    BASE_SPEC_BUNDLE_HOST = Path("/xkagent_infra/brain/base/spec")
+    BASE_SPEC_BUNDLE_CONTAINER = "/xkagent_infra/runtime/sandbox/_services/base/spec"
     BASE_WORKFLOW_BUNDLE_HOST = Path("/xkagent_infra/brain/base/workflow")
     BASE_WORKFLOW_BUNDLE_CONTAINER = "/xkagent_infra/runtime/sandbox/_services/base/workflow"
+    INIT_FILE_HOST = Path("/xkagent_infra/brain/INIT.yaml")
+    INIT_FILE_CONTAINER = "/xkagent_infra/runtime/sandbox/_services/INIT.yaml"
     RUNTIME_INSTANCE_STATE_FILE = "instance.yaml"
     SANDBOX_SERVICE_BUNDLE_MARKER = "/xkagent_infra/runtime/sandbox/_services/service/brain_sandbox_service/"
 
@@ -275,10 +353,40 @@ class SandboxManager:
         self.registry = SandboxRegistry()
         self.naming = SandboxNaming()
 
+    def _canonical_project(self, project: str) -> str:
+        resolved = self.config.resolve_project_name(project)
+        if not resolved:
+            raise RuntimeError("project name is required")
+        return resolved
+
+    def _container_name_for_project(
+        self,
+        project: str,
+        dep_type: str,
+        instance_id: str,
+        *,
+        group: Optional[str] = None,
+    ) -> str:
+        resolved_group = str(group or self.config.GROUP).strip() or self.config.GROUP
+        return self.naming.container_name(
+            resolved_group,
+            self.config.get_project_alias(project),
+            dep_type,
+            instance_id,
+        )
+
+    def _ensure_instance_matches_project(self, instance: Dict[str, Any], project: str) -> None:
+        instance_project = self._canonical_project(str(instance.get("project") or ""))
+        if instance_project != project:
+            raise RuntimeError(
+                f"instance/project mismatch: {instance.get('instance_id')} belongs to {instance_project}, not {project}"
+            )
+
     def create(self, project: str, dep_type: str = "development", **kwargs) -> Dict:
         """创建新 Sandbox"""
+        project = self._canonical_project(project)
         print(f"🚀 创建 {dep_type} sandbox for {project}...")
-        with_agent = str(kwargs.get("with_agent") or "").strip().lower() or None
+        with_agent = str(kwargs.get("with_agent") or self.DEFAULT_ATTACHED_AGENT_ROLE).strip().lower()
         pending_id = str(kwargs.get("pending_id") or "").strip() or None
         model_override = str(kwargs.get("model") or "").strip() or None
 
@@ -300,10 +408,10 @@ class SandboxManager:
             sys.exit(1)
 
         # 4. 构建容器名称
-        container_name = self.naming.container_name(
-            "brain", project, dep_type, instance_id
-        )
         host_project_root = self._project_host_root(project)
+        if not host_project_root.exists():
+            raise RuntimeError(f"project root does not exist: {host_project_root}")
+        container_name = checker.container_name
         runtime_root = self._sandbox_runtime_root(instance_id)
         runtime_root.mkdir(parents=True, exist_ok=True)
         compose_project = f"sandbox-{instance_id}"
@@ -323,7 +431,7 @@ class SandboxManager:
         # 7. 启动容器
         print(f"📦 启动容器: {container_name}")
         self._run(
-            ["docker", "compose", "-p", compose_project, "-f", compose_file, "up", "-d"],
+            ["docker", "compose", "-p", compose_project, "-f", compose_file, "up", "-d", "--build"],
             cwd=str(self.config.BASE_ROOT / "templates"),
             timeout=120,
         )
@@ -332,7 +440,7 @@ class SandboxManager:
         instance_record = {
             "instance_id": instance_id,
             "project": project,
-            "group": "brain",
+            "group": checker.group,
             "type": dep_type,
             "status": "running",
             "created_at": datetime.now().isoformat(),
@@ -368,6 +476,7 @@ class SandboxManager:
                 raise
             instance_record["status"] = "ready"
             instance_record["agent"] = agent_info
+            self._verify_create_contract(container_name=container_name, agent_info=agent_info)
             self.registry.update(
                 instance_id,
                 {
@@ -389,10 +498,10 @@ class SandboxManager:
         return instance_record
 
     def _project_host_root(self, project: str) -> Path:
-        return Path("/xkagent_infra/groups") / self.config.GROUP / "projects" / project
+        return self.config.projects_root() / self._canonical_project(project)
 
     def _project_container_root(self, project: str) -> Path:
-        return Path("/groups") / self.config.GROUP / "projects" / project
+        return Path("/groups") / self.config.GROUP / "projects" / self._canonical_project(project)
 
     def _sandbox_runtime_root(self, instance_id: str) -> Path:
         return Path("/xkagent_infra/runtime/sandbox") / instance_id
@@ -414,6 +523,12 @@ class SandboxManager:
             if candidate.exists():
                 return candidate
         raise RuntimeError("orchestrator workflow bundle not found")
+
+    def _load_orchestrator_config(self) -> Dict[str, Any]:
+        config_path = self._resolve_orchestrator_workflow_root() / "config" / "provider_profiles.yaml"
+        with open(config_path, encoding="utf-8") as f:
+            loaded = yaml.safe_load(f) or {}
+        return loaded if isinstance(loaded, dict) else {}
 
     def _sandbox_tmux_tmpdir(self, instance_id: str) -> str:
         return f"/xkagent_infra/runtime/sandbox/{instance_id}/.tmux"
@@ -452,7 +567,7 @@ class SandboxManager:
             container_name = str(os.environ.get("CONTAINER_NAME") or "").strip()
             if project:
                 if not container_name:
-                    container_name = self.naming.container_name(self.config.GROUP, project, dep_type, instance_id)
+                    container_name = self._container_name_for_project(project, dep_type, instance_id)
                 return {
                     "instance_id": instance_id,
                     "project": project,
@@ -510,11 +625,18 @@ class SandboxManager:
     def _default_pending_id(self, instance_id: str) -> str:
         return f"bootstrap-{instance_id}"
 
-    def _load_role_profile(self, profile_role: str, model_override: Optional[str] = None) -> Dict[str, str]:
-        profile_file = self._resolve_orchestrator_workflow_root() / "config" / "provider_profiles.yaml"
-        with open(profile_file, encoding="utf-8") as f:
-            cfg = yaml.safe_load(f) or {}
+    def _verify_create_contract(self, *, container_name: str, agent_info: Optional[Dict[str, Any]]) -> None:
+        self._wait_for_container_healthy(container_name, timeout_s=30)
+        if not agent_info:
+            raise RuntimeError("sandbox create contract violated: attached orchestrator missing")
+        role = str(agent_info.get("role") or "").strip().lower()
+        if role != self.ORCHESTRATOR_ROLE:
+            raise RuntimeError(
+                f"sandbox create contract violated: expected {self.ORCHESTRATOR_ROLE}, got {role or 'missing'}"
+            )
 
+    def _load_role_profile(self, profile_role: str, model_override: Optional[str] = None) -> Dict[str, str]:
+        cfg = self._load_orchestrator_config()
         role_profile_map = cfg.get("role_profile_map") or {}
         provider_catalog = ((cfg.get("providers") or {}).get("available") or {})
         profiles = ((cfg.get("providers") or {}).get("profiles") or {})
@@ -524,8 +646,12 @@ class SandboxManager:
         provider_key = str(profile.get("provider") or "anthropic").strip().lower()
         raw_model = str(profile.get("model") or "claude-sonnet-4-6").strip()
 
-        if model_override:
-            override = str(model_override).strip()
+        effective_model_override = str(model_override or "").strip() or None
+        if not effective_model_override and profile_role == "project_orchestrator":
+            effective_model_override = self.DEFAULT_ORCHESTRATOR_MODEL
+
+        if effective_model_override:
+            override = effective_model_override
             if "/" in override:
                 provider_key, _, raw_model = override.partition("/")
                 provider_key = provider_key.strip().lower()
@@ -562,11 +688,35 @@ class SandboxManager:
     def _load_orchestrator_profile(self, model_override: Optional[str] = None) -> Dict[str, str]:
         return self._load_role_profile("project_orchestrator", model_override=model_override)
 
+    def _load_project_role_aliases(self) -> Dict[str, Tuple[str, str]]:
+        cfg = self._load_orchestrator_config()
+        raw_aliases = cfg.get("project_role_aliases") or {}
+        resolved: Dict[str, Tuple[str, str]] = {}
+        if isinstance(raw_aliases, dict):
+            for key, value in raw_aliases.items():
+                alias = str(key or "").strip().lower().replace("-", "_")
+                if not alias:
+                    continue
+                identity_role = ""
+                profile_role = ""
+                if isinstance(value, dict):
+                    identity_role = str(value.get("identity_role") or value.get("identity") or "").strip()
+                    profile_role = str(value.get("profile_role") or value.get("profile") or "").strip()
+                elif isinstance(value, (list, tuple)) and len(value) >= 2:
+                    identity_role = str(value[0] or "").strip()
+                    profile_role = str(value[1] or "").strip()
+                if identity_role and profile_role:
+                    resolved[alias] = (identity_role, profile_role)
+        merged = dict(self.DEFAULT_PROJECT_ROLE_ALIASES)
+        merged.update(resolved)
+        return merged
+
     def _resolve_project_role(self, role: str) -> Tuple[str, str]:
         normalized = str(role or "").strip().lower().replace("-", "_")
-        resolved = self.PROJECT_ROLE_ALIASES.get(normalized)
+        aliases = self._load_project_role_aliases()
+        resolved = aliases.get(normalized)
         if not resolved:
-            supported = ", ".join(sorted(self.PROJECT_ROLE_ALIASES.keys()))
+            supported = ", ".join(sorted(aliases.keys()))
             raise RuntimeError(f"unsupported project role: {role} (supported: {supported})")
         return resolved
 
@@ -731,17 +881,65 @@ class SandboxManager:
     def _sync_claude_global_state_to_container(self, container_name: str) -> None:
         self._run(["docker", "exec", container_name, "sh", "-lc", "mkdir -p /root/.claude"], timeout=20)
 
-        if Path("/root/.claude").exists():
-            self._run(
-                ["docker", "cp", "/root/.claude/.", f"{container_name}:/root/.claude/"],
-                timeout=120,
-            )
-        if Path("/root/.claude.json").exists():
+        claude_root = Path("/root/.claude")
+        if claude_root.exists():
+            with tempfile.TemporaryDirectory(prefix="brain-claude-sync-") as tmpdir:
+                staging_root = Path(tmpdir) / ".claude"
+                copied = self._copy_readable_tree(claude_root, staging_root)
+                if copied:
+                    self._run(
+                        ["docker", "cp", f"{staging_root}/.", f"{container_name}:/root/.claude/"],
+                        timeout=120,
+                    )
+                else:
+                    print("[sandbox_service] skip host /root/.claude sync: no readable files")
+
+        claude_json = Path("/root/.claude.json")
+        if claude_json.exists() and os.access(claude_json, os.R_OK):
             self._run(
                 ["docker", "cp", "/root/.claude.json", f"{container_name}:/root/.claude.json"],
                 timeout=60,
             )
+        elif claude_json.exists():
+            print("[sandbox_service] skip unreadable host file: /root/.claude.json")
         self._sanitize_container_claude_settings(container_name)
+
+    def _copy_readable_tree(self, source_root: Path, dest_root: Path) -> int:
+        copied = 0
+        for current_root, dirnames, filenames in os.walk(source_root, topdown=True):
+            current_path = Path(current_root)
+            try:
+                rel = current_path.relative_to(source_root)
+            except ValueError:
+                rel = Path(".")
+            target_dir = dest_root / rel
+            target_dir.mkdir(parents=True, exist_ok=True)
+
+            kept_dirs: List[str] = []
+            for dirname in dirnames:
+                src_dir = current_path / dirname
+                if os.access(src_dir, os.R_OK | os.X_OK):
+                    kept_dirs.append(dirname)
+                else:
+                    print(f"[sandbox_service] skip unreadable host dir: {src_dir}")
+            dirnames[:] = kept_dirs
+
+            for filename in filenames:
+                src_file = current_path / filename
+                dst_file = target_dir / filename
+                if not os.access(src_file, os.R_OK):
+                    print(f"[sandbox_service] skip unreadable host file: {src_file}")
+                    continue
+                try:
+                    if src_file.is_symlink():
+                        target = os.readlink(src_file)
+                        dst_file.symlink_to(target)
+                    else:
+                        shutil.copy2(src_file, dst_file)
+                    copied += 1
+                except OSError as exc:
+                    print(f"[sandbox_service] skip host path {src_file}: {exc}")
+        return copied
 
     def _sanitize_container_claude_settings(self, container_name: str) -> None:
         settings_payload = {
@@ -816,7 +1014,10 @@ class SandboxManager:
                 container_name,
                 "sh",
                 "-lc",
-                f"mkdir -p {self.AGENTCTL_SERVICE_BUNDLE_CONTAINER} {self.SANDBOX_SERVICE_BUNDLE_CONTAINER} {self.BASE_SKILL_BUNDLE_CONTAINER} {self.BASE_WORKFLOW_BUNDLE_CONTAINER}",
+                f"mkdir -p {self.AGENTCTL_SERVICE_BUNDLE_CONTAINER} {self.SANDBOX_SERVICE_BUNDLE_CONTAINER} "
+                f"{self.TMUX_UTILS_BUNDLE_CONTAINER} "
+                f"{self.BASE_SKILL_BUNDLE_CONTAINER} {self.BASE_HOOK_BUNDLE_CONTAINER} "
+                f"{self.BASE_SPEC_BUNDLE_CONTAINER} {self.BASE_WORKFLOW_BUNDLE_CONTAINER}",
             ],
             timeout=20,
         )
@@ -842,8 +1043,53 @@ class SandboxManager:
             [
                 "docker",
                 "cp",
+                f"{self.TMUX_UTILS_BUNDLE_HOST}/.",
+                f"{container_name}:{self.TMUX_UTILS_BUNDLE_CONTAINER}/",
+            ],
+            timeout=120,
+        )
+        self._run(
+            [
+                "docker",
+                "cp",
+                f"{self.BASE_BUNDLE_HOST}/.",
+                f"{container_name}:{self.BASE_BUNDLE_CONTAINER}/",
+            ],
+            timeout=120,
+        )
+        self._run(
+            [
+                "docker",
+                "cp",
+                str(self.INIT_FILE_HOST),
+                f"{container_name}:{self.INIT_FILE_CONTAINER}",
+            ],
+            timeout=120,
+        )
+        self._run(
+            [
+                "docker",
+                "cp",
                 f"{self.BASE_SKILL_BUNDLE_HOST}/.",
                 f"{container_name}:{self.BASE_SKILL_BUNDLE_CONTAINER}/",
+            ],
+            timeout=120,
+        )
+        self._run(
+            [
+                "docker",
+                "cp",
+                f"{self.BASE_HOOK_BUNDLE_HOST}/.",
+                f"{container_name}:{self.BASE_HOOK_BUNDLE_CONTAINER}/",
+            ],
+            timeout=120,
+        )
+        self._run(
+            [
+                "docker",
+                "cp",
+                f"{self.BASE_SPEC_BUNDLE_HOST}/.",
+                f"{container_name}:{self.BASE_SPEC_BUNDLE_CONTAINER}/",
             ],
             timeout=120,
         )
@@ -1076,7 +1322,12 @@ class SandboxManager:
         self._sync_service_bundles_to_container(container_name)
         self._ensure_container_ipc_bridges(container_name)
         env = os.environ.copy()
+        sandbox_id = str(agent_spec.get("sandbox_id") or "").strip()
         env["AGENTCTL_DOCKER_CONTAINER"] = container_name
+        env["AGENTCTL_CONFIG_DIR_HINT"] = str(config_dir)
+        if sandbox_id:
+            env["BRAIN_SANDBOX_ID"] = sandbox_id
+            env["TMUX_TMPDIR"] = self._sandbox_tmux_tmpdir(sandbox_id)
         self._run(
             [
                 "python3",
@@ -1246,13 +1497,11 @@ class SandboxManager:
         slot: Optional[str] = None,
         model_override: Optional[str] = None,
     ) -> Dict[str, Any]:
+        project = self._canonical_project(project)
         instance = self._resolve_instance(instance_id)
         if not instance:
             raise RuntimeError(f"instance not found: {instance_id}")
-        if str(instance.get("project") or "").strip() != project:
-            raise RuntimeError(
-                f"instance/project mismatch: {instance_id} belongs to {instance.get('project')}, not {project}"
-            )
+        self._ensure_instance_matches_project(instance, project)
 
         identity_role, profile_role = self._resolve_project_role(role)
         runtime_root = self._sandbox_runtime_root(instance_id)
@@ -1347,7 +1596,7 @@ class SandboxManager:
 
         env_vars = {
             "SANDBOX_NAME": f"sandbox-{instance_id}",
-            "SANDBOX_VERSION": "2.3.7",
+            "SANDBOX_VERSION": "2.3.9",
             "CONTAINER_NAME": container_name,
             "HOSTNAME": f"{project}-{dep_type}",
             "PROJECT_NAME": project,
@@ -1362,8 +1611,6 @@ class SandboxManager:
             "HOST_PORT_DEBUG": str(base_port + 1),
             "CONTAINER_PORT_APP": "8080",
             "CONTAINER_PORT_DEBUG": "5678",
-            "CPU_LIMIT": provider_config["provider"]["resources"][dep_type]["cpus"],
-            "MEMORY_LIMIT": provider_config["provider"]["resources"][dep_type]["memory"],
             "RESTART_POLICY": "no" if dep_type in ["development", "testing"] else "unless-stopped",
             "CREATED_AT": datetime.now().isoformat(),
             "AGENTCTL_CONFIG_DIR": "/xkagent_infra/runtime/sandbox/${INSTANCE_ID}/config/agentctl",
@@ -1410,11 +1657,13 @@ class SandboxManager:
     def start(self, project: str, instance_id: Optional[str] = None,
               dep_type: Optional[str] = None) -> None:
         """启动 Sandbox"""
+        project = self._canonical_project(project)
         if instance_id:
             instance = self.registry.get(instance_id)
             if not instance:
                 print(f"❌ 实例 {instance_id} 不存在")
                 return
+            self._ensure_instance_matches_project(instance, project)
 
             compose_file = instance["compose_file"]
             compose_project = self._compose_project_name(instance)
@@ -1433,10 +1682,12 @@ class SandboxManager:
 
     def stop(self, project: str, instance_id: str, cleanup: bool = False) -> None:
         """停止 Sandbox"""
+        project = self._canonical_project(project)
         instance = self.registry.get(instance_id)
         if not instance:
             print(f"❌ 实例 {instance_id} 不存在")
             return
+        self._ensure_instance_matches_project(instance, project)
 
         compose_file = instance["compose_file"]
         compose_project = self._compose_project_name(instance)
@@ -1459,6 +1710,7 @@ class SandboxManager:
     def list(self, project: Optional[str] = None, active_only: bool = False) -> List[Dict]:
         """列出 Sandbox"""
         if project:
+            project = self._canonical_project(project)
             instances = self.registry.list_by_project(project)
         else:
             instances = []
@@ -1480,10 +1732,12 @@ class SandboxManager:
 
     def destroy(self, project: str, instance_id: str, force: bool = False) -> None:
         """销毁 Sandbox"""
+        project = self._canonical_project(project)
         instance = self.registry.get(instance_id)
         if not instance:
             print(f"❌ 实例 {instance_id} 不存在")
             return
+        self._ensure_instance_matches_project(instance, project)
 
         compose_file = instance["compose_file"]
         compose_project = self._compose_project_name(instance)
@@ -1505,10 +1759,12 @@ class SandboxManager:
 
     def exec_cmd(self, project: str, instance_id: str, command: str) -> None:
         """在 Sandbox 中执行命令"""
+        project = self._canonical_project(project)
         instance = self.registry.get(instance_id)
         if not instance:
             print(f"❌ 实例 {instance_id} 不存在")
             return
+        self._ensure_instance_matches_project(instance, project)
 
         container_name = instance["container_name"]
         proc = subprocess.run(
@@ -1526,6 +1782,7 @@ class SandboxManager:
 
     def validate(self, project: str, check_gates: bool = False) -> Tuple[bool, List[str]]:
         """验证项目配置"""
+        project = self._canonical_project(project)
         errors = []
 
         # 检查项目配置是否存在
@@ -1555,7 +1812,7 @@ def main():
     create_parser.add_argument(
         "--with-agent",
         choices=["orchestrator"],
-        help="Bootstrap and start a sandbox-local project agent after container creation",
+        help="Bootstrap and start a sandbox-local project agent after container creation (default: orchestrator)",
     )
     create_parser.add_argument(
         "--pending-id",
@@ -1563,7 +1820,7 @@ def main():
     )
     create_parser.add_argument(
         "--model",
-        help="Optional provider/model override for attached orchestrator, e.g. minimax/minimax-m2.7",
+        help="Optional provider/model override for attached orchestrator (default: minimax/minimax-m2.7)",
     )
 
     # start

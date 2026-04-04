@@ -239,6 +239,15 @@ class GeminiProvider(BaseProvider):
             return None
         return [{"functionDeclarations": function_declarations}]
 
+    # JSON Schema keys not supported by Gemini's functionDeclaration.parameters
+    _GEMINI_UNSUPPORTED_SCHEMA_KEYS = frozenset({
+        "propertyNames", "unevaluatedProperties", "unevaluatedItems",
+        "if", "then", "else", "not", "contains", "prefixItems",
+        "contentEncoding", "contentMediaType", "contentSchema",
+        "deprecated", "readOnly", "writeOnly", "examples",
+        "patternProperties",
+    })
+
     @classmethod
     def _sanitize_schema_for_gemini(cls, schema: Any) -> Any:
         """Drop JSON-Schema metadata keys unsupported by Gemini tool schema."""
@@ -249,6 +258,9 @@ class GeminiProvider(BaseProvider):
             for key, value in schema.items():
                 # Gemini functionDeclaration.parameters rejects "$schema" and similar keys.
                 if isinstance(key, str) and key.startswith("$"):
+                    continue
+                # Gemini also rejects certain JSON Schema keywords it doesn't support.
+                if key in cls._GEMINI_UNSUPPORTED_SCHEMA_KEYS:
                     continue
                 out[key] = cls._sanitize_schema_for_gemini(value)
             return out
@@ -509,7 +521,7 @@ class GeminiProvider(BaseProvider):
         headers = self._code_assist_headers(access_token, model_name)
         headers["Accept"] = "text/event-stream"
 
-        async with httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=10.0)) as client:
+        async with httpx.AsyncClient(timeout=None) as client:
             async with client.stream("POST", url, json=wrapped, headers=headers) as resp:
                 if resp.status_code != 200:
                     body = (await resp.aread()).decode("utf-8", "ignore")
@@ -793,7 +805,7 @@ class GeminiProvider(BaseProvider):
         emitted_text = ""
         usage: Dict[str, Any] = {}
 
-        async with httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=10.0)) as client:
+        async with httpx.AsyncClient(timeout=None) as client:
             async with client.stream("POST", url, json=payload, headers=headers) as resp:
                 if resp.status_code != 200:
                     body = (await resp.aread()).decode("utf-8", "ignore")

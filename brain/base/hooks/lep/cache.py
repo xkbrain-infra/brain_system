@@ -5,7 +5,7 @@ import os
 from typing import Optional
 from dataclasses import dataclass
 
-from lep import LepConfig, load_lep, LEP_FILE_DEFAULT
+from lep import LepConfig, get_lep_path, load_lep
 
 
 @dataclass
@@ -20,7 +20,7 @@ class CachedConfig:
 _CACHE: Optional[CachedConfig] = None
 
 
-def get_lep_config(path: str = LEP_FILE_DEFAULT) -> LepConfig:
+def get_lep_config(path: str | None = None) -> LepConfig:
     """Get LEP config with mtime-based caching
 
     Args:
@@ -35,6 +35,9 @@ def get_lep_config(path: str = LEP_FILE_DEFAULT) -> LepConfig:
         - Thread-safe due to Python GIL
     """
     global _CACHE
+
+    if path is None:
+        path = get_lep_path()
 
     # Check if file exists
     if not os.path.exists(path):

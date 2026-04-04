@@ -34,7 +34,7 @@ eligibility:
 
   existing_examples:
     - skill: lep        → spec: spec/core/lep.yaml + spec/policies/lep/
-    - skill: brain-publish → spec: spec/policies/deployment/base_publish.yaml
+    - skill: brain-publish → spec: spec/policies/deployment/base_publish.yaml + groups/brain/spec/deployment/release_process.yaml
     - skill: preset        → spec: (直接内嵌，无独立 spec 文件)
 
 # ============================================

@@ -33,6 +33,21 @@ except ImportError:
 _AUDIT_CONFIG = None
 
 
+def _infer_agent_name() -> str:
+    agent_name = os.environ.get("BRAIN_AGENT_NAME", "").strip()
+    if agent_name:
+        return agent_name
+
+    cwd = Path.cwd().resolve()
+    parts = cwd.parts
+    if "agents" in parts:
+        idx = parts.index("agents")
+        if idx + 1 < len(parts):
+            return parts[idx + 1]
+
+    return "unknown"
+
+
 def load_audit_config() -> Dict[str, Any]:
     """
     从 lep.yaml 加载 G-AUDIT 配置
@@ -179,7 +194,7 @@ def log_tool_use(
             "gate": gate,
             "cwd": os.getcwd(),
             "user": os.environ.get("USER", "unknown"),
-            "agent": os.environ.get("BRAIN_AGENT_NAME", "unknown"),
+            "agent": _infer_agent_name(),
         }
 
         # 脱敏敏感字段

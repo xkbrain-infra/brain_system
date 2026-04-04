@@ -1,0 +1,114 @@
+# Brain Sandbox Compose Template
+# 路径: /xkagent_infra/groups/brain/platform/sandbox/templates/compose.base.yaml
+
+name: sandbox-o1clno
+
+# 默认环境变量
+x-default-env: &default-env
+  HOST_IP: 10.200.19.2
+
+services:
+  sandbox:
+    build:
+      context: /xkagent_infra
+      dockerfile: groups/brain/projects/base/sandbox/templates/Dockerfile.base
+    image: brain-sandbox-base:2.3.9
+    container_name: brain-dash-001-development-o1clno
+    hostname: dash-001-development
+
+    # 工作目录 - 直接在 groups 下的项目目录
+    working_dir: /groups/brain/projects/dash-001
+    tty: true
+    stdin_open: true
+
+    # 容器保持运行，直接 sleep（不使用独立的 brain_ipc）
+    command: ["/bin/bash", "-lc", "sleep infinity"]
+
+    # 卷挂载（只暴露必要路径）
+    volumes:
+      # Brain 核心只读共享
+      - /xkagent_infra/brain:/brain:ro,z
+      # 显式挂载 base/ 与 INIT.yaml，避免上层 /brain 绑定在部分环境里缺失子树
+      - /xkagent_infra/brain/base:/brain/base:ro,z
+      - /xkagent_infra/brain/INIT.yaml:/brain/INIT.yaml:ro,z
+      # Groups 可写共享（项目代码）
+      - /xkagent_infra/groups:/groups:rw,z
+      # Sandbox runtime 实例目录（仅实例数据，_services 来自镜像）
+      - /xkagent_infra/runtime/sandbox/o1clno:/xkagent_infra/runtime/sandbox/o1clno
+      # Brain IPC socket（host /tmp 包含 socket）
+      - /tmp:/tmp:rw
+      # Brain IPC redirect target（host wrapper binds here）
+      - /xkagent_infra/brain/tmp_ipc:/brain/tmp_ipc:rw
+      # Brain IPC socket 链接目录
+      - /xkagent_infra/runtime/tmp:/xkagent_infra/runtime/tmp:rw
+
+    # 环境变量
+    environment:
+      # Sandbox 元数据
+      - SANDBOX_MODE=full
+      - SANDBOX_TYPE=development
+      - SANDBOX_INSTANCE_ID=o1clno
+      - SANDBOX_PROJECT=dash-001
+      - SANDBOX_GROUP=brain
+      - TERM=${TERM:-xterm-256color}
+      - LANG=${LANG:-C.utf8}
+      - LC_ALL=${LC_ALL:-C.utf8}
+
+      # 项目配置 - 使用 groups 下的实际路径
+      - PROJECT_ROOT=/groups/brain/projects/dash-001
+      - PROJECT_NAME=dash-001
+      - PROJECT_ID=dash-001
+      - PROJECT_VERSION=1.0.0
+      - GROUP_ID=brain
+      - SANDBOX_RUNTIME=/xkagent_infra/runtime/sandbox/o1clno
+      - TMUX_TMPDIR=/xkagent_infra/runtime/sandbox/o1clno/.tmux
+      - AGENTCTL_CONFIG_DIR=/xkagent_infra/runtime/sandbox/o1clno/config/agentctl
+
+      # Brain 集成
+      # host 模式下使用 host.docker.internal 访问 host 服务
+      - BRAIN_GATEWAY_URL=${BRAIN_GATEWAY_URL:-http://host.docker.internal:8200}
+      - BRAIN_PROXY_BASE_URL=${BRAIN_PROXY_BASE_URL:-http://host.docker.internal:8210}
+      - BRAIN_PATH=/brain
+      - BRAIN_IPC_SOCKET=/tmp/brain_ipc.sock
+
+      # Host IP（供 host.docker.internal 使用）
+      - HOST_IP=10.200.19.2
+
+      # Python 路径
+      - PYTHONPATH=/groups/brain/projects/dash-001/src:/brain/infrastructure/service/utils/ipc/src
+
+    # 网络配置 - 使用 host 模式直接访问 host 网络
+    network_mode: ${NETWORK_MODE:-host}
+
+    # 端口映射
+    ports:
+      - "19901:8080"
+      - "19902:5678"
+
+    # 健康检查
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+    # 重启策略（开发模式不自动重启）
+    restart: no
+
+    # 标签
+    labels:
+      - "brain.sandbox=true"
+      - "brain.group=brain"
+      - "brain.project=dash-001"
+      - "brain.type=development"
+      - "brain.instance=o1clno"
+      - "brain.created=2026-04-02T16:42:44.476479"
+
+# 网络（仅在非 host 模式下使用）
+networks:
+  brain-development-o1clno:
+    driver: bridge
+    labels:
+      - "brain.sandbox.network=true"
+      - "brain.group=brain"

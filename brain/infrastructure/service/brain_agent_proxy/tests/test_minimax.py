@@ -1,12 +1,19 @@
+import asyncio
 import sys
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
 
 
 CURRENT_DIR = Path("/xkagent_infra/brain/infrastructure/service/brain_agent_proxy/current")
 if str(CURRENT_DIR) not in sys.path:
     sys.path.insert(0, str(CURRENT_DIR))
+PROXY_ROOT = Path("/xkagent_infra/brain/infrastructure/service/brain_agent_proxy")
+if str(PROXY_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROXY_ROOT))
 
+from current import main as proxy_main
 from providers.minimax import MiniMaxProvider
 
 
@@ -95,6 +102,88 @@ class MiniMaxProviderTest(unittest.TestCase):
         original["temperature"] = 1.0
         payload = self.provider.build_messages_payload(original, "MiniMax-M2.7")
         self.assertEqual(payload["temperature"], 1.0)
+
+    def test_native_stream_retries_when_first_sse_has_no_visible_output(self) -> None:
+        provider = SimpleNamespace(
+            id="minimax",
+            type="api_key",
+            resolve_model=lambda raw: SimpleNamespace(
+                upstream_name=lambda: raw.split("/", 1)[1] if "/" in raw else raw
+            ),
+        )
+        normalized = SimpleNamespace(
+            original_request={"messages": [{"role": "user", "content": "hi"}], "stream": True},
+            model="minimax/minimax-m2.7",
+        )
+
+        empty_chunks = [
+            b'event: message_start\ndata: {"type":"message_start","message":{"id":"msg_empty","type":"message","role":"assistant","content":[]}}\n\n',
+            b'event: message_stop\ndata: {"type":"message_stop"}\n\n',
+        ]
+        text_chunks = [
+            b'event: message_start\ndata: {"type":"message_start","message":{"id":"msg_ok","type":"message","role":"assistant","content":[]}}\n\n',
+            b'event: content_block_start\ndata: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}\n\n',
+            b'event: content_block_delta\ndata: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"ok"}}\n\n',
+            b'event: content_block_stop\ndata: {"type":"content_block_stop","index":0}\n\n',
+            b'event: message_stop\ndata: {"type":"message_stop"}\n\n',
+        ]
+        responses = [empty_chunks, text_chunks]
+        stream_calls: list[dict] = []
+
+        class _FakeResponse:
+            def __init__(self, chunks):
+                self.status_code = 200
+                self._chunks = list(chunks)
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb):
+                return False
+
+            async def aiter_bytes(self):
+                for chunk in self._chunks:
+                    yield chunk
+
+            async def aread(self):
+                return b""
+
+        class _FakeClient:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb):
+                return False
+
+            def stream(self, method, url, json, headers):
+                stream_calls.append({"method": method, "url": url, "json": json, "headers": headers})
+                return _FakeResponse(responses.pop(0))
+
+        async def _collect():
+            chunks = []
+            async for chunk in proxy_main._build_api_key_stream_iter(provider, normalized, "messages"):
+                chunks.append(chunk)
+            return chunks
+
+        minimax_provider = SimpleNamespace(
+            build_headers=lambda: {"x-api-key": "test"},
+            build_messages_payload=lambda request, model: {"messages": request["messages"], "model": model},
+            get_api_base_url=lambda: "https://example.invalid/anthropic",
+        )
+
+        with patch.object(proxy_main, "_minimax_chain", return_value="native"):
+            with patch.object(proxy_main, "_build_minimax_provider", return_value=minimax_provider):
+                with patch.object(proxy_main, "_rewrite_tool_names_for_provider", return_value={}):
+                    with patch("httpx.AsyncClient", return_value=_FakeClient()):
+                        with patch.object(proxy_main, "STREAM_MAX_RETRIES", 1):
+                            with patch.object(proxy_main, "STREAM_RETRY_BASE_DELAY", 0):
+                                with patch.object(proxy_main.asyncio, "sleep", new=AsyncMock(return_value=None)):
+                                    chunks = asyncio.run(_collect())
+
+        payload = b"".join(chunks)
+        self.assertEqual(len(stream_calls), 2)
+        self.assertIn(b"text_delta", payload)
+        self.assertNotIn(b"msg_empty", payload)
 
 
 if __name__ == "__main__":

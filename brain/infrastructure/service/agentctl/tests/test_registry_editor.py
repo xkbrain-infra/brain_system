@@ -96,6 +96,29 @@ class RegistryEditorTests(unittest.TestCase):
         self.assertIn("  system:\n  - name: tmp-agent_system_sonnet", text)
         self.assertNotIn("  system: []", text)
 
+    def test_append_renders_run_as_user_when_present(self) -> None:
+        path = self._write_temp(
+            """
+            agents_registry:
+              version: '2.2'
+            group_meta:
+              brain:
+                type: coding
+                description: Brain
+            groups:
+              brain: []
+            services: {}
+            """
+        )
+        self.addCleanup(lambda: path.unlink(missing_ok=True))
+
+        entry = _entry("tmp-agent_root")
+        entry = AgentEntry(**{**entry.__dict__, "run_as_user": "root"})
+        append_agent_to_group(path, "brain", entry)
+        text = path.read_text(encoding="utf-8")
+
+        self.assertIn("run_as_user: root", text)
+
 
 if __name__ == "__main__":
     unittest.main()

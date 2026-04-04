@@ -162,6 +162,33 @@ providers:
     priority: 40
     enabled: true
 
+  # KIMI - Moonshot Anthropic-compatible endpoint
+  kimi:
+    type: api_key
+    name: "KIMI"
+    description: "KIMI Code via Anthropic-compatible API"
+
+    api_key:
+      require_auth: true
+      api_base_url: "https://api.kimi.com/coding"
+      api_key_env: "KIMI_API_KEY"
+      header_name: "x-api-key"
+      auth_scheme: ""
+
+    models:
+      - kimi-for-coding
+
+    protocols:
+      - messages
+
+    capabilities:
+      - code
+      - chat
+      - reasoning
+
+    priority: 45
+    enabled: true
+
   # Alibaba Qwen (DashScope) - Anthropic-compatible endpoint
   alibaba:
     type: api_key
@@ -205,6 +232,7 @@ providers:
 
     models:
       - kimi-k2.5
+      - doubao-seed-2-0-code
       - doubao-seed-2-0-pro
       - doubao-seed-2-0-lite
       - doubao-seed-2-0-mini
@@ -226,16 +254,49 @@ providers:
     type: api_key
     name: "MiniMax"
     description: "MiniMax Anthropic-compatible endpoint"
+    minimax_config:
+      chain: "native"
+      api_root_url: "https://api.minimaxi.com"
+      strip_ignored_fields: true
+      validate_temperature: true
+      reject_unsupported_content: true
 
     api_key:
       require_auth: true
       api_base_url: "${MINIMAX_API_BASE}"
       api_key_env: "MINIMAX_API_KEY"
-      header_name: "x-api-key"
-      auth_scheme: ""
+      header_name: "Authorization"
+      auth_scheme: "Bearer"
 
     models:
-      - MiniMax-M2.5
+      - id: minimax-m2.7
+        upstream: MiniMax-M2.7
+        aliases:
+          - MiniMax-M2.7
+      - id: minimax-m2.7-highspeed
+        upstream: MiniMax-M2.7-highspeed
+        aliases:
+          - MiniMax-M2.7-highspeed
+      - id: minimax-m2.5
+        upstream: MiniMax-M2.5
+        aliases:
+          - MiniMax-M2.5
+      - id: minimax-m2.5-highspeed
+        upstream: MiniMax-M2.5-highspeed
+        aliases:
+          - MiniMax-M2.5-highspeed
+      - id: minimax-m2.1
+        upstream: MiniMax-M2.1
+        aliases:
+          - MiniMax-M2.1
+      - id: minimax-m2.1-highspeed
+        upstream: MiniMax-M2.1-highspeed
+        aliases:
+          - MiniMax-M2.1-highspeed
+      - id: minimax-m2
+        upstream: MiniMax-M2
+        aliases:
+          - MiniMax-M2
 
     protocols:
       - messages
@@ -244,22 +305,19 @@ providers:
       - code
       - chat
       - reasoning
+      - image
+      - speech
 
     priority: 52
     enabled: true
 
   # Anthropic Claude - native API
   claude:
-    type: api_key
-    name: "Anthropic Claude"
-    description: "Anthropic native Messages API"
-
-    api_key:
-      require_auth: true
-      api_base_url: "https://api.anthropic.com"
-      api_key_env: "ANTHROPIC_API_KEY"
-      header_name: "x-api-key"
-      auth_scheme: ""
+    type: claude_cli
+    name: "Claude CLI (OAuth)"
+    description: "Local Claude Code backend via existing Claude OAuth login"
+    claude_cli_config:
+      permission_mode: "default"
 
     models:
       - claude-sonnet-4.6

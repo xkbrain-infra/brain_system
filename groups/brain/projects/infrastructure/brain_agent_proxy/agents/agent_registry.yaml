@@ -7,7 +7,7 @@ groups:
       role: orchestrator
       scope: project
       group: brain
-      path: /groups/brain/projects/brain_agent_proxy/agents/agent-brain_orch_bs-proxy-oom
+      path: /groups/brain/projects/infrastructure/brain_agent_proxy/agents/agent-brain_orch_bs-proxy-oom
       agent_type: claude
       model: claude-opus-4.6
       transport_mode: proxy

@@ -133,8 +133,14 @@ task_timeout_policy:
                    source: "state/task_graph.yaml",
                    rule: "本轮 dispatch 的 task_id 在 task_graph 中状态已从 READY → ACTIVE"}
           "2_spawn_validator":
-            command: "agentctl start --role step_validator --model {validator_model} --ephemeral"
-            note: "validator_model 由 model_selection 规则确定，与 orchestrator 不同"
+            command: |
+              # 从 {validator_model} 拆出 <provider> / <model_name> 后创建 validator。
+              agentctl add {validator_agent_id} --group {group_id} --role step_validator \
+                --agent-type <provider> --model <model_name> \
+                --scope project --project {project_id} --sandbox-id {sandbox_id} \
+                --desired-state stopped --apply
+              agentctl start {validator_agent_id} --apply
+            note: "validator_model 由 model_selection 规则确定，与 orchestrator 不同；完成验证后由 orchestrator 执行 agentctl purge {validator_agent_id} --apply --force"
           "3_wait_result":
             wait_for: "IPC: VALIDATE_COMPLETE"
             timeout: "120s"
@@ -251,8 +257,14 @@ task_timeout_policy:
                    source: "state/task_graph.yaml",
                    rule: "collect_batch 的 failed[] 在 task_graph 中标记为 FAILED"}
           "2_spawn_validator":
-            command: "agentctl start --role step_validator --model {validator_model} --ephemeral"
-            note: "validator_model 由 model_selection 规则确定，与 orchestrator 不同"
+            command: |
+              # 从 {validator_model} 拆出 <provider> / <model_name> 后创建 validator。
+              agentctl add {validator_agent_id} --group {group_id} --role step_validator \
+                --agent-type <provider> --model <model_name> \
+                --scope project --project {project_id} --sandbox-id {sandbox_id} \
+                --desired-state stopped --apply
+              agentctl start {validator_agent_id} --apply
+            note: "validator_model 由 model_selection 规则确定，与 orchestrator 不同；完成验证后由 orchestrator 执行 agentctl purge {validator_agent_id} --apply --force"
           "3_wait_result":
             wait_for: "IPC: VALIDATE_COMPLETE"
             timeout: "120s"
@@ -373,8 +385,14 @@ task_timeout_policy:
                    source: "state/task_graph.yaml",
                    rule: "review_decision=reject 的 task 在 task_graph 中有对应 rework task 创建，且 rework_round 已更新"}
           "2_spawn_validator":
-            command: "agentctl start --role step_validator --model {validator_model} --ephemeral"
-            note: "validator_model 由 model_selection 规则确定，与 orchestrator 不同"
+            command: |
+              # 从 {validator_model} 拆出 <provider> / <model_name> 后创建 validator。
+              agentctl add {validator_agent_id} --group {group_id} --role step_validator \
+                --agent-type <provider> --model <model_name> \
+                --scope project --project {project_id} --sandbox-id {sandbox_id} \
+                --desired-state stopped --apply
+              agentctl start {validator_agent_id} --apply
+            note: "validator_model 由 model_selection 规则确定，与 orchestrator 不同；完成验证后由 orchestrator 执行 agentctl purge {validator_agent_id} --apply --force"
           "3_wait_result":
             wait_for: "IPC: VALIDATE_COMPLETE"
             timeout: "120s"
@@ -463,8 +481,14 @@ task_timeout_policy:
                 - {id: "CHK-04", type: "escalation_check",
                    rule: "若 category=escalate，确认已通过 IPC 通知 brain_pmo"}
           "2_spawn_validator":
-            command: "agentctl start --role step_validator --model {validator_model} --ephemeral"
-            note: "validator_model 由 model_selection 规则确定，与 orchestrator 不同"
+            command: |
+              # 从 {validator_model} 拆出 <provider> / <model_name> 后创建 validator。
+              agentctl add {validator_agent_id} --group {group_id} --role step_validator \
+                --agent-type <provider> --model <model_name> \
+                --scope project --project {project_id} --sandbox-id {sandbox_id} \
+                --desired-state stopped --apply
+              agentctl start {validator_agent_id} --apply
+            note: "validator_model 由 model_selection 规则确定，与 orchestrator 不同；完成验证后由 orchestrator 执行 agentctl purge {validator_agent_id} --apply --force"
           "3_wait_result":
             wait_for: "IPC: VALIDATE_COMPLETE"
             timeout: "120s"
@@ -558,8 +582,14 @@ task_timeout_policy:
                    source: "state/task_graph.yaml",
                    rule: "所有 critical/high task 状态 in [DONE, VERIFIED]"}
           "2_spawn_validator":
-            command: "agentctl start --role step_validator --model {validator_model} --ephemeral"
-            note: "validator_model 由 model_selection 规则确定，与 orchestrator 不同"
+            command: |
+              # 从 {validator_model} 拆出 <provider> / <model_name> 后创建 validator。
+              agentctl add {validator_agent_id} --group {group_id} --role step_validator \
+                --agent-type <provider> --model <model_name> \
+                --scope project --project {project_id} --sandbox-id {sandbox_id} \
+                --desired-state stopped --apply
+              agentctl start {validator_agent_id} --apply
+            note: "validator_model 由 model_selection 规则确定，与 orchestrator 不同；完成验证后由 orchestrator 执行 agentctl purge {validator_agent_id} --apply --force"
           "3_wait_result":
             wait_for: "IPC: VALIDATE_COMPLETE"
             timeout: "120s"
@@ -598,4 +628,3 @@ task_timeout_policy:
     on_success: "MWF-OPC:6_1:drive_release"
     on_retry: "不 ready → 回到 dispatch_ready_tasks 继续推进"     # ← 这是核心循环
     on_blocked: "有无法解决的 gap → escalate"
-

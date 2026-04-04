@@ -105,8 +105,14 @@
                    source: "state/spec_checklist.yaml",
                    rule: "每个非 waived 的 checklist item 在 task_graph 中都有对应 task（通过 spec_id 或 task_refs）"}
           "2_spawn_validator":
-            command: "agentctl start --role step_validator --model {validator_model} --ephemeral"
-            note: "validator_model 由 model_selection 规则确定，与 orchestrator 不同"
+            command: |
+              # 从 {validator_model} 拆出 <provider> / <model_name> 后创建 validator。
+              agentctl add {validator_agent_id} --group {group_id} --role step_validator \
+                --agent-type <provider> --model <model_name> \
+                --scope project --project {project_id} --sandbox-id {sandbox_id} \
+                --desired-state stopped --apply
+              agentctl start {validator_agent_id} --apply
+            note: "validator_model 由 model_selection 规则确定，与 orchestrator 不同；完成验证后由 orchestrator 执行 agentctl purge {validator_agent_id} --apply --force"
           "3_wait_result":
             wait_for: "IPC: VALIDATE_COMPLETE"
             timeout: "120s"
@@ -161,5 +167,4 @@
     on_success: "MWF-OPC:5_1:dispatch_ready_tasks"
     on_retry: "task graph 不完整 → architect 补充后重试"
     on_blocked: "deliverables 不可拆分 → 回到 define_plan 重新规划"
-
 

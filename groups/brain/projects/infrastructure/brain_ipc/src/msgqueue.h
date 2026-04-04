@@ -103,6 +103,8 @@ void msgqueue_destroy(MsgQueue *mq);
 int msgqueue_send(MsgQueue *mq, const char *to, Message *msg);
 Message* msgqueue_recv(MsgQueue *mq, const char *agent);
 Message* msgqueue_recv_filtered(MsgQueue *mq, const char *agent, const char *conversation_id);
+Message* msgqueue_recv_by_id(MsgQueue *mq, const char *agent, const char *logical_name,
+                             const char *message_id);
 int msgqueue_peek(MsgQueue *mq, const char *agent);
 void msgqueue_stats(MsgQueue *mq, char *buf, size_t bufsize);
 

@@ -16,16 +16,90 @@ Env vars:
 import asyncio
 import json
 import os
+import socket
 import sys
 import time
 import uuid
+from pathlib import Path
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import Tool, TextContent
 
-sys.path.insert(0, "/xkagent_infra/brain/infrastructure/service/utils/ipc/bin/current")
-from ipc_client import DaemonClient  # noqa: E402
+for ipc_client_path in (
+    "/brain/infrastructure/service/utils/ipc/bin/current",
+    "/xkagent_infra/brain/infrastructure/service/utils/ipc/bin/current",
+):
+    if Path(ipc_client_path).exists():
+        sys.path.insert(0, ipc_client_path)
+        break
+try:
+    from ipc_client import DaemonClient  # type: ignore  # noqa: E402
+except ModuleNotFoundError:
+    class DaemonClient:  # noqa: D101
+        def __init__(self, socket_path: str) -> None:
+            self.socket_path = socket_path
+
+        def _send_request(self, action: str, data: dict, timeout_s: float = 5.0) -> dict:
+            request = {"action": action, "data": data}
+            payload = (json.dumps(request, ensure_ascii=False) + "\n").encode("utf-8")
+            sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            sock.settimeout(timeout_s)
+            sock.connect(self.socket_path)
+            sock.sendall(payload)
+            response = b""
+            while True:
+                chunk = sock.recv(4096)
+                if not chunk:
+                    break
+                response += chunk
+                if b"\n" in response:
+                    break
+            sock.close()
+            return json.loads(response.decode("utf-8"))
+
+        def register_service(self, service_name: str, metadata: dict | None = None) -> dict:
+            return self._send_request(
+                "service_register",
+                {"service_name": service_name, "metadata": metadata or {}},
+            )
+
+        def send(
+            self,
+            *,
+            from_agent: str,
+            to_agent: str,
+            payload: dict,
+            conversation_id: str | None = None,
+            message_type: str = "request",
+        ) -> dict:
+            return self._send_request(
+                "ipc_send",
+                {
+                    "from": from_agent,
+                    "to": to_agent,
+                    "payload": payload,
+                    "conversation_id": conversation_id,
+                    "message_type": message_type,
+                },
+            )
+
+        def recv(
+            self,
+            agent_name: str,
+            ack_mode: str = "auto",
+            conversation_id: str | None = None,
+            max_items: int = 10,
+        ) -> dict:
+            return self._send_request(
+                "ipc_recv",
+                {
+                    "agent": agent_name,
+                    "ack_mode": ack_mode,
+                    "conversation_id": conversation_id,
+                    "max_items": max_items,
+                },
+            )
 
 MCP_NAME       = os.environ.get("MCP_AGENT_NAME",       "mcp-brain_task_manager")
 TARGET_SERVICE = os.environ.get("TASK_MANAGER_SERVICE", "service-brain_task_manager")

@@ -4,6 +4,7 @@ from __future__ import annotations
 import importlib.util as _ilu
 import json
 import os
+import pwd
 import shlex
 import subprocess
 import time
@@ -63,6 +64,77 @@ def _load_autostart_agents() -> set[str]:
     if raw is None:
         raw = "agent-brain_manager"
     return {item.strip() for item in raw.split(",") if item.strip()}
+
+
+def _claude_cli_start_cmd() -> str:
+    return "IS_SANDBOX=1 claude --dangerously-skip-permissions"
+
+
+def _current_username() -> str:
+    try:
+        return pwd.getpwuid(os.geteuid()).pw_name
+    except Exception:
+        return str(os.environ.get("USER", "") or "").strip() or str(os.geteuid())
+
+
+def _tmux_context_is_sandbox() -> bool:
+    config_dir_hint = os.environ.get("AGENTCTL_CONFIG_DIR_HINT", "").strip()
+    return (
+        os.environ.get("AGENTCTL_DOCKER_CONTAINER", "").strip() != ""
+        or os.environ.get("IS_SANDBOX", "").strip() == "1"
+        or os.environ.get("BRAIN_SANDBOX_ID", "").strip() != ""
+        or "/runtime/sandbox/" in config_dir_hint
+    )
+
+
+def _resolve_run_as_user(*, runtime_env: dict[str, str], raw_spec: dict[str, Any]) -> str:
+    current_user = _current_username()
+    requested = str(raw_spec.get("run_as_user") or "").strip()
+    if requested.lower() in {"", "self", "current"}:
+        requested = ""
+
+    sandbox_flag = ""
+    raw_env = raw_spec.get("env") or {}
+    if isinstance(raw_env, dict):
+        sandbox_flag = str(raw_env.get("IS_SANDBOX") or "").strip()
+    if _tmux_context_is_sandbox() or str(runtime_env.get("BRAIN_SANDBOX_ID") or sandbox_flag).strip():
+        return current_user
+    if requested:
+        return requested
+    return current_user
+
+
+def _wrap_shell_cmd_for_target_user(
+    shell_cmd: str,
+    *,
+    target_user: str,
+    tmux_session: str,
+    preserve_tmux_env: bool = True,
+) -> str:
+    current_user = _current_username()
+    if not target_user or target_user == current_user:
+        return shell_cmd
+    if os.geteuid() != 0:
+        raise RuntimeError(
+            f"run_as_user={target_user} requires root privileges (current user: {current_user})"
+        )
+
+    if not preserve_tmux_env:
+        return f"exec sudo -H -u {shlex.quote(target_user)} bash -lc {shlex.quote(shell_cmd)}"
+
+    preserve_env = "TMUX_SESSION,TMUX_PANE,BRAIN_TMUX_SESSION,BRAIN_TMUX_PANE"
+    capture_tmux = " && ".join(
+        [
+            f"export TMUX_SESSION={tmux_session}",
+            "export TMUX_PANE=$(tmux display-message -p '#{pane_id}' 2>/dev/null)",
+            "export BRAIN_TMUX_SESSION=${BRAIN_TMUX_SESSION:-$TMUX_SESSION}",
+            "export BRAIN_TMUX_PANE=${BRAIN_TMUX_PANE:-$TMUX_PANE}",
+        ]
+    )
+    return (
+        f"{capture_tmux} && "
+        f"exec sudo --preserve-env={preserve_env} -H -u {shlex.quote(target_user)} bash -lc {shlex.quote(shell_cmd)}"
+    )
 
 
 class Launcher:
@@ -518,7 +590,7 @@ class Launcher:
                 use_claude_cli = False
 
         if use_claude_cli:
-            return "IS_SANDBOX=1 claude --dangerously-skip-permissions"
+            return _claude_cli_start_cmd()
 
         parts = [cmd]
 
@@ -754,6 +826,18 @@ class Launcher:
             if not ok:
                 return RestartResult(False, agent_name, reason, 0, error=detail)
 
+        runtime_env: dict[str, str] = {}
+        manifest = _load_runtime_manifest(cwd) if cwd else None
+        runtime = manifest.get("runtime") if isinstance(manifest, dict) else None
+        if isinstance(runtime, dict):
+            env_spec = runtime.get("env") or {}
+            if isinstance(env_spec, dict):
+                for env_key, env_val in env_spec.items():
+                    key = str(env_key).strip()
+                    value = str(env_val).strip()
+                    if key:
+                        runtime_env[key] = value
+
         # Setup MCP config before starting agent
         try:
             self._setup_mcp_config(spec)
@@ -761,40 +845,58 @@ class Launcher:
             self._log_event("mcp_config_error", {"agent_name": agent_name, "error": str(e)})
             # Continue anyway, MCP config failure shouldn't block agent start
 
-        # Build full shell command: "cd /path && export VAR=val && VAR2=val2 command"
-        env_inline = self._build_env_string(spec)      # env: inline format (VAR=val cmd)
-        env_export = self._build_export_string(spec)   # export_cmd: export format (export VAR=val &&)
+        target_user = _resolve_run_as_user(runtime_env=runtime_env, raw_spec=spec)
+        switch_user = target_user != _current_username()
 
-        shell_parts = []
-        if cwd:
-            shell_parts.append(f"cd {shlex.quote(cwd)}")
-        if env_export:
-            shell_parts.append(env_export)
-
-        # Export tmux identity vars so MCP servers can detect session/pane
-        # even when the parent process (e.g. Codex) strips TMUX env vars
-        shell_parts.append(f"export TMUX_SESSION={tmux_session}")
-        shell_parts.append("export TMUX_PANE=$(tmux display-message -p '#{pane_id}' 2>/dev/null)")
-
-        # For Codex agents, set CODEX_HOME to per-agent config directory
-        # and symlink global auth.json so per-agent dir shares authentication
-        # For Kimi agents, set KIMI_HOME similarly
-        agent_type = str(spec.get("agent_type") or "").strip()
-        if agent_type == "codex" and cwd:
-            codex_home = f"{cwd}/.codex"
-            shell_parts.append(f"export CODEX_HOME={codex_home}")
-            self._ensure_codex_auth_symlink(codex_home)
-        elif agent_type == "kimi" and cwd:
-            kimi_home = f"{cwd}/.kimi"
-            shell_parts.append(f"export KIMI_HOME={kimi_home}")
-
-        # Build final command: "VAR=val cmd" (inline env vars)
-        if env_inline:
-            shell_parts.append(f"{env_inline} {start_cmd}")
+        if str(start_cmd).strip() == _claude_cli_start_cmd():
+            full_shell_cmd = _claude_cli_start_cmd()
         else:
-            shell_parts.append(start_cmd)
+            # Build full shell command: "cd /path && export VAR=val && VAR2=val2 command"
+            env_inline = self._build_env_string(spec)      # env: inline format (VAR=val cmd)
+            env_export = self._build_export_string(spec)   # export_cmd: export format (export VAR=val &&)
 
-        full_shell_cmd = " && ".join(shell_parts)
+            shell_parts = []
+            if cwd:
+                shell_parts.append(f"cd {shlex.quote(cwd)}")
+            if env_export:
+                shell_parts.append(env_export)
+
+            # Export tmux identity vars so MCP servers can detect session/pane
+            # even when the parent process (e.g. Codex) strips TMUX env vars
+            if switch_user:
+                shell_parts.append(f"export TMUX_SESSION=${{TMUX_SESSION:-{tmux_session}}}")
+                shell_parts.append("export TMUX_PANE=${TMUX_PANE:-}")
+            else:
+                shell_parts.append(f"export TMUX_SESSION={tmux_session}")
+                shell_parts.append("export TMUX_PANE=${TMUX_PANE:-$(tmux display-message -p '#{pane_id}' 2>/dev/null)}")
+            shell_parts.append("export BRAIN_TMUX_SESSION=${BRAIN_TMUX_SESSION:-$TMUX_SESSION}")
+            shell_parts.append("export BRAIN_TMUX_PANE=${BRAIN_TMUX_PANE:-$TMUX_PANE}")
+
+            # For Codex agents, set CODEX_HOME to per-agent config directory
+            # and symlink global auth.json so per-agent dir shares authentication
+            # For Kimi agents, set KIMI_HOME similarly
+            agent_type = str(spec.get("agent_type") or "").strip()
+            if agent_type == "codex" and cwd:
+                codex_home = f"{cwd}/.codex"
+                shell_parts.append(f"export CODEX_HOME={codex_home}")
+                self._ensure_codex_auth_symlink(codex_home)
+            elif agent_type == "kimi" and cwd:
+                kimi_home = f"{cwd}/.kimi"
+                shell_parts.append(f"export KIMI_HOME={kimi_home}")
+
+            # Build final command: "VAR=val cmd" (inline env vars)
+            if env_inline:
+                shell_parts.append(f"{env_inline} {start_cmd}")
+            else:
+                shell_parts.append(start_cmd)
+
+            full_shell_cmd = " && ".join(shell_parts)
+        full_shell_cmd = _wrap_shell_cmd_for_target_user(
+            full_shell_cmd,
+            target_user=target_user,
+            tmux_session=tmux_session,
+            preserve_tmux_env=str(start_cmd).strip() != _claude_cli_start_cmd(),
+        )
 
         if agent_name not in self._agent_states:
             self._agent_states[agent_name] = AgentState(name=agent_name, tmux_session=tmux_session)

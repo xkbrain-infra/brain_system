@@ -148,9 +148,9 @@ payload_template:
   # 可选: PMO 已有的初步需求（跳过部分 intake 步骤）
   intake_seed: null
 
-  # 可选: 覆盖默认 provider/model 选型
+  # 默认 project_orchestrator 模型；显式改写时再覆盖
   profile_overrides:
-    orchestrator_model: null
+    orchestrator_model: "minimax/minimax-m2.7"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 5. 容器内目录结构
@@ -338,7 +338,8 @@ startup_sequence:
           --with-agent orchestrator \
           --pending-id {pending_id}
       optional_model_flag:
-        - "若 payload_template.profile_overrides.orchestrator_model 非空，追加 --model {profile_overrides.orchestrator_model}"
+        - "默认 orchestrator 模型为 minimax/minimax-m2.7"
+        - "若 payload_template.profile_overrides.orchestrator_model 非空且不等于 minimax/minimax-m2.7，追加 --model {profile_overrides.orchestrator_model}"
       outputs:
         runtime_root: "/xkagent_infra/runtime/sandbox/{instance_id}"
         orchestrator_id: "agent_{group_id}_{project_id}_orchestrator_01"

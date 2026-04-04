@@ -166,24 +166,3 @@ provider:
       testing: isolated     # 测试容器隔离
       staging: custom       # 自定义网络
       audit: isolated       # 审计完全隔离
-
-  # ============================================================================
-  # 资源限制
-  # ============================================================================
-  resources:
-    development:
-      cpus: 2.0
-      memory: 2G
-      storage: 10G
-    testing:
-      cpus: 1.0
-      memory: 1G
-      storage: 5G
-    staging:
-      cpus: 1.0
-      memory: 1G
-      storage: 5G
-    audit:
-      cpus: 0.5
-      memory: 512M
-      storage: 2G

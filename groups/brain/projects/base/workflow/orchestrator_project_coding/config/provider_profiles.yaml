@@ -61,6 +61,14 @@ providers:
           tier: standard
           strengths: ["长上下文", "多模态", "代码生成", "信息整合"]
 
+    minimax:
+      display_name: "MiniMax"
+      agent_type: minimax
+      models:
+        - id: minimax-m2.7
+          tier: standard
+          strengths: ["协调", "tool use", "状态管理", "多 agent 调度"]
+
 # ─────────────────────────────────────────────────────────────────────────────
 # 2. Profile 定义 — 按职能分类，workflow 引用这些 key
 # ─────────────────────────────────────────────────────────────────────────────
@@ -94,6 +102,17 @@ providers:
       fallback:
         provider: copilot
         model: copilot-agent
+      capabilities_required: [tool_use_precision, coordination, reasoning]
+      ipc_method: mcp
+
+    # ── orchestrator: sandbox 内 project_orchestrator 默认 profile ──
+    orchestrator:
+      description: "sandbox 内 project_orchestrator 默认 profile"
+      provider: minimax
+      model: minimax-m2.7
+      fallback:
+        provider: anthropic
+        model: claude-sonnet-4-6
       capabilities_required: [tool_use_precision, coordination, reasoning]
       ipc_method: mcp
 
@@ -193,7 +212,7 @@ role_profile_map:
   brain_devops:      infra
 
   # project 侧角色（sandbox 内执行）
-  project_orchestrator: coordinator
+  project_orchestrator: orchestrator
   architect:           architect
   developer:           coder
   dev_api:             coder
@@ -297,3 +316,13 @@ resolution_order:
     如果用户选了 all_copilot preset:
       intake.yaml.profile_overrides.coordinator → provider: copilot, model: copilot-agent
       最终: copilot/copilot-agent
+
+    step: MWF-OPC:0_1:environment_init
+    who.executor: project_orchestrator
+    who.profile: orchestrator
+
+    解析:
+      role_profile_map["project_orchestrator"] → "orchestrator"
+      intake.yaml 没有 profile_overrides.orchestrator → 跳过
+      profiles.orchestrator → provider: minimax, model: minimax-m2.7
+      最终: minimax/minimax-m2.7

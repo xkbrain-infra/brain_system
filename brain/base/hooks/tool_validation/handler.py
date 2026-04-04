@@ -108,6 +108,24 @@ _OVERRIDES_LOADED = False
 _OVERRIDE_MODULES = []
 
 
+def _infer_agent_name() -> str:
+    """Resolve agent name from env first, then fallback to cwd layout."""
+    agent_name = os.environ.get("BRAIN_AGENT_NAME", "").strip()
+    if agent_name:
+        return agent_name
+
+    cwd = Path.cwd().resolve()
+    parts = cwd.parts
+
+    # /xkagent_infra/brain/agents/{agent_name}/...
+    if "agents" in parts:
+        idx = parts.index("agents")
+        if idx + 1 < len(parts):
+            return parts[idx + 1]
+
+    return ""
+
+
 def _load_overrides():
     """Load agent-specific override checkers based on BRAIN_AGENT_NAME.
 
@@ -122,7 +140,7 @@ def _load_overrides():
         return _OVERRIDE_MODULES
 
     _OVERRIDES_LOADED = True
-    agent_name = os.environ.get("BRAIN_AGENT_NAME", "")
+    agent_name = _infer_agent_name()
     if not agent_name:
         return _OVERRIDE_MODULES
 

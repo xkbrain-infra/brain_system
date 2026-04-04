@@ -1,4 +1,5 @@
 """Configuration loading and management."""
+import glob
 import os
 import re
 from pathlib import Path
@@ -45,6 +46,50 @@ class ProviderCredentials(BaseModel):
     api_key: Optional[APIKeyCredentials] = None
 
 
+def _model_name_key(value: str) -> str:
+    raw = str(value or "").strip()
+    if "/" in raw:
+        raw = raw.split("/", 1)[1]
+    return re.sub(r"[^a-z0-9]+", "_", raw.lower()).strip("_")
+
+
+class ModelDefinition(BaseModel):
+    """Provider model definition with external id and upstream canonical name."""
+
+    id: str
+    upstream: str = ""
+    aliases: List[str] = Field(default_factory=list)
+    name: str = ""
+    vendor: str = ""
+
+    def matches(self, value: str) -> bool:
+        key = _model_name_key(value)
+        if not key:
+            return False
+        for candidate in self.accepted_names():
+            if _model_name_key(candidate) == key:
+                return True
+        return False
+
+    def accepted_names(self) -> List[str]:
+        names: List[str] = [self.id]
+        if self.upstream:
+            names.append(self.upstream)
+        names.extend(self.aliases)
+        seen = set()
+        out: List[str] = []
+        for item in names:
+            text = str(item or "").strip()
+            if not text or text in seen:
+                continue
+            seen.add(text)
+            out.append(text)
+        return out
+
+    def upstream_name(self) -> str:
+        return str(self.upstream or self.id).strip()
+
+
 class ProviderConfig(BaseModel):
     """Provider configuration."""
     id: str
@@ -58,9 +103,11 @@ class ProviderConfig(BaseModel):
     # Deprecated: old format support
     oauth_config: Optional[Dict[str, Any]] = None
     api_key_config: Optional[Dict[str, Any]] = None
+    claude_cli_config: Optional[Dict[str, Any]] = None
+    minimax_config: Optional[Dict[str, Any]] = None
 
     # Models
-    models: List[str] = Field(default_factory=list)
+    models: List[ModelDefinition] = Field(default_factory=list)
 
     # Protocols
     protocols: List[str] = Field(default_factory=list)
@@ -79,6 +126,18 @@ class ProviderConfig(BaseModel):
 
     # Copilot account type: individual | business | enterprise
     account_type: str = "individual"
+
+    def resolve_model(self, value: str) -> Optional[ModelDefinition]:
+        for model in self.models:
+            if model.matches(value):
+                return model
+        return None
+
+    def supports_model(self, value: str) -> bool:
+        return self.resolve_model(value) is not None
+
+    def supported_model_ids(self) -> List[str]:
+        return [model.id for model in self.models]
 
 
 class RoutingConfig(BaseModel):
@@ -121,9 +180,16 @@ class AppConfig(BaseModel):
         proxy_config = None
         proxy_file = config_dir / "proxy.yaml"
         if proxy_file.exists():
-            with open(proxy_file) as f:
-                data = yaml.safe_load(f) or {}
-                proxy_config = ProxyConfig(**data)
+            proxy_config = cls._load_proxy_file(proxy_file)
+
+        for overlay_file in cls._iter_proxy_overlay_files():
+            overlay_path = Path(overlay_file)
+            if overlay_path == proxy_file or not overlay_path.exists():
+                continue
+            overlay_config = cls._load_proxy_file(overlay_path)
+            if overlay_config is None:
+                continue
+            proxy_config = cls._merge_proxy_configs(proxy_config, overlay_config)
 
         # Load providers
         providers_file = config_dir / "providers.yaml"
@@ -168,6 +234,47 @@ class AppConfig(BaseModel):
                 routing.default_strategy = proxy_config.default_strategy
 
         return cls(providers=providers, routing=routing, proxy=proxy_config)
+
+    @staticmethod
+    def _load_proxy_file(path: Path) -> Optional[ProxyConfig]:
+        if not path.exists():
+            return None
+        with open(path) as f:
+            data = yaml.safe_load(f) or {}
+        return ProxyConfig(**data)
+
+    @staticmethod
+    def _iter_proxy_overlay_files() -> List[str]:
+        pattern = str(
+            os.environ.get(
+                "BRAIN_AGENT_PROXY_PROXY_OVERLAY_GLOB",
+                "/xkagent_infra/runtime/sandbox/*/config/agentctl/proxy.yaml",
+            )
+            or ""
+        ).strip()
+        if not pattern:
+            return []
+        return sorted(glob.glob(pattern))
+
+    @staticmethod
+    def _merge_proxy_configs(
+        base: Optional[ProxyConfig],
+        overlay: Optional[ProxyConfig],
+    ) -> Optional[ProxyConfig]:
+        if overlay is None:
+            return base
+        if base is None:
+            return overlay
+
+        merged_clients = dict(base.clients)
+        merged_clients.update(overlay.clients)
+        return ProxyConfig(
+            version=base.version or overlay.version,
+            clients=merged_clients,
+            model_routing=dict(base.model_routing),
+            default_strategy=base.default_strategy,
+            model_strategy_map=dict(base.model_strategy_map),
+        )
 
     @staticmethod
     def _resolve_env_vars(data: Dict[str, Any]) -> Dict[str, Any]:
@@ -217,6 +324,15 @@ class AppConfig(BaseModel):
                 )
             else:
                 p["credentials"].api_key = APIKeyCredentials(**api_key_data)
+
+        if "models" in p and isinstance(p.get("models"), list):
+            normalized_models = []
+            for model in p["models"]:
+                if isinstance(model, str):
+                    normalized_models.append({"id": model})
+                elif isinstance(model, dict):
+                    normalized_models.append(model)
+            p["models"] = normalized_models
 
         return p
 

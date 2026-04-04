@@ -175,6 +175,23 @@ int registry_register_full(AgentRegistry *reg, const char *name,
         }
     }
 
+    /*
+     * A restarted sandbox agent keeps the same logical name and tmux session,
+     * but tmux will allocate a new pane id. Do not leave the old pane-backed
+     * instance online until HEARTBEAT_TIMEOUT expires, otherwise logical-name
+     * routing becomes briefly ambiguous after every restart.
+     */
+    if (tmux_session && tmux_session[0]) {
+        for (int i = 0; i < reg->count; i++) {
+            Agent *a = &reg->agents[i];
+            if (!a->active) continue;
+            if (strcmp(a->name, name) != 0) continue;
+            if (strcmp(a->tmux_session, tmux_session) != 0) continue;
+            if (strcmp(a->instance_id, instance_id) == 0) continue;
+            a->active = false;
+        }
+    }
+
     // Check if instance already exists
     Agent *existing = find_agent_by_instance_id(reg, instance_id);
     if (existing) {
@@ -302,6 +319,14 @@ int registry_prune_missing_panes(AgentRegistry *reg, const char **pane_ids, int 
         Agent *a = &reg->agents[i];
         if (!a->active) continue;
         if (a->source == AGENT_SOURCE_SERVICE) continue; // services have no tmux pane
+        /*
+         * Only panes discovered from the host tmux snapshot should be pruned by
+         * host tmux discovery. Sandbox agents register valid pane ids from
+         * inside the container (for example %1), but those panes do not appear
+         * in the host snapshot, so pruning them here incorrectly deletes live
+         * sandbox orchestrators every cycle.
+         */
+        if (a->source != AGENT_SOURCE_TMUX_DISCOVERY) continue;
         if (!a->tmux_pane[0]) continue;
         if (!pane_in_snapshot(a->tmux_pane, pane_ids, pane_count)) {
             a->active = false;
@@ -464,6 +489,32 @@ static bool are_same_pane(Agent *agents[], int count) {
     return true;
 }
 
+static bool tmux_session_matches_logical_name(const char *tmux_session, const char *logical_name) {
+    if (!tmux_session || !tmux_session[0] || !logical_name || !logical_name[0]) return false;
+
+    const char *sep = strstr(tmux_session, "__");
+    if (!sep || !sep[2]) return false;
+
+    return strcmp(sep + 2, logical_name) == 0;
+}
+
+static Agent* find_by_session_and_pane(AgentRegistry *reg, const char *tmux_session, const char *tmux_pane, time_t now) {
+    if (!tmux_session || !tmux_session[0] || !tmux_pane || !tmux_pane[0]) return NULL;
+
+    Agent *best = NULL;
+    for (int i = 0; i < reg->count; i++) {
+        Agent *a = &reg->agents[i];
+        if (!a->active) continue;
+        if (!is_agent_online(a, now)) continue;
+        if (strcmp(a->tmux_session, tmux_session) != 0) continue;
+        if (strcmp(a->tmux_pane, tmux_pane) != 0) continue;
+        if (!best || (a->name[0] && strncmp(a->name, "sbx_", 4) != 0 && strncmp(best->name, "sbx_", 4) == 0)) {
+            best = a;
+        }
+    }
+    return best;
+}
+
 int resolve_target(AgentRegistry *reg, const char *to,
                    char *resolved, size_t resolved_size,
                    Agent **out_agent, char *error_buf, size_t error_size) {
@@ -546,6 +597,23 @@ int resolve_target(AgentRegistry *reg, const char *to,
                 pthread_mutex_unlock(&reg->lock);
                 return 0;
             }
+
+            /*
+             * Sandbox compatibility: the live pane may be temporarily
+             * registered under a sbx_<instance>__... alias while the receiver
+             * still asks for its canonical logical instance id. If session and
+             * pane match, route to that live instance so ipc_recv consumes the
+             * queued message instead of returning an empty queue.
+             */
+            if (parsed_session[0]) {
+                Agent *same_pane = find_by_session_and_pane(reg, parsed_session, parsed_pane, now);
+                if (same_pane) {
+                    strncpy(resolved, same_pane->instance_id, resolved_size - 1);
+                    if (out_agent) *out_agent = same_pane;
+                    pthread_mutex_unlock(&reg->lock);
+                    return 0;
+                }
+            }
         }
 
         // Fallback: if no pane, try logical name resolution (like Case 3)
@@ -616,6 +684,30 @@ int resolve_target(AgentRegistry *reg, const char *to,
     if (online_count == 1) {
         strncpy(resolved, matches[0]->instance_id, resolved_size - 1);
         if (out_agent) *out_agent = matches[0];
+        pthread_mutex_unlock(&reg->lock);
+        return 0;
+    }
+
+    /*
+     * Sandbox fallback: some live sandbox agents are temporarily registered
+     * under their sbx_<instance>__... alias while their tmux_session still
+     * carries the canonical logical name after "__". Route logical targets to
+     * that live pane-backed instance instead of degrading into offline queueing.
+     */
+    Agent *session_matches[MAX_AGENTS];
+    int session_match_count = 0;
+    for (int i = 0; i < reg->count && session_match_count < MAX_AGENTS; i++) {
+        Agent *a = &reg->agents[i];
+        if (!a->active) continue;
+        if (!is_agent_online(a, now)) continue;
+        if (!tmux_session_matches_logical_name(a->tmux_session, to)) continue;
+        session_matches[session_match_count++] = a;
+    }
+
+    if (session_match_count > 0) {
+        Agent *best = pick_best_agent(session_matches, session_match_count);
+        strncpy(resolved, best->instance_id, resolved_size - 1);
+        if (out_agent) *out_agent = best;
         pthread_mutex_unlock(&reg->lock);
         return 0;
     }

@@ -468,6 +468,15 @@ Message* msgqueue_recv(MsgQueue *mq, const char *agent) {
     return msgqueue_recv_filtered(mq, agent, NULL);
 }
 
+static bool queue_matches_scope(const char *queue_agent, const char *agent, const char *logical_name) {
+    if (!queue_agent || !queue_agent[0]) return false;
+    if (agent && agent[0] && strcmp(queue_agent, agent) == 0) return true;
+    if (!logical_name || !logical_name[0]) return false;
+    if (strcmp(queue_agent, logical_name) == 0) return true;
+    size_t logical_len = strlen(logical_name);
+    return strncmp(queue_agent, logical_name, logical_len) == 0 && queue_agent[logical_len] == '@';
+}
+
 Message* msgqueue_recv_filtered(MsgQueue *mq, const char *agent, const char *conversation_id) {
     pthread_mutex_lock(&mq->lock);
 
@@ -528,6 +537,59 @@ Message* msgqueue_recv_filtered(MsgQueue *mq, const char *agent, const char *con
 
     pthread_mutex_unlock(&mq->lock);
     return result_head;
+}
+
+Message* msgqueue_recv_by_id(MsgQueue *mq, const char *agent, const char *logical_name,
+                             const char *message_id) {
+    if (!message_id || !message_id[0]) {
+        return NULL;
+    }
+
+    pthread_mutex_lock(&mq->lock);
+
+    time_t now = time(NULL);
+    Message *found = NULL;
+
+    for (int i = 0; i < mq->queue_count; i++) {
+        Queue *q = &mq->queues[i];
+        if (!queue_matches_scope(q->agent, agent, logical_name) || !q->head) {
+            continue;
+        }
+
+        Message **pp = &q->head;
+        Message *prev = NULL;
+        while (*pp) {
+            Message *cur = *pp;
+            if (strcmp(cur->msg_id, message_id) != 0) {
+                prev = cur;
+                pp = &cur->next;
+                continue;
+            }
+
+            *pp = cur->next;
+            if (q->tail == cur) {
+                q->tail = prev;
+            }
+            cur->next = NULL;
+            if (q->size > 0) {
+                q->size--;
+            }
+
+            if (message_is_expired(cur, now)) {
+                deadletter_add(mq, q, cur);
+                pthread_mutex_unlock(&mq->lock);
+                return NULL;
+            }
+
+            found = cur;
+            break;
+        }
+
+        if (found) break;
+    }
+
+    pthread_mutex_unlock(&mq->lock);
+    return found;
 }
 
 int msgqueue_peek(MsgQueue *mq, const char *agent) {

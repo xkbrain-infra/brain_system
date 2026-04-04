@@ -172,7 +172,7 @@ brain_side_startup:
     D0:  {caller: "brain devops", action: "TASK_UPDATE({project_id}_BOOTSTRAP, in_progress)"}
     D1:  {caller: "brain devops", action: "准备项目目录（mkdir + git checkout feature/{pending_id}）"}
     D2:  {caller: "brain devops", action: "写入 {project_root}/payload/project_init.yaml"}
-    D3:  {caller: "brain devops", action: "sandboxctl create --with-agent orchestrator [--model <provider/model>]，原子完成容器创建 + runtime bridge + sandbox-local IPC bridge + orchestrator start"}
+    D3:  {caller: "brain devops", action: "sandboxctl create --with-agent orchestrator（默认模型= minimax/minimax-m2.7；仅显式 override 时追加 --model <provider/model>），原子完成容器创建 + runtime bridge + sandbox-local IPC bridge + orchestrator start"}
     D4:  {caller: "brain devops", action: "验证容器 healthy + tmux session + .brain/agent_runtime.json + sandbox 内 proxy/Claude bootstrap 状态 + /tmp/brain_ipc.sock ping"}
     D5:
       caller: "brain devops"

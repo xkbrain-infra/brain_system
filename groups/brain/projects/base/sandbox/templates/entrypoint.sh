@@ -9,8 +9,11 @@ fi
 # 注意: 在 host 网络模式下, 需要使用宿主机的实际 IP 而不是 127.0.0.1
 # HOST_IP 环境变量由 docker-compose 传入
 if ! grep -q "host.docker.internal" /etc/hosts; then
-    # 默认使用宿主机的 bridge 网卡 IP (docker0)
-    HOST_DEFAULT=$(ip route | grep default | awk '{print $3}' | head -1)
+    # 优先使用 compose 注入的 HOST_IP；只有缺失时才尝试调用 ip route。
+    HOST_DEFAULT=""
+    if [ -z "${HOST_IP:-}" ] && command -v ip >/dev/null 2>&1; then
+        HOST_DEFAULT=$(ip route 2>/dev/null | grep default | awk '{print $3}' | head -1)
+    fi
     HOST_IP_ADDR="${HOST_IP:-${HOST_DEFAULT:-10.200.19.2}}"
     echo "${HOST_IP_ADDR} host.docker.internal" >> /etc/hosts
 fi
@@ -41,6 +44,7 @@ install_tmux_shell_hook() {
 if [ -n "${SANDBOX_INSTANCE_ID:-}" ]; then
     export SANDBOX_RUNTIME="/xkagent_infra/runtime/sandbox/${SANDBOX_INSTANCE_ID}"
     export TMUX_TMPDIR="${SANDBOX_RUNTIME}/.tmux"
+    export PATH="/xkagent_infra/runtime/sandbox/_services/service/agentctl/bin:/xkagent_infra/runtime/sandbox/_services/service/utils/tmux/bin:${PATH}"
 fi
 # <<< XKAGENT_SANDBOX_TMUX <<<
 HOOK

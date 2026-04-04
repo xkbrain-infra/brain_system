@@ -13,6 +13,7 @@ canonical_scope:
 
 bootstrap_entrypoint:
   canonical_command: "sandboxctl create <project_id> --type development --with-agent orchestrator [--pending-id <pending_id>] [--model <provider/model>]"
+  default_model: "minimax/minimax-m2.7（未显式传 --model 时）"
   guarantees:
     - "容器已创建并 healthy/running"
     - "sandbox-local agents_registry bridge 已生成"

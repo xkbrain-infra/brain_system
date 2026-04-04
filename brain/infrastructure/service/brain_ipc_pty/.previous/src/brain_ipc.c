@@ -35,10 +35,10 @@
 #include "conversation.h"
 #include "scheduled_queue.h"
 
-#define SOCKET_PATH "/tmp/brain_ipc_pty.sock"
-#define PID_FILE "/tmp/brain_ipc_pty.pid"
-#define LOG_FILE_DEFAULT "/brain/runtime/logs/brain-ipc-pty.log"
-#define NOTIFY_SOCKET_DEFAULT "/tmp/brain_ipc_pty_notify.sock"
+#define SOCKET_PATH "/tmp/brain_ipc.sock"
+#define PID_FILE "/tmp/brain_ipc.pid"
+#define LOG_FILE_DEFAULT "/tmp/brain_ipc_daemon.log"
+#define NOTIFY_SOCKET_DEFAULT "/tmp/brain_ipc_notify.sock"
 #define MAX_CLIENTS 64
 #define BUFFER_SIZE 65536
 #define SELF_SERVICE_NAME "service-brain_ipc"
@@ -300,21 +300,30 @@ static char* handle_agent_register(json_t *data) {
         return json_error("invalid tmux_pane (expected like %2)");
     }
 
-    // Trust client-provided agent_name, no session prefix validation
-    // (session prefix validation is only used for tmux auto-discovery)
+    /*
+     * Sandbox agents may occasionally mis-register using their sbx_<instance>__
+     * tmux session alias as agent_name. Canonicalize register/heartbeat traffic
+     * to the logical agent name carried after "__" so queue routing stays
+     * stable even when the client submits the wrong alias.
+     */
+    const char *canonical_name = name;
+    const char *derived_name = derive_agent_name_from_session(tmux_session);
+    if (derived_name && derived_name[0] && strncmp(tmux_session, "sbx_", 4) == 0) {
+        canonical_name = derived_name;
+    }
 
-    registry_register_full(&g_registry, name, tmux_session, tmux_pane, metadata, AGENT_SOURCE_REGISTER);
+    registry_register_full(&g_registry, canonical_name, tmux_session, tmux_pane, metadata, AGENT_SOURCE_REGISTER);
     LOG_INFO("Agent registered: %s (session=%s, pane=%s)",
-             name, tmux_session ? tmux_session : "none", tmux_pane ? tmux_pane : "none");
+             canonical_name, tmux_session ? tmux_session : "none", tmux_pane ? tmux_pane : "none");
 
     if (metadata) free(metadata);
 
     char instance_id[MAX_INSTANCE_ID];
-    build_instance_id(instance_id, sizeof(instance_id), name, tmux_session, tmux_pane);
+    build_instance_id(instance_id, sizeof(instance_id), canonical_name, tmux_session, tmux_pane);
 
     char extra[512];
     snprintf(extra, sizeof(extra), "\"agent\":\"%s\",\"agent_id\":\"%s\",\"registered_at\":%ld",
-             name, instance_id, (long)time(NULL));
+             canonical_name, instance_id, (long)time(NULL));
     return json_ok(extra);
 }
 
@@ -337,15 +346,20 @@ static char* handle_agent_heartbeat(json_t *data) {
         return json_error("invalid tmux_pane (expected like %2)");
     }
 
-    // Trust client-provided agent_name for heartbeat
-    registry_heartbeat_full(&g_registry, name, tmux_session, tmux_pane);
+    const char *canonical_name = name;
+    const char *derived_name = derive_agent_name_from_session(tmux_session);
+    if (derived_name && derived_name[0] && strncmp(tmux_session, "sbx_", 4) == 0) {
+        canonical_name = derived_name;
+    }
+
+    registry_heartbeat_full(&g_registry, canonical_name, tmux_session, tmux_pane);
 
     char instance_id[MAX_INSTANCE_ID];
-    build_instance_id(instance_id, sizeof(instance_id), name, tmux_session, tmux_pane);
+    build_instance_id(instance_id, sizeof(instance_id), canonical_name, tmux_session, tmux_pane);
 
     char extra[256];
     snprintf(extra, sizeof(extra), "\"agent\":\"%s\",\"agent_id\":\"%s\",\"heartbeat_at\":%ld",
-             name, instance_id, (long)time(NULL));
+             canonical_name, instance_id, (long)time(NULL));
     return json_ok(extra);
 }
 
@@ -523,8 +537,100 @@ static char* handle_agent_unregister(json_t *data) {
 
 // ============ Tmux Push Notification ============
 
-static void tmux_notify(const char *pane, const char *from, const char *msg_id) {
+static void trim_in_place(char *s) {
+    if (!s) return;
+    size_t n = strlen(s);
+    while (n > 0) {
+        char c = s[n - 1];
+        if (c == '\n' || c == '\r' || c == ' ' || c == '\t') {
+            s[--n] = '\0';
+            continue;
+        }
+        break;
+    }
+}
+
+static int parse_sandbox_instance_id(const char *tmux_session, char *instance_id, size_t size) {
+    if (!tmux_session || strncmp(tmux_session, "sbx_", 4) != 0) return -1;
+
+    const char *start = tmux_session + 4;
+    const char *sep = strstr(start, "__");
+    if (!sep || sep == start) return -1;
+
+    size_t len = (size_t)(sep - start);
+    if (len >= size) len = size - 1;
+    memcpy(instance_id, start, len);
+    instance_id[len] = '\0';
+    return 0;
+}
+
+static int read_sandbox_container_name(const char *instance_id, char *container_name, size_t size) {
+    if (!instance_id || !instance_id[0] || !container_name || size == 0) return -1;
+
+    char path[512];
+    snprintf(path, sizeof(path), "/xkagent_infra/runtime/sandbox/%s/.bootstrap/instance.yaml", instance_id);
+
+    FILE *fp = fopen(path, "r");
+    if (!fp) return -1;
+
+    char line[1024];
+    while (fgets(line, sizeof(line), fp)) {
+        if (strncmp(line, "container_name:", 15) != 0) continue;
+        char *value = line + 15;
+        while (*value == ' ' || *value == '\t') value++;
+        trim_in_place(value);
+        if (value[0]) {
+            snprintf(container_name, size, "%s", value);
+            fclose(fp);
+            return 0;
+        }
+    }
+
+    fclose(fp);
+    return -1;
+}
+
+static int spawn_container_tmux_notify(const char *tmux_session, const char *pane, const char *from, const char *msg_id) {
+    char instance_id[128];
+    char container_name[256];
+    char tmux_tmpdir[512];
+    char tmux_tmpdir_env[544];
+    char prompt[512];
+
+    if (parse_sandbox_instance_id(tmux_session, instance_id, sizeof(instance_id)) != 0) return -1;
+    if (read_sandbox_container_name(instance_id, container_name, sizeof(container_name)) != 0) return -1;
+
+    snprintf(tmux_tmpdir, sizeof(tmux_tmpdir), "/xkagent_infra/runtime/sandbox/%s/.tmux", instance_id);
+    snprintf(tmux_tmpdir_env, sizeof(tmux_tmpdir_env), "TMUX_TMPDIR=%s", tmux_tmpdir);
+    snprintf(prompt, sizeof(prompt),
+        "[IPC] New message from %s (msg_id=%s). Call ipc_recv to get messages, then ipc_send to reply. These are MCP tools, NOT shell commands.",
+        from ? from : "unknown", msg_id);
+
+    pid_t pid = fork();
+    if (pid == 0) {
+        setenv("BRAIN_TMUX_CONTAINER", container_name, 1);
+        setenv("TMUX_TMPDIR", tmux_tmpdir, 1);
+        if (access(TMUX_SEND_BIN, X_OK) == 0) {
+            execl(TMUX_SEND_BIN, "brain_tmux_send", "-t", pane, "--no-clear", "--double-enter", "--no-audit", prompt, NULL);
+        }
+        execlp("docker", "docker", "exec", "-i", container_name,
+               "env", tmux_tmpdir_env,
+               "tmux", "send-keys", "-t", pane, prompt, "C-m", "C-m", NULL);
+        _exit(1);
+    }
+    if (pid < 0) return -1;
+    return 0;
+}
+
+static void tmux_notify(const char *tmux_session, const char *pane, const char *from, const char *msg_id) {
     if (!pane || !pane[0]) return;
+
+    if (tmux_session && tmux_session[0] && strncmp(tmux_session, "sbx_", 4) == 0) {
+        if (spawn_container_tmux_notify(tmux_session, pane, from, msg_id) == 0) {
+            return;
+        }
+        LOG_WARN("sandbox tmux notify fallback to host: session=%s pane=%s", tmux_session, pane);
+    }
 
     pid_t pid = fork();
     if (pid == 0) {
@@ -548,7 +654,7 @@ static void tmux_notify(const char *pane, const char *from, const char *msg_id) 
 static void notify_agent(const Agent *agent, const char *from, const char *msg_id) {
     if (!agent) return;
     if (agent->tmux_pane[0]) {
-        tmux_notify(agent->tmux_pane, from, msg_id);
+        tmux_notify(agent->tmux_session, agent->tmux_pane, from, msg_id);
     }
 }
 
@@ -1441,9 +1547,22 @@ static void* delayed_thread(void *arg) {
 static const char* derive_agent_name_from_session(const char *session_name) {
     if (!session_name || !session_name[0]) return NULL;
 
-    // Use full session name as agent name (supports arbitrary naming)
-    static char name_buf[128];
-    strncpy(name_buf, session_name, sizeof(name_buf) - 1);
+    /*
+     * Sandbox tmux sessions use:
+     *   sbx_<instance_id>__<logical_agent_name>
+     * Discovery must recover the logical agent name so IPC routing by
+     * agent_name resolves to the pane-backed sandbox instance instead of a
+     * synthetic sbx_* alias.
+     */
+    const char *logical = strstr(session_name, "__");
+    if (logical && logical[2]) {
+        logical += 2;
+    } else {
+        logical = session_name;
+    }
+
+    static char name_buf[MAX_AGENT_NAME];
+    strncpy(name_buf, logical, sizeof(name_buf) - 1);
     name_buf[sizeof(name_buf) - 1] = '\0';
 
     // Handle legacy alias: codex-cli -> codex

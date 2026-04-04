@@ -13,14 +13,21 @@ import logging
 import os
 import signal
 import socket
+import struct
 import sys
 import threading
+import time
 from pathlib import Path
 from typing import Callable
 
 
 BUFFER_SIZE = 64 * 1024
+MAX_ACTIVE_BRIDGES = 128
+LOG_THROTTLE_WINDOW_S = 5.0
 _SHUTDOWN = threading.Event()
+_ACTIVE_BRIDGE_SLOTS = threading.BoundedSemaphore(MAX_ACTIVE_BRIDGES)
+_LOG_THROTTLE_LOCK = threading.Lock()
+_LOG_THROTTLE_STATE: dict[tuple[str, str], dict[str, float | int]] = {}
 
 
 def _configure_logging(log_file: str | None) -> None:
@@ -69,8 +76,84 @@ def _connect_unix(path: str) -> socket.socket:
     return sock
 
 
+def _default_gateway_ip() -> str | None:
+    route_path = Path("/proc/net/route")
+    if not route_path.exists():
+        return None
+
+    try:
+        for line in route_path.read_text(encoding="utf-8").splitlines()[1:]:
+            fields = line.split()
+            if len(fields) < 4 or fields[1] != "00000000":
+                continue
+            flags = int(fields[3], 16)
+            if not (flags & 0x2):
+                continue
+            return socket.inet_ntoa(struct.pack("<L", int(fields[2], 16)))
+    except Exception:
+        return None
+    return None
+
+
+def _tcp_target_candidates(host: str) -> list[str]:
+    candidates = [host]
+    if host != "host.docker.internal":
+        return candidates
+
+    env_host = (os.environ.get("HOST_IP") or "").strip()
+    gateway_host = _default_gateway_ip()
+    for candidate in (env_host, gateway_host):
+        if candidate and candidate not in candidates:
+            candidates.append(candidate)
+    return candidates
+
+
 def _connect_tcp(host: str, port: int) -> socket.socket:
-    return socket.create_connection((host, port), timeout=5)
+    last_error: OSError | None = None
+    for candidate in _tcp_target_candidates(host):
+        try:
+            return socket.create_connection((candidate, port), timeout=5)
+        except OSError as exc:
+            last_error = exc
+
+    if last_error is None:
+        raise OSError(f"no TCP target candidates for {host}:{port}")
+    raise last_error
+
+
+def _close_socket(sock: socket.socket | None) -> None:
+    if sock is None:
+        return
+    try:
+        sock.close()
+    except OSError:
+        pass
+
+
+def _log_throttled_warning(label: str, detail: str) -> None:
+    key = (label, detail)
+    now = time.monotonic()
+
+    with _LOG_THROTTLE_LOCK:
+        state = _LOG_THROTTLE_STATE.get(key)
+        if state is None:
+            _LOG_THROTTLE_STATE[key] = {"last_logged": now, "suppressed": 0}
+            logging.warning("%s: %s", label, detail)
+            return
+
+        last_logged = float(state["last_logged"])
+        if now - last_logged < LOG_THROTTLE_WINDOW_S:
+            state["suppressed"] = int(state["suppressed"]) + 1
+            return
+
+        suppressed = int(state["suppressed"])
+        state["last_logged"] = now
+        state["suppressed"] = 0
+
+    if suppressed:
+        logging.warning("%s: %s (suppressed %d similar events)", label, detail, suppressed)
+    else:
+        logging.warning("%s: %s", label, detail)
 
 
 def _pump(src: socket.socket, dst: socket.socket) -> None:
@@ -91,7 +174,12 @@ def _pump(src: socket.socket, dst: socket.socket) -> None:
             pass
 
 
-def _bridge_pair(client: socket.socket, upstream_factory: Callable[[], socket.socket]) -> None:
+def _bridge_pair(
+    client: socket.socket,
+    upstream_factory: Callable[[], socket.socket],
+    label: str,
+    slots: threading.BoundedSemaphore,
+) -> None:
     upstream: socket.socket | None = None
     try:
         upstream = upstream_factory()
@@ -100,15 +188,11 @@ def _bridge_pair(client: socket.socket, upstream_factory: Callable[[], socket.so
         _pump(upstream, client)
         thread.join(timeout=1)
     except Exception as exc:
-        logging.warning("bridge pair failed: %s", exc)
+        _log_throttled_warning(label, f"bridge pair failed: {exc}")
     finally:
-        for sock in (client, upstream):
-            if sock is None:
-                continue
-            try:
-                sock.close()
-            except OSError:
-                pass
+        _close_socket(client)
+        _close_socket(upstream)
+        slots.release()
 
 
 def _bind_unix_listener(path: str, socket_mode: int) -> socket.socket:
@@ -147,6 +231,32 @@ def _bind_tcp_listener(host: str, port: int) -> socket.socket:
     return sock
 
 
+def _dispatch_client(
+    client: socket.socket,
+    upstream_factory: Callable[[], socket.socket],
+    label: str,
+    slots: threading.BoundedSemaphore = _ACTIVE_BRIDGE_SLOTS,
+) -> bool:
+    if not slots.acquire(blocking=False):
+        _log_throttled_warning(label, "bridge saturated; dropping connection")
+        _close_socket(client)
+        return False
+
+    try:
+        thread = threading.Thread(
+            target=_bridge_pair,
+            args=(client, upstream_factory, label, slots),
+            daemon=True,
+        )
+        thread.start()
+        return True
+    except Exception as exc:
+        slots.release()
+        _close_socket(client)
+        _log_throttled_warning(label, f"failed to start bridge thread: {exc}")
+        return False
+
+
 def _serve(listener: socket.socket, upstream_factory: Callable[[], socket.socket], label: str) -> None:
     logging.info("%s bridge ready", label)
     while not _SHUTDOWN.is_set():
@@ -158,8 +268,7 @@ def _serve(listener: socket.socket, upstream_factory: Callable[[], socket.socket
             if _SHUTDOWN.is_set():
                 break
             raise
-        thread = threading.Thread(target=_bridge_pair, args=(client, upstream_factory), daemon=True)
-        thread.start()
+        _dispatch_client(client, upstream_factory, label)
 
 
 def _parse_socket_mode(raw: str) -> int:

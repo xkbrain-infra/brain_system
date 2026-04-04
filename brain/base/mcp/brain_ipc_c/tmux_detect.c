@@ -39,6 +39,14 @@ static void resolve_by_tty(void) {
   /* Try env vars first (fast path for Claude Code) */
   const char *env_pane = getenv("TMUX_PANE");
   const char *env_sess = getenv("TMUX_SESSION");
+  const char *brain_pane = getenv("BRAIN_TMUX_PANE");
+  const char *brain_sess = getenv("BRAIN_TMUX_SESSION");
+  if ((!env_pane || !env_pane[0]) && brain_pane && brain_pane[0]) {
+    env_pane = brain_pane;
+  }
+  if ((!env_sess || !env_sess[0]) && brain_sess && brain_sess[0]) {
+    env_sess = brain_sess;
+  }
   if (env_pane && env_pane[0] && env_sess && env_sess[0]) {
     snprintf(g_pane, sizeof(g_pane), "%s", env_pane);
     snprintf(g_session, sizeof(g_session), "%s", env_sess);
@@ -56,7 +64,6 @@ static void resolve_by_tty(void) {
 
   /* Try BRAIN_TMUX_SESSION env (set by Codex config.toml for MCP servers).
      Codex strips TMUX/TMUX_PANE but passes BRAIN_* env vars. */
-  const char *brain_sess = getenv("BRAIN_TMUX_SESSION");
   if (brain_sess && brain_sess[0]) {
     snprintf(g_session, sizeof(g_session), "%s", brain_sess);
     /* Look up pane ID for this session via tmux */

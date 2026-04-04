@@ -1134,6 +1134,16 @@ def _sse(event: str, payload: Dict[str, Any]) -> bytes:
     return f"event: {event}\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n".encode("utf-8")
 
 
+def _chunk_has_visible_output(chunk: bytes) -> bool:
+    if not chunk:
+        return False
+    return (
+        b"text_delta" in chunk
+        or b"tool_use" in chunk
+        or b"input_json_delta" in chunk
+    )
+
+
 def _display_model(model: str, provider_id: Optional[str]) -> str:
     """Return model name with provider prefix for display, e.g. bytedance/doubao-seed-2-0-pro."""
     if not provider_id or "/" in model:
@@ -1195,7 +1205,7 @@ async def _passthrough_inject_context_window(stream_iter, model: str, provider_i
     if not has_text and not saw_tool_use:
         inject_index = max_block_index + 1
         yield _sse("content_block_start", {"type": "content_block_start", "index": inject_index, "content_block": {"type": "text", "text": ""}})
-        yield _sse("content_block_delta", {"type": "content_block_delta", "index": inject_index, "delta": {"type": "text_delta", "text": "(模型未返回文本内容，请重试)"}})
+        yield _sse("content_block_delta", {"type": "content_block_delta", "index": inject_index, "delta": {"type": "text_delta", "text": "(上游返回空响应，请重试)"}})
         yield _sse("content_block_stop", {"type": "content_block_stop", "index": inject_index})
 
     for b in buffered_tail:
@@ -2912,20 +2922,7 @@ async def route_and_forward_stream(
             permission_mode=str(cfg.get("permission_mode", "default") or "default"),
             cli_path=cfg.get("cli_path"),
         )
-        message = await cli_provider.forward(normalized.original_request, protocol)
-        return _anthropic_message_to_sse(
-            {
-                "id": message.get("id"),
-                "model": normalized.model,
-                "content": message.get("content", []),
-                "stop_reason": message.get("stop_reason", "end_turn"),
-                "usage": {
-                    "input_tokens": message.get("input_tokens", 0),
-                    "output_tokens": message.get("output_tokens", 0),
-                },
-            },
-            provider_id=provider.id,
-        )
+        return await cli_provider.forward_stream(normalized.original_request, protocol)
 
     if provider.id == "minimax" and _minimax_chain(provider) == "native":
         return _build_api_key_stream_iter(provider, normalized, "messages", source_headers=source_headers)
@@ -2975,9 +2972,30 @@ def _build_api_key_stream_iter(provider: Any, normalized: Any, protocol: str, so
                             if resp.status_code != 200:
                                 body = (await resp.aread()).decode("utf-8", "ignore")
                                 raise ValueError(f"Provider returned {resp.status_code}: {body}")
+                            saw_visible_output = False
+                            pending_chunks: list[bytes] = []
                             async for chunk in resp.aiter_bytes():
-                                if chunk:
+                                if not chunk:
+                                    continue
+                                if saw_visible_output:
                                     yield chunk
+                                    continue
+                                pending_chunks.append(chunk)
+                                if _chunk_has_visible_output(chunk):
+                                    saw_visible_output = True
+                                    for pending in pending_chunks:
+                                        yield pending
+                                    pending_chunks.clear()
+                            if not saw_visible_output and attempt < STREAM_MAX_RETRIES:
+                                delay = STREAM_RETRY_BASE_DELAY * (2 ** attempt)
+                                print(
+                                    f"[brain_agent_proxy] Empty semantic SSE from upstream, retry "
+                                    f"{attempt+1}/{STREAM_MAX_RETRIES} after {delay}s"
+                                )
+                                await asyncio.sleep(delay)
+                                continue
+                            for pending in pending_chunks:
+                                yield pending
                             return
                 except httpx.ReadTimeout:
                     if STREAM_RETRY_ON_TIMEOUT and attempt < STREAM_MAX_RETRIES:

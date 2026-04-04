@@ -324,6 +324,7 @@ static json_t *tool_list(void) {
 
   json_t *recv_schema = schema_obj();
   schema_prop(recv_schema, "conversation_id", schema_string("Optional filter by conversation"));
+  schema_prop(recv_schema, "message_id", schema_string("Optional exact msg_id from an [IPC] notification. When set, fetch that specific message across the agent's queues."));
   schema_prop(recv_schema, "wait_seconds", schema_number("Long-poll: block up to N seconds if no messages (0=immediate, max 120). Recommended: 30"));
   ADD_TOOL("ipc_recv", "Receive messages. Supports long-poll via wait_seconds to avoid busy-loop polling.", recv_schema);
 
@@ -427,6 +428,7 @@ static json_t *handle_tools_call(DaemonClient *dc, const char *agent_id, const c
 
   if (strcmp(tool, "ipc_recv") == 0) {
     const char *conversation_id = json_string_value(json_object_get(args, "conversation_id"));
+    const char *message_id = json_string_value(json_object_get(args, "message_id"));
     json_t *wait_v = json_object_get(args, "wait_seconds");
     int wait_seconds = wait_v ? (int)json_number_value(wait_v) : 0;
     if (wait_seconds < 0) wait_seconds = 0;
@@ -435,6 +437,7 @@ static json_t *handle_tools_call(DaemonClient *dc, const char *agent_id, const c
     json_t *data = json_object();
     json_object_set_new(data, "agent", json_string(agent_id));
     if (conversation_id && conversation_id[0]) json_object_set_new(data, "conversation_id", json_string(conversation_id));
+    if (message_id && message_id[0]) json_object_set_new(data, "message_id", json_string(message_id));
     /* Always auto mode - recv = consume */
     json_object_set_new(data, "max_items", json_integer(100));
     json_t *resp = daemon_request(dc, "ipc_recv", data, err_out);
@@ -470,6 +473,7 @@ static json_t *handle_tools_call(DaemonClient *dc, const char *agent_id, const c
         json_t *data2 = json_object();
         json_object_set_new(data2, "agent", json_string(agent_id));
         if (conversation_id && conversation_id[0]) json_object_set_new(data2, "conversation_id", json_string(conversation_id));
+        if (message_id && message_id[0]) json_object_set_new(data2, "message_id", json_string(message_id));
         json_object_set_new(data2, "max_items", json_integer(100));
         resp = daemon_request(dc, "ipc_recv", data2, err_out);
         json_decref(data2);

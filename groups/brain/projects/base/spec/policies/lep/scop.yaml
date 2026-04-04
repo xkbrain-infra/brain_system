@@ -37,6 +37,11 @@ enforcement:
       2. 按 groups/brain/projects/base/ 目录结构放置文件 + 编写 CHANGELOG.md
       3. 提交 PMO 审批，由 brain-manager 合并到 source 再 publish
       参考：/brain/base/spec/policies/deployment/pending_workflow.yaml
+
+    ▸ 修改 infrastructure service：
+      source 在 groups/brain/projects/infrastructure/<service>/
+      通过 /brain-publish 选择该 service 的 Makefile 发布入口
+      参考：/xkagent_infra/groups/brain/spec/deployment/release_process.yaml
 bindings:
   hooks:
     stage: pre_tool_use

@@ -1,0 +1,23 @@
+agent:
+  cwd: /xkagent_infra/runtime/sandbox/gkieeg/agents/agent_brain_brain-dashboard-sandbox-binding_orchestrator_01
+  model: minimax/minimax-m2.7
+  name: agent_brain_brain-dashboard-sandbox-binding_orchestrator_01
+  payload: /xkagent_infra/groups/brain/projects/brain-dashboard-sandbox-binding/payload/project_init.yaml
+  profile: orchestrator
+  role: orchestrator
+  tmux_session: sbx_gkieeg__agent_brain_brain-dashboard-sandbox-binding_orchestrator_01
+compose_file: /xkagent_infra/groups/brain/platform/sandbox/instances/dev-gkieeg/gkieeg.yaml
+compose_project: sandbox-gkieeg
+container_name: brain-dashboard-sandbox-binding-development-gkieeg
+created_at: '2026-03-30T23:13:37.048599'
+group: brain
+host_ports:
+  app: 19908
+  debug: 19909
+instance_id: gkieeg
+project: brain-dashboard-sandbox-binding
+project_root: /xkagent_infra/groups/brain/projects/brain-dashboard-sandbox-binding
+runtime_root: /xkagent_infra/runtime/sandbox/gkieeg
+status: ready
+type: development
+updated_at: '2026-03-30T23:14:16.970002'
