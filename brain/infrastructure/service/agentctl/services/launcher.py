@@ -14,9 +14,11 @@ from pathlib import Path
 from typing import Any
 
 from config.loader import DEFAULT_CONFIG_DIR, YAMLConfigLoader
+from services.claude_auth import claude_auth_status as _claude_auth_status, spec_requires_claude_auth as _spec_requires_claude_auth
 from services.config_generator import (
     generate_all_configs as _generate_all_configs,
     load_runtime_manifest as _load_runtime_manifest,
+    resolve_proxy_base_url_for_launch as _resolve_proxy_base_url_for_launch,
 )
 
 # SSOT: /xkagent_infra/brain/infrastructure/service/utils/ipc/bin/current/daemon_client.py
@@ -56,6 +58,13 @@ class CleanupResult:
     total_time_seconds: float
 
 
+def _load_autostart_agents() -> set[str]:
+    raw = os.environ.get("AGENTCTL_AUTOSTART_AGENTS")
+    if raw is None:
+        raw = "agent-brain_manager"
+    return {item.strip() for item in raw.split(",") if item.strip()}
+
+
 class Launcher:
     """tmux lifecycle manager: start/stop/restart/reconcile based on config."""
 
@@ -83,6 +92,7 @@ class Launcher:
         self.cleanup_before_start = cleanup_before_start
         self.cleanup_timeout_seconds = cleanup_timeout_seconds
         self.cleanup_skip_attached = cleanup_skip_attached
+        self.autostart_agents = _load_autostart_agents()
 
         self._agent_states: dict[str, AgentState] = {}
         self._config_loader = YAMLConfigLoader(config_dir=DEFAULT_CONFIG_DIR)
@@ -90,6 +100,9 @@ class Launcher:
 
     def get_agent_spec(self) -> dict[str, dict[str, Any]]:
         return self._get_agent_spec()
+
+    def is_autostart_allowed(self, name: str) -> bool:
+        return "*" in self.autostart_agents or name in self.autostart_agents
 
     def _log_event(self, event_type: str, payload: dict[str, Any]) -> None:
         if self.audit_logger:
@@ -452,19 +465,21 @@ class Launcher:
               claude/kimi/minimax/chatgpt/gemini/openai/copilot/alibaba/bytedance → 'claude';
               else → agent_type
         """
+        agent_type = str(spec.get("agent_type") or "").strip()
+        cli_type = str(spec.get("cli_type") or "").strip().lower()
         cwd = str(spec.get("cwd") or spec.get("path") or "").strip()
         manifest = _load_runtime_manifest(cwd) if cwd else None
         runtime = manifest.get("runtime") if isinstance(manifest, dict) else None
         if isinstance(runtime, dict):
-            command = str(runtime.get("command") or "").strip()
-            args = [str(arg).strip() for arg in (runtime.get("args") or []) if str(arg).strip()]
-            if command:
-                return " ".join([command, *args]).strip()
-
-        agent_type = str(spec.get("agent_type") or "").strip()
-        cli_type = str(spec.get("cli_type") or "").strip().lower()
+            runtime_agent_type = str(runtime.get("agent_type") or "").strip()
+            if runtime_agent_type:
+                agent_type = runtime_agent_type
         model = str(spec.get("model") or "").strip()
         cli_args = spec.get("cli_args") or []
+        env_spec = spec.get("env") or {}
+        sandbox_flag = ""
+        if isinstance(env_spec, dict):
+            sandbox_flag = str(env_spec.get("IS_SANDBOX") or "").strip()
 
         # Fallback to legacy start_cmd if present
         if not agent_type:
@@ -502,12 +517,13 @@ class Launcher:
                 cmd = agent_type
                 use_claude_cli = False
 
+        if use_claude_cli:
+            return "IS_SANDBOX=1 claude --dangerously-skip-permissions"
+
         parts = [cmd]
 
-        # Add model parameter (only if explicitly specified)
-        if use_claude_cli and model:
-            parts += ["--model", model]
-        elif not use_claude_cli and model and agent_type in ("kimi", "gemini"):
+        # Native CLIs still receive explicit model flags; Claude CLI reads model from env/config.
+        if not use_claude_cli and model and agent_type in ("kimi", "gemini"):
             parts += ["--model", model]
 
         # KIMI-specific: MCP config file and subcommand
@@ -538,6 +554,15 @@ class Launcher:
 
     def _build_env_string(self, spec: dict[str, Any]) -> str:
         """Build inline environment variable prefix (VAR=val) for tmux command."""
+        agent_type = str(spec.get("agent_type") or "").strip()
+        cli_type = str(spec.get("cli_type") or "").strip().lower()
+        uses_claude_cli = (
+            cli_type in ("claude", "claude_code")
+            or (not cli_type and agent_type in ("claude", "kimi", "minimax", "chatgpt", "gemini", "openai", "copilot", "alibaba", "bytedance"))
+        )
+        if uses_claude_cli:
+            return ""
+
         cwd = str(spec.get("cwd") or spec.get("path") or "").strip()
         manifest = _load_runtime_manifest(cwd) if cwd else None
         runtime = manifest.get("runtime") if isinstance(manifest, dict) else None
@@ -545,8 +570,21 @@ class Launcher:
         if not isinstance(env_spec, dict):
             return ""
 
+        resolved_env = dict(env_spec)
+        sandbox_flag = str(resolved_env.get("IS_SANDBOX") or "").strip()
+        transport_mode = str(
+            resolved_env.get("BRAIN_TRANSPORT_MODE")
+            or spec.get("transport_mode")
+            or ""
+        ).strip().lower()
+        if transport_mode == "proxy" and "ANTHROPIC_BASE_URL" in resolved_env:
+            resolved_env["ANTHROPIC_BASE_URL"] = _resolve_proxy_base_url_for_launch(
+                sandbox_flag,
+                target_in_container=False,
+            )
+
         env_parts = []
-        for key, value in env_spec.items():
+        for key, value in resolved_env.items():
             key = str(key).strip()
             value = str(value).strip()
             if not key:
@@ -711,6 +749,11 @@ class Launcher:
         except ValueError as e:
             return RestartResult(False, agent_name, reason, 0, error=str(e))
 
+        if _spec_requires_claude_auth(spec):
+            ok, detail = _claude_auth_status()
+            if not ok:
+                return RestartResult(False, agent_name, reason, 0, error=detail)
+
         # Setup MCP config before starting agent
         try:
             self._setup_mcp_config(spec)
@@ -802,6 +845,8 @@ class Launcher:
 
         for name, spec in spec.items():
             if name == self.self_name:
+                continue
+            if not self.is_autostart_allowed(name):
                 continue
 
             desired_state = str(spec.get("desired_state") or "running").strip().lower()

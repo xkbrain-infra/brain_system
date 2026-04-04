@@ -1,0 +1,13 @@
+project_id: base
+group_id: brain
+sandbox_id: ltq7n1
+instance_id: ltq7n1
+pending_id: formal-verify
+project_root: /groups/brain/projects/base
+runtime_root: /xkagent_infra/runtime/sandbox/ltq7n1
+requested_by: agent-brain_devops
+orchestrator_agent_id: agent_brain_base_orchestrator_01
+created_at: '2026-03-29T20:01:07.139604'
+git_branch: feature/formal-verify
+intake_seed: null
+profile_overrides: null

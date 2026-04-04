@@ -37,7 +37,7 @@ class RecoveryConfig:
     """Recovery configuration."""
     levels: dict[int, list[str]] = field(default_factory=lambda: {
         0: ["service-agentctl", "service-brain_timer", "service-brain_task_manager"],
-        1: ["agent-system_devops"],
+        1: [],
         2: ["agent-brain_frontdesk"],
         3: ["*"],  # All remaining agents
     })
@@ -150,17 +150,23 @@ class InitializationCoordinator:
     def _get_agents_for_level(self, level: int) -> list[str]:
         """Get agent names for a specific level."""
         level_agents = self._config.levels.get(level, [])
+        agent_spec = self._launcher.get_agent_spec()
+
+        def _is_allowed(name: str) -> bool:
+            if name not in agent_spec:
+                return True
+            return self._launcher.is_autostart_allowed(name)
 
         if "*" in level_agents:
             # Level contains wildcard - get all remaining agents
-            all_agents = set(self._launcher.get_agent_spec().keys())
+            all_agents = {name for name in agent_spec.keys() if _is_allowed(name)}
             assigned = set()
             for lvl, agents in self._config.levels.items():
                 if "*" not in agents:
                     assigned.update(agents)
             return sorted(all_agents - assigned)
 
-        return level_agents
+        return [name for name in level_agents if _is_allowed(name)]
 
     def _build_recovery_start_payload(self) -> dict[str, Any]:
         """Build RECOVERY_START message payload."""

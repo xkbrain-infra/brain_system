@@ -1,0 +1,463 @@
+# Sandbox 全局配置
+# 统一描述 sandbox 基础设施、工程适配和 agent 协作
+#
+# 使用场景:
+# 1. Sandbox 启动时读取此配置初始化环境
+# 2. Project 适配时检查所需服务和资源
+# 3. Agent 协调时确定角色和通信方式
+#
+# 文件位置: /brain/base/config/sandbox.global.yaml
+
+---
+sandbox_global:
+  version: "1.0.0"
+  last_updated: "2026-03-17"
+  description: "Brain Sandbox 全局配置 - 定义基础设施、工程适配和 agent 协作规范"
+
+  # ============================================
+  # 第一层: 基础设施层 (Infrastructure)
+  # 描述 Sandbox 有什么 - 镜像、服务、端口、资源
+  # ============================================
+  infrastructure:
+    # --- 基础镜像定义 ---
+    base_image:
+      provider: docker
+      registry: "ghcr.io/xkbrain-infra"
+      images:
+        brain_docker_base:
+          name: "brain-docker-base"
+          tag: "latest"
+          description: "基础系统镜像 (ubuntu + 工具链)"
+          dockerfile: "/brain/platform/docker/Dockerfile"
+        brain_system:
+          name: "brain-system"
+          tag: "2.1.0"
+          description: "Brain 系统发布版本"
+          dockerfile: "/brain/platform/release/configs/Dockerfile.release"
+          base_from: "brain-docker-base"
+        sandbox_base:
+          name: "brain-sandbox-base"
+          tag: "2.1.0"
+          description: "Sandbox 基础镜像"
+          base_from: "brain-system"
+
+    # --- 运行时服务 ---
+    services:
+      required:
+        - name: sshd
+          description: "SSH 服务"
+          container_port: 22
+          default_host_port: 9022
+          protocol: tcp
+          supervisor_program: sshd
+
+        - name: supervisor
+          description: "进程管理"
+          socket: "/var/run/supervisor.sock"
+          config_dir: "/etc/supervisor/conf.d"
+
+      optional:
+        - name: dashboard
+          description: "Brain Dashboard Web 服务"
+          container_port: 8080
+          port_range: "8080-8090"
+          default_host_port: 9080
+          protocol: http
+
+        - name: agent_gateway
+          description: "Agent Gateway 服务"
+          container_port: 8210
+          default_host_port: 9210
+          protocol: http
+
+        - name: health_monitor
+          description: "健康监控服务"
+          container_port: 8765
+          default_host_port: 9765
+          protocol: http
+
+    # --- 资源限制 ---
+    resources:
+      default_limits:
+        cpu: "4.0"
+        memory: "8g"
+        swap: "2g"
+      large_project_limits:
+        cpu: "8.0"
+        memory: "16g"
+        swap: "4g"
+
+    # --- 存储卷 ---
+    volumes:
+      required:
+        - name: workspace
+          container_path: "/workspace"
+          description: "Sandbox 工作区根目录"
+          persistence: required
+
+        - name: runtime
+          container_path: "/workspace/runtime"
+          host_path: "/xkagent_infra/runtime"
+          description: "运行时配置和状态"
+          persistence: required
+
+      optional:
+        - name: docker_sock
+          container_path: "/var/run/docker.sock"
+          host_path: "/var/run/docker.sock"
+          description: "Docker socket (容器内管理 Docker)"
+          persistence: optional
+
+        - name: groups_shared
+          container_path: "/groups"
+          host_path: "/xkagent_infra/groups"
+          description: "Groups 共享目录"
+          persistence: optional
+
+        - name: app_shared
+          container_path: "/app"
+          host_path: "/xkagent_infra/app"
+          description: "应用共享目录"
+          persistence: optional
+
+  # ============================================
+  # 第二层: 工程适配层 (Project Adaptation)
+  # 描述具体工程需要改造什么 - 项目如何适配 Sandbox
+  # ============================================
+  project_adaptation:
+    # --- 工作空间结构 ---
+    workspace_layout:
+      root: "/workspace"
+      directories:
+        brain: "/workspace/brain"
+          description: "Brain 基线可写副本"
+          seed_from: "/xkagent_infra/brain"
+
+        groups: "/workspace/groups"
+          description: "Groups 项目目录"
+          pattern: "/workspace/groups/{group_id}/projects/{project_id}"
+
+        runtime: "/workspace/runtime"
+          description: "运行时数据"
+          subdirs:
+            - agents: "/workspace/runtime/agents"
+            - template_bundles: "/workspace/runtime/template_bundles"
+
+        artifacts: "/workspace/artifacts"
+          description: "构建产物"
+
+        logs: "/workspace/logs"
+          description: "项目日志"
+
+        memory: "/workspace/memory"
+          description: "持久化记忆"
+
+    # --- 环境变量注入 ---
+    environment_variables:
+      required:
+        - PROJECT_ID
+        - GROUP_ID
+        - SANDBOX_ID
+        - BRAIN_SOURCE_REVISION
+        - BRAIN_WORKTREE
+        - GROUPS_WORKTREE
+        - PROJECT_ROOT
+        - PROJECT_LOG_DIR
+        - PROJECT_ARTIFACT_DIR
+
+      optional:
+        - SANDBOX_MODE  # full_sandbox | worktree_sandbox | read_only
+        - PROJECT_PHASE # intake | research | planning | execution | release
+        - AGENT_ROSTER_CONFIG
+
+    # --- 项目初始化流程 ---
+    bootstrap_sequence:
+      steps:
+        - name: freeze_baseline
+          description: "冻结 brain runtime 版本"
+          outputs: [BRAIN_SOURCE_REVISION]
+
+        - name: render_compose
+          description: "渲染项目 compose/env"
+          template: "/brain/platform/docker/compose.yaml"
+
+        - name: build_image
+          description: "构建或选择 provider image"
+          fallback: "使用预构建 brain-system 镜像"
+
+        - name: package_payload
+          description: "打包项目 payload"
+          source: "{PROJECT_ROOT}"
+
+        - name: start_container
+          description: "启动容器"
+          command: "docker compose up -d --build --force-recreate"
+
+        - name: run_bootstrap
+          description: "运行 container_bootstrap.sh"
+          script: "/brain/platform/docker/scripts/container_bootstrap.sh"
+
+        - name: seed_brain
+          description: "seed /workspace/brain"
+          source: "/xkagent_infra/brain"
+
+        - name: init_project
+          description: "初始化项目工作区"
+          target: "/workspace/groups/{group_id}/projects/{project_id}"
+
+        - name: import_templates
+          description: "导入 agent 模板包"
+          target: "/workspace/runtime/template_bundles/agents"
+
+        - name: render_agents
+          description: "渲染 agent 配置"
+          target: "/workspace/runtime/agents"
+
+        - name: write_metadata
+          description: "写入 sandbox 元数据"
+          file: "/workspace/.sandbox_metadata.yaml"
+
+        - name: start_orchestrator
+          description: "启动 project_orchestrator"
+          supervisor_program: project_orchestrator
+
+        - name: create_agents
+          description: "创建项目级 worker agents"
+          command: "brain-agentctl create --roster {AGENT_ROSTER_CONFIG}"
+
+        - name: health_check
+          description: "运行健康检查"
+          script: "/brain/platform/docker/scripts/healthcheck.sh"
+
+    # --- 按项目类型的适配规则 ---
+    project_type_adapters:
+      python_project:
+        required_tools: [python3, pip, uv]
+        venv_path: "{PROJECT_ROOT}/.venv"
+        requirements_file: ["requirements.txt", "pyproject.toml"]
+        additional_packages: []
+
+      nodejs_project:
+        required_tools: [node, npm]
+        node_version: ">=18"
+        package_manager: [npm, yarn, pnpm]
+        cache_dir: "{PROJECT_ROOT}/node_modules"
+
+      golang_project:
+        required_tools: [go]
+        go_version: ">=1.21"
+        gopath: "/workspace/go"
+
+      rust_project:
+        required_tools: [cargo, rustc]
+        cargo_home: "/workspace/.cargo"
+        target_dir: "{PROJECT_ROOT}/target"
+
+      full_stack:
+        required_services: [frontend_dev_server, backend_api]
+        port_mapping:
+          frontend: 3000
+          backend: 8080
+        database: optional
+
+  # ============================================
+  # 第三层: Agent 协作层 (Agent Coordination)
+  # 描述 Agents 如何配合 - 角色、通信、生命周期
+  # ============================================
+  agent_coordination:
+    # --- Agent 运行时配置 ---
+    runtime:
+      ipc_socket: "/tmp/brain_ipc.sock"
+      registry_config: "/brain/infrastructure/config/agentctl/agents_registry.yaml"
+      lep_bindings: "/brain/infrastructure/config/agentctl/lep_bindings.yaml"
+      skill_bindings: "/brain/infrastructure/config/agentctl/skill_bindings.yaml"
+
+    # --- 系统级 Agents (由基础设施提供) ---
+    system_agents:
+      - name: brain_manager
+        role: manager
+        scope: /brain/groups/org/brain
+        auto_start: true
+        ipc_target: "agent-brain_manager"
+
+      - name: task_manager
+        role: service
+        scope: global
+        auto_start: true
+        ipc_target: "service-task_manager"
+
+      - name: health_monitor
+        role: service
+        scope: global
+        auto_start: true
+        ipc_target: "service-health_monitor"
+
+    # --- 项目级 Agent 模板 ---
+    project_agent_templates:
+      default_roster:
+        - role: pmo
+          count: 1
+          template: "agent-{group}_{project}_pmo"
+          skills: [preset, ipc, lep, doc-search]
+
+        - role: architect
+          count: 1
+          template: "agent-{group}_{project}_architect"
+          skills: [preset, ipc, lep, doc-search, feature-dev]
+
+        - role: dev
+          count: "auto"  # 根据项目复杂度自动决定
+          template: "agent-{group}_{project}_dev{N}"
+          skills: [preset, ipc, lep, simplify]
+
+        - role: qa
+          count: 1
+          template: "agent-{group}_{project}_qa"
+          skills: [preset, ipc, lep, doc-search]
+
+      # --- 按项目复杂度调整 Agent 数量 ---
+      complexity_scaling:
+        trivial:  # < 4小时
+          dev_count: 1
+          with_architect: false
+
+        low:  # < 2天
+          dev_count: 1
+          with_architect: true
+
+        medium:  # 2-5天
+          dev_count: 2
+          with_architect: true
+          with_qa: true
+
+        high:  # > 1周
+          dev_count: "3-5"
+          with_architect: true
+          with_qa: true
+          with_devops: true
+
+    # --- Agent 通信模式 ---
+    communication_patterns:
+      project_orchestrator:
+        description: "项目级编排器，协调所有项目 agents"
+        supervisor_program: project_orchestrator
+        responsibilities:
+          - "维护项目状态机"
+          - "分派任务给 worker agents"
+          - "监控 agent 健康"
+          - "向 brain_manager 汇报"
+
+      pmo_coordination:
+        description: "PMO 与系统 PMO 的协作"
+        pattern: hierarchical
+        upstream: "agent-{parent_group}_pmo"
+        downstream: "project_agents"
+
+      dev_collaboration:
+        description: "开发人员间的协作"
+        pattern: peer_to_peer
+        via: ipc
+        coordination: "通过 task_manager 分配任务"
+
+    # --- Agent 生命周期 ---
+    lifecycle:
+      creation:
+        trigger: "sandbox bootstrap"
+        method: "brain-agentctl create"
+        config_source: "{PROJECT_ROOT}/.config/agents.yaml"
+
+      startup:
+        sequence:
+          - "register_agent"
+          - "activate_ipc"
+          - "load_core_refs"
+          - "notify_project_orchestrator"
+
+      shutdown:
+        sequence:
+          - "save_state"
+          - "unregister_from_ipc"
+          - "cleanup_resources"
+          - "archive_logs"
+
+      health_check:
+        interval: "60s"
+        checks:
+          - "ipc_socket_accessible"
+          - "agent_registered"
+          - "task_queue_responsive"
+
+  # ============================================
+  # 配置引用和扩展
+  # ============================================
+  references:
+    docker_template: "/brain/base/workflow/project_delivery/models/docker_sandbox_template.yaml"
+    evaluation_workflow: "/brain/base/workflow/project_delivery/workflow/sandbox_evaluation.yaml"
+    upgrade_workflow: "/brain/base/workflow/project_delivery/workflow/sandbox_upgrade_escalation.yaml"
+    scope_guard: "/brain/base/workflow/project_delivery/governance/06_sandbox_scope_guard.yaml"
+    version_packaging: "/brain/base/workflow/project_delivery/models/sandbox_version_and_packaging.yaml"
+
+  # ============================================
+  # 项目级覆盖规则
+  # ============================================
+  project_overrides:
+    allowed:
+      - path: "project_adaptation.bootstrap_sequence.steps"
+        description: "项目可添加自定义 bootstrap 步骤"
+
+      - path: "project_adaptation.environment_variables.optional"
+        description: "项目可定义额外环境变量"
+
+      - path: "agent_coordination.project_agent_templates"
+        description: "项目可定义自己的 agent roster"
+
+      - path: "infrastructure.services.optional"
+        description: "项目可启用额外服务"
+
+    forbidden:
+      - path: "infrastructure.base_image"
+        description: "禁止修改基础镜像定义"
+
+      - path: "infrastructure.volumes.required"
+        description: "禁止移除必需卷"
+
+      - path: "agent_coordination.system_agents"
+        description: "禁止修改系统 agent 定义"
+
+  # ============================================
+  # 使用示例
+  # ============================================
+  examples:
+    minimal_project:
+      description: "最小项目配置"
+      services:
+        enabled: [sshd, supervisor]
+      agents:
+        roster:
+          - role: pmo
+          - role: dev
+
+    full_stack_project:
+      description: "全栈项目配置"
+      services:
+        enabled: [sshd, supervisor, dashboard, agent_gateway]
+      project_type: full_stack
+      agents:
+        complexity: medium
+        roster:
+          - role: pmo
+          - role: architect
+          - role: dev
+            count: 2
+          - role: qa
+
+    ai_research_project:
+      description: "AI 研究项目"
+      services:
+        enabled: [sshd, supervisor, agent_gateway]
+      resources:
+        limits:
+          memory: "16g"
+          gpu: "1"
+      project_type: python_project
+      additional_packages: [pytorch, transformers, jupyter]

@@ -2,7 +2,7 @@
 
 ## 目标
 
-Docker 部署后，SSH 登录容器时自动触发引导初始化：
+Docker 部署后，支持手动执行引导初始化：
 1. 从 secrets 同步 Claude/Codex/Gemini 登录态到 `/root`。
 2. 执行 agent 配置生成（`apply-config --all --apply --force`）。
 3. 启动并检查 agent 在线状态。
@@ -10,9 +10,9 @@ Docker 部署后，SSH 登录容器时自动触发引导初始化：
 引导脚本：
 - `/xkagent_infra/brain/platform/docker/scripts/agent_login_init.sh`
 
-自动触发方式：
-- `container_bootstrap.sh` 会将 hook 注入 `/root/.bashrc` 和 `/root/.zshrc`
-- 仅在 SSH 交互登录时触发
+当前行为：
+- 不再在 SSH 登录时自动触发
+- 需要手动执行引导脚本
 
 ## 登录态文件放置路径（secrets）
 
@@ -53,7 +53,7 @@ Docker 部署后，SSH 登录容器时自动触发引导初始化：
 /xkagent_infra/brain/platform/docker/scripts/agent_login_init.sh --force
 ```
 
-- 仅安装登录 hook：
+- 清理旧的登录 hook（如历史容器已注入）：
 ```bash
 /xkagent_infra/brain/platform/docker/scripts/container_bootstrap.sh --ensure-login-hook
 ```

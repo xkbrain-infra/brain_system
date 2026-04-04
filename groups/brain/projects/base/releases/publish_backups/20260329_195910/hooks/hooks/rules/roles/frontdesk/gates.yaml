@@ -1,0 +1,27 @@
+# Role: Frontdesk - 前台接待
+# 主要处理用户交互，写入权限最小
+
+scope:
+  allowed_write:
+    # Frontdesk 自身工作目录
+    - /xkagent_infra/groups/{group}/agents/agent_{group}_frontdesk/**
+    # Memory
+    - /xkagent_infra/groups/{group}/**/memory/**
+    # Runtime（日志）
+    - /xkagent_infra/runtime/**
+
+  denied_write:
+    # 核心规范只读
+    - /xkagent_infra/brain/base/**
+    - /xkagent_infra/brain/INIT.yaml
+    # 基础设施
+    - /xkagent_infra/brain/infrastructure/**
+    # 项目代码
+    - /xkagent_infra/groups/{group}/**/projects/**
+    # Spec
+    - /xkagent_infra/groups/{group}/spec/**
+
+gate_overrides:
+  G-GATE-APPROVAL-DELEGATION:
+    # Frontdesk 可以直接 AskUserQuestion（它是用户接口）
+    skip: true

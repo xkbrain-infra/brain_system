@@ -1,0 +1,473 @@
+workflow:
+  id: "MWF-WF-SANDBOX-EVAL-002"
+  name: "Sandbox Evaluation Workflow"
+  description: "在项目 intake 阶段评估 sandbox 需求，决定隔离级别（改进版 v2）"
+  owner: "brain_infra + manager"
+  trigger: "intake_record created, before RESEARCH phase"
+  position: "between INTAKE and RESEARCH"
+  version: "2.0.0"
+
+inputs:
+  - intake_record
+  - project_goal
+  - scope_in
+  - scope_out
+  - initial_requirements
+  - requested_roles
+  - group_context
+  - baseline_image_info
+
+steps:
+  - name: "analyze_write_scope"
+    description: "分析项目需要的写入范围（最高优先级维度）"
+    inputs:
+      - scope_in
+      - project_goal
+    outputs:
+      - write_scope_requirement  # unrestricted/project_only/none
+    criteria:
+      unrestricted:
+        - "需要安装系统包（apt/yum/brew install）"
+        - "需要写入 /etc, /usr, /var 等系统目录"
+        - "需要修改 brain base 本身（/brain/base/**）"
+        - "需要写入 infrastructure 配置（/brain/infrastructure/**）"
+        - "需要跨 project 写入其他项目目录"
+        - "需要 root 权限执行命令"
+      project_only:
+        - "仅在 project_root 内创建/修改文件"
+        - "git clone/pull/push 操作在项目目录内"
+        - "临时文件可放在项目目录内"
+        - "仅在 /tmp 或项目目录内写入"
+      none:
+        - "纯分析任务"
+        - "仅需查询、读取、统计"
+        - "不需要任何文件写入"
+
+  - name: "analyze_environment_dependency"
+    description: "分析项目环境依赖复杂度"
+    inputs:
+      - project_goal
+      - scope_in
+      - requested_roles
+      - initial_requirements
+    outputs:
+      - environment_dependency_level  # high/medium/low/none
+    criteria:
+      high:
+        - "需要特定版本 runtime（Python 3.12+, Node 20+, Go 1.21+, Rust 1.70+ 等）"
+        - "需要数据库服务（PostgreSQL, MySQL, MongoDB, Redis, Elasticsearch 等）"
+        - "需要消息队列（RabbitMQ, Kafka, NATS, Pulsar 等）"
+        - "需要特定 OS/内核特性（cgroup v2, eBPF, io_uring, seccomp 等）"
+        - "需要编译工具链（GCC 11+, LLVM 15+, CUDA, ROCm 等）"
+        - "需要系统级开发库（libpq-dev, libvips, OpenCV 等）"
+        - "需要容器/Docker 内运行 Docker"
+      medium:
+        - "需要标准工具但版本范围较宽（Python 3.9+, Node 16+, Go 1.19+）"
+        - "需要安装 language-level 包（pip install, npm install, cargo build）"
+        - "需要 git 操作 + 预提交钩子（husky, pre-commit）"
+        - "需要简单构建工具（make, cmake, ninja）"
+      low:
+        - "仅需文本编辑器 + 基础 shell 命令"
+        - "纯文件读写，无外部依赖安装"
+        - "仅需标准库/内建工具"
+      none:
+        - "纯读取分析，无执行"
+        - "仅需 cat/grep/head 等查看命令"
+
+  - name: "assess_pollution_risk"
+    description: "评估对 Brain 环境的污染风险（按路径细分）"
+    inputs:
+      - environment_dependency
+      - write_scope_requirement
+      - project_goal
+      - requested_roles
+    outputs:
+      - risk_level  # high/medium/low/none
+      - risk_path   # critical/protected/shared/standalone
+    criteria:
+      risk_level_high:
+        - "修改 /brain/base/spec/core/** （核心规范）"
+        - "修改 /brain/base/hooks/** （全局 hooks）"
+        - "修改 /brain/infrastructure/config/** （基础设施配置）"
+        - "修改 /brain/infrastructure/service/** （核心服务）"
+        - "修改 shared library（影响多项目）"
+        - "可能破坏其他项目运行"
+      risk_level_medium:
+        - "修改 /brain/base/knowledge/** （知识库）"
+        - "修改 /brain/base/spec/policies/** （策略文件）"
+        - "修改 common utilities"
+        - "修改 workflow 定义（非核心）"
+      risk_level_low:
+        - "仅修改项目自身代码"
+        - "修改 templates/skills（可被覆盖）"
+      risk_level_none:
+        - "只读操作"
+      risk_path_critical:
+        - "涉及 runtime 核心"
+        - "涉及 LEP gates"
+        - "涉及 IPC 框架"
+        - "涉及 agent 生命周期"
+      risk_path_protected:
+        - "涉及 knowledge/spec/workflow"
+        - "涉及 shared utilities"
+      risk_path_shared:
+        - "涉及 templates/examples"
+        - "可被项目覆盖的内容"
+      risk_path_standalone:
+        - "完全独立的项目代码"
+
+  - name: "determine_btr_requirement"
+    description: "判断是否需要完整的 Build-Test-Release 链"
+    inputs:
+      - project_goal
+      - scope_in
+      - environment_dependency
+    outputs:
+      - btr_required  # true/false
+      - btr_complexity  # simple/standard/complex
+    criteria:
+      btr_required_true:
+        - "需要编译/构建（C/C++, Rust, Go, Java 等）"
+        - "需要类型检查/打包（TypeScript, Webpack, Rollup）"
+        - "需要单元测试/集成测试"
+        - "需要发布到生产环境"
+        - "需要版本管理（语义化版本）"
+        - "需要持续集成/部署"
+      btr_required_false:
+        - "一次性脚本"
+        - "文档任务"
+        - "简单配置修改"
+        - "纯数据分析"
+      btr_complexity_simple:
+        - "单文件脚本"
+        - "无外部依赖"
+      btr_complexity_standard:
+        - "标准项目结构"
+        - "常见依赖管理"
+      btr_complexity_complex:
+        - "多模块/monorepo"
+        - "复杂构建流程"
+        - "交叉编译"
+
+  - name: "assess_network_requirement"
+    description: "评估网络访问需求（新增维度）"
+    inputs:
+      - project_goal
+      - scope_in
+      - initial_requirements
+    outputs:
+      - network_requirement  # isolated/restricted/standard/none
+    criteria:
+      isolated:
+        - "处理生产密钥、证书"
+        - "涉及用户隐私数据"
+        - "需要完全离线环境"
+        - "安全审计要求"
+      restricted:
+        - "仅需特定域名白名单"
+        - "仅需内网访问"
+        - "仅需特定端口"
+      standard:
+        - "需要访问互联网下载依赖"
+        - "需要调用外部 API"
+        - "需要 Webhook 回调"
+      none:
+        - "纯本地处理"
+        - "无需任何网络"
+
+  - name: "assess_data_sensitivity"
+    description: "评估数据敏感性（新增维度）"
+    inputs:
+      - project_goal
+      - scope_in
+      - initial_requirements
+    outputs:
+      - sensitivity_level  # critical/high/medium/low
+    criteria:
+      critical:
+        - "生产环境密钥、密码"
+        - "用户个人隐私数据（PII）"
+        - "支付/金融敏感信息"
+        - "合规要求（GDPR, HIPAA, PCI-DSS）"
+      high:
+        - "内部系统凭证"
+        - "非生产环境密钥"
+        - "内部架构文档"
+      medium:
+        - "项目源代码"
+        - "一般业务文档"
+        - "测试数据（脱敏）"
+      low:
+        - "公开信息"
+        - "示例代码"
+        - "已发布文档"
+
+  - name: "assess_collaboration_mode"
+    description: "评估协作模式需求（新增维度）"
+    inputs:
+      - project_goal
+      - requested_roles
+      - group_context
+    outputs:
+      - collaboration_mode  # exclusive/shared/async
+    criteria:
+      exclusive:
+        - "需要独占资源（GPU, 特定端口）"
+        - "需要防止并发修改"
+        - "需要保证状态一致性"
+      shared:
+        - "可多 agent 同时只读"
+        - "通过文件锁协调"
+      async:
+        - "git-based 协作"
+        - "可接受延迟同步"
+        - "无需实时协作"
+
+  - name: "assess_complexity"
+    description: "评估项目复杂度（用于调整置信度）"
+    inputs:
+      - scope_in
+      - scope_out
+      - estimated_tasks
+      - btr_complexity
+    outputs:
+      - complexity_level  # high/medium/low/trivial
+      - confidence_adjustment  # -1/0/+1
+    criteria:
+      high:
+        - "涉及多个服务/模块"
+        - "需要架构设计"
+        - "预计工期 > 1 周"
+        - "多团队协作"
+      medium:
+        - "单个服务/模块"
+        - "需要详细设计"
+        - "预计工期 2-5 天"
+      low:
+        - "简单功能添加"
+        - "Bug 修复"
+        - "预计工期 < 2 天"
+      trivial:
+        - "单文件修改"
+        - "配置调整"
+        - "预计工期 < 4 小时"
+    confidence_adjustment:
+      high_complexity: "-1"  # 复杂项目降低置信度，倾向保守
+      medium_complexity: "0"
+      low_complexity: "0"
+      trivial: "+1"  # 简单项目提高置信度
+
+  - name: "apply_decision_matrix_v2"
+    description: "应用改进版决策矩阵得出 sandbox 模式建议"
+    inputs:
+      - write_scope_requirement
+      - environment_dependency_level
+      - risk_level
+      - risk_path
+      - btr_required
+      - btr_complexity
+      - network_requirement
+      - sensitivity_level
+      - collaboration_mode
+      - complexity_level
+      - confidence_adjustment
+    outputs:
+      - recommended_mode  # full_sandbox/worktree_sandbox/read_only
+      - base_confidence  # high/medium/low
+      - adjusted_confidence  # 经复杂度调整后的置信度
+      - upgrade_risk_assessment
+    decision_rules:
+      # ========== 第一优先级：硬约束（无法通过 hooks 解决） ==========
+      - if: "write_scope_requirement == unrestricted"
+        then: "full_sandbox"
+        reason: "需要系统级写入权限，worktree 无法满足"
+        base_confidence: "high"
+        override_factors: []  # 不可被覆盖
+
+      # ========== 第二优先级：高敏感度数据 ==========
+      - if: "sensitivity_level == critical"
+        then: "full_sandbox"
+        reason: "关键敏感数据需要最高级别隔离"
+        base_confidence: "high"
+
+      # ========== 第三优先级：环境依赖 ==========
+      - if: "environment_dependency == high"
+        then: "full_sandbox"
+        reason: "高环境依赖需要容器化保证一致性"
+        base_confidence: "high"
+
+      - if: "environment_dependency == medium AND collaboration_mode == exclusive"
+        then: "full_sandbox"
+        reason: "中等依赖 + 独占资源，容器更合适"
+        base_confidence: "medium"
+
+      # ========== 第四优先级：网络隔离需求 ==========
+      - if: "network_requirement == isolated"
+        then: "full_sandbox"
+        reason: "需要网络隔离，容器可提供"
+        base_confidence: "high"
+
+      # ========== 第五优先级：风险路径细分 ==========
+      - if: "risk_level == high AND risk_path == critical"
+        then: "full_sandbox"
+        reason: "核心路径高风险，需要完全隔离"
+        base_confidence: "high"
+
+      - if: "risk_level == high AND risk_path == protected"
+        then: "worktree_sandbox"
+        reason: "受保护路径高风险，但可通过 hooks 限制"
+        base_confidence: "medium"
+        note: "启用增强型 scope_guard，严格审计"
+
+      # ========== 第六优先级：BTR 链 ==========
+      - if: "btr_required == true AND btr_complexity in [standard, complex]"
+        then: "full_sandbox"
+        reason: "复杂构建-测试-发布链需要干净环境"
+        base_confidence: "high"
+
+      - if: "btr_required == true AND btr_complexity == simple"
+        then: "worktree_sandbox"
+        reason: "简单 BTR 可在 worktree 完成"
+        base_confidence: "medium"
+
+      # ========== 第七优先级：明确只读 ==========
+      - if: "write_scope_requirement == none AND environment_dependency in [none, low]"
+        then: "read_only"
+        reason: "纯读取 + 无环境依赖"
+        base_confidence: "high"
+
+      # ========== 第八优先级：默认选择 ==========
+      - if: "collaboration_mode == async"
+        then: "worktree_sandbox"
+        reason: "异步协作适合 worktree 模式"
+        base_confidence: "medium"
+
+      # 最终默认
+      - default: "worktree_sandbox"
+        base_confidence: "medium"
+        note: "大多数项目适合 worktree_sandbox，如有误判可升级"
+
+    confidence_calculation:
+      formula: "base_confidence + complexity_adjustment"
+      levels:
+        - "high": 3
+        - "medium": 2
+        - "low": 1
+      adjustment:
+        from_complexity: "confidence_adjustment"
+      min_confidence: "low"
+      max_confidence: "high"
+
+  - name: "manager_review"
+    description: "Manager 审核评估结果"
+    inputs:
+      - recommended_mode
+      - base_confidence
+      - adjusted_confidence
+      - upgrade_risk_assessment
+      - all_factors
+    outputs:
+      - approved_mode
+      - review_notes
+      - override_reason  # 如手动调整
+    actions:
+      - "确认推荐模式"
+      - "或手动调整模式（需说明理由）"
+      - "标记需关注的风险点"
+      - "当 adjusted_confidence == low 时，建议提升一级 sandbox"
+
+  - name: "record_evaluation"
+    description: "记录评估结果"
+    outputs:
+      - sandbox_evaluation_record
+
+outputs:
+  - sandbox_evaluation_record:
+      required_fields:
+        - project_id
+        - evaluation_timestamp
+        - evaluated_by  # algorithm/manager_override
+        - decision_factors:
+            - write_scope_requirement
+            - environment_dependency
+            - risk_level
+            - risk_path
+            - btr_required
+            - btr_complexity
+            - network_requirement
+            - sensitivity_level
+            - collaboration_mode
+            - complexity_level
+        - recommended_mode
+        - approved_mode
+        - base_confidence
+        - adjusted_confidence
+        - confidence_calculation_details
+        - upgrade_risk_assessment
+        - review_notes
+        - evaluation_version  # "2.0.0"
+        - override_reason  # 如有
+
+pass_gate:
+  id: "SANDBOX_EVAL_PASS_v2"
+  rule: "sandbox 模式已确定并记录，可进入 RESEARCH"
+  required_checks:
+    evaluation_complete:
+      description: "所有决策因素已分析"
+    mode_selected:
+      description: "已选择 sandbox 模式"
+    record_created:
+      description: "评估记录已创建"
+    confidence_adequate:
+      description: "adjusted_confidence >= medium 或已人工确认"
+
+fail_gate:
+  id: "SANDBOX_EVAL_HOLD_v2"
+  rule: "信息不足无法决策，需要澄清"
+  typical_reasons:
+    - "写入范围模糊不清（不确定是否需要系统级写入）"
+    - "环境依赖无法确定"
+    - "风险等级无法评估"
+    - "敏感度级别无法判断"
+  resolution:
+    - "补充需求信息"
+    - "或保守选择 full_sandbox（可降级但不支持升级后降级）"
+
+post_evaluation_flow:
+  full_sandbox:
+    - "进入 RESEARCH 阶段"
+    - "准备 bootstrap 参数"
+    - "规划 container 资源"
+    - "配置网络隔离策略"
+
+  worktree_sandbox:
+    - "进入 RESEARCH 阶段"
+    - "准备 worktree 创建"
+    - "配置 scope guard hooks"
+    - "如 risk_level >= medium，启用增强审计"
+
+  read_only:
+    - "进入 RESEARCH 阶段（轻量）"
+    - "配置 read-only hooks"
+    - "跳过 bootstrap"
+
+upgrade_tracking:
+  enabled: true
+  audit_required: true
+  fields:
+    - upgrade_count
+    - upgrade_reasons
+    - original_evaluation_gap
+    - evaluation_version_at_creation  # 用于识别因评估体系改进导致的误判
+    - recommendation_for_future
+
+evaluation_improvement_tracking:
+  description: "记录评估体系的改进效果"
+  metrics:
+    - "升级率（upgrade_count / total_projects）"
+    - "因评估体系版本差异导致的升级比例"
+    - "各维度的预测准确率"
+  feedback_loop:
+    - "每月分析升级原因"
+    - "识别评估体系盲点"
+    - "更新决策矩阵"

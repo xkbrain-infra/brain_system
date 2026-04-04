@@ -1,0 +1,52 @@
+standard:
+  id: "STD-INFRA-DOCKER"
+  name: "Abstract Docker Deployment Standard"
+  version: "1.1"
+  description: |
+    Meta-rules for Docker stack organization. 
+    Note: The 'structure.root' defined here is relative to the Application Repository Root (Implementation Space), 
+    not the Brain Spec directory.
+
+structure:
+  root: "platform/docker"
+  layers:
+    base: "platform/docker/base/services/{service}"
+    env_overlays: "platform/docker/{env}/"
+  required_files:
+    - "compose.yaml"
+    - "Dockerfile"
+
+naming_conventions:
+  container_name: "{namespace}-{env}-{service}"
+  network_name: "{namespace}-net-{env}"
+  volume_name: "{namespace}-{env}-{service}-data"
+  image_tag_pattern: "{registry}/{namespace}/{service}:{version}-{env}"
+
+port_allocation:
+  strategy: "Base-Offset"
+  formula: "port = group.port_base + env.offset + service.index"
+  env_offsets:
+    prod: 1000
+    dev: 2000
+    stage: 4000
+    test: 6000
+
+runtime:
+  workdir: "/app"
+  user_convention: "non-root (recommended)"
+  path_mapping:
+    # Logic: Host Git Source -> Container Runtime Dir
+    source: "{git_root}/domain/{service}"
+    target: "/app"
+
+storage_convention:
+  description: "Standard paths on the HOST machine for persistence."
+  host_root: "/opt/{namespace}/{env}"
+  data_subpath: "data/{service}"
+  config_subpath: "config/{service}"
+  log_subpath: "logs/{service}"
+
+network_strategy:
+  default_driver: "bridge"
+  internal_only: true
+  external_access_via: "reverse-proxy"

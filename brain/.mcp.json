@@ -1,6 +1,6 @@
 {
   "mcpServers": {
-    "brain_ipc_c": {
+    "mcp-brain_ipc": {
       "command": "/brain/bin/mcp/mcp-brain_ipc_c",
       "args": [],
       "env": {}

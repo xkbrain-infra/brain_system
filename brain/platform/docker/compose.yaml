@@ -8,8 +8,8 @@ networks:
 services:
   xk-agent-infra:
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ../../..
+      dockerfile: brain/platform/docker/Dockerfile
     image: xk-agent-infra:local
     container_name: XKAgentInfra
     hostname: XKAgentInfra
@@ -27,7 +27,10 @@ services:
     networks:
       - xk-agent-infra-net
     volumes:
-      - xkagent-infra-data:/xkagent_infra
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ../../../brain:/brain
+      - ../../../groups:/groups
+      - ../../../:/xkagent_infra
       - xkagent-infra-root:/root
     ports:
       - "${SSH_PORT:-8622}:22"

@@ -33,43 +33,6 @@ timers:
       payload:
         event_type: "timer_heartbeat_check"
 
-  # ── brain_system PMO 定时任务 ──
-
-  - id: "bs_pmo_daily_portfolio_review"
-    type: "cron"
-    cron: "0 9 * * 1-5"
-    enabled: true
-    timeout_seconds: 10
-    max_retries: 1
-    retry_backoff_seconds: 2.0
-    action:
-      to: "agent-system_pmo"
-      message_type: "request"
-      payload:
-        event_type: "pmo_portfolio_review"
-        group: "brain_system"
-        description: "每日组合治理评审：校准项目优先级，检查 board.yaml 任务状态"
-        check_files:
-          - "/brain/groups/org/brain_system/workflow/pmo/board.yaml"
-          - "/brain/groups/org/brain_system/workflow/pmo/agent_roster.yaml"
-
-  - id: "bs_pmo_risk_scan"
-    type: "cron"
-    cron: "*/30 * * * *"
-    enabled: false  # 已禁用（BS-008：用户要求取消）
-    timeout_seconds: 10
-    max_retries: 1
-    retry_backoff_seconds: 2.0
-    action:
-      to: "agent-system_pmo"
-      message_type: "request"
-      payload:
-        event_type: "pmo_risk_scan"
-        group: "brain_system"
-        description: "风险扫描：检查项目阻塞、超期任务、Agent 状态异常"
-        check_files:
-          - "/brain/groups/org/brain_system/workflow/pmo/board.yaml"
-
   # ── task-manager 定时任务（低频，委托 timer 触发）──
 
   - id: "task_manager_daily_report"

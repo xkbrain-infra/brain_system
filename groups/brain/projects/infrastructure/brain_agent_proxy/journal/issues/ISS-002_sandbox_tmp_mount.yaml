@@ -1,0 +1,30 @@
+---
+id: ISS-002
+title: "Sandbox /tmp 卷挂载缺失导致 IPC socket 无法跨 namespace 访问"
+discovered_at: "2026-03-23T17:15:00Z"
+discovered_by: agent-brain_manager
+stage: bootstrap
+severity: critical
+description: |
+  Container 的 `/tmp` 与 host 的 `/tmp` 是隔离的 namespace。
+  IPC socket 位于 host `/tmp/brain_ipc.sock`，但 container 内无法访问。
+
+  当前 compose.base.yaml 的 volumes 配置：
+    - /xkagent_infra:/xkagent_infra:ro
+    - ${PROJECT_ROOT}:/workspace/project:rw
+    - sandbox_data_${INSTANCE_ID}:/workspace/data
+    - sandbox_logs_${INSTANCE_ID}:/workspace/logs
+    - sandbox_cache_${INSTANCE_ID}:/workspace/cache
+
+  缺少 `- /tmp:/tmp` 绑定挂载。
+
+impact: "Container 内所有 Agent 无法通过 IPC 与 host 通信，MCP 连接失败"
+resolution: "✅ 已修复 - compose.base.yaml 添加了 `- /tmp:/tmp`"
+resolved_at: "2026-03-24T08:10:00Z"
+base_upgrade_candidate: true
+base_upgrade_detail: |
+  文件：/xkagent_infra/groups/brain/projects/base/sandbox/templates/compose.base.yaml
+  位置：volumes 段
+  修改：添加 `- /tmp:/tmp`
+  注意：需要重新 build sandbox base image 或直接修改实例的 compose 文件
+workaround: "无（IPC 通信是核心功能，无法绕过）"

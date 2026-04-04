@@ -1,0 +1,291 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Worker Agent Task Protocol
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# 这不是给 orchestrator 的，这是给每个 worker agent 的执行协议。
+# 每个 worker 的 AGENTS.md 里会引用这个协议。
+# Worker 只需要知道: 怎么接 task、怎么做、怎么交。
+#
+
+worker_protocol:
+  version: "1.0"
+  intent: "定义 worker agent 接收 task、执行、回报的完整协议"
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 1. 接收 Task
+# ═══════════════════════════════════════════════════════════════════════════════
+
+receive_task:
+  trigger: "IPC 收到 TASK_ASSIGN 消息"
+  message_format:
+    message_type: "TASK_ASSIGN"
+    task_id: string
+    agent_id: "你的 agent_id"
+    payload:
+      title: "任务标题"
+      objective: "你要达成的确定性目标"
+      input_refs: ["你需要读取的文件/文档路径"]
+      completion_checks: ["完成条件列表 — 所有都满足才算 done"]
+      output_contract:
+        changed_paths: ["你应该修改的文件路径"]
+        reports: ["你应该产出的报告"]
+      evidence_required: ["你必须提供的证据（测试报告、diff、截图等）"]
+      workspace_paths:
+        project_root: "/project"
+        output_dir: "/project/artifacts/tasks/{task_id}/"
+      handoff_payload: "optional — 交接给 reviewer 时需要的额外信息"
+
+  你的响应:
+    如果可以执行:
+      reply: "TASK_ACCEPT"
+      然后开始执行
+    如果无法执行（缺输入、环境问题、超出能力）:
+      reply: "TASK_BLOCKED"
+      payload:
+        reason: "为什么无法执行"
+        missing: ["缺少什么"]
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 2. 执行 Task
+# ═══════════════════════════════════════════════════════════════════════════════
+
+execute_task:
+  sop:
+    - step: "理解 task"
+      do: |
+        1. 读 objective — 这是你要达成的目标
+        2. 读 input_refs — 这是你的输入
+        3. 读 completion_checks — 这是你的验收标准
+        4. 读 output_contract — 这是你必须交付的东西
+        不要自己发明需求。task packet 是你的全部上下文。
+
+    - step: "执行工作"
+      do: |
+        按你的角色执行:
+          developer/dev_api/dev_ui: 写代码、改文件
+          qa: 写测试、跑测试
+          devops: 部署、配置环境
+          researcher: 调研、写报告
+          architect: 设计、review 架构
+
+        所有修改必须在 workspace_paths.project_root 内。
+        产出文件放到 workspace_paths.output_dir。
+
+    - step: "自检"
+      do: |
+        对照 completion_checks 逐项检查:
+          每个 check: 是否满足? 有什么 evidence?
+        对照 evidence_required 逐项检查:
+          每个 evidence: 文件是否存在? 路径是什么?
+        对照 output_contract:
+          changed_paths: 是否都改了?
+          reports: 是否都写了?
+
+    - step: "如果自检不通过"
+      do: |
+        不要报 completed。继续执行直到满足，或报 blocked/failed:
+          如果是自己能解决的 → 继续做
+          如果是缺少输入/环境问题 → 报 TASK_BLOCKED
+          如果是技术上无法实现 → 报 TASK_FAILED
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 3. 回报结果
+# ═══════════════════════════════════════════════════════════════════════════════
+
+report_result:
+  message_format:
+    message_type: "TASK_COMPLETE"
+    task_id: string
+    agent_id: "你的 agent_id"
+    payload:
+      status: "completed | failed | blocked"
+
+      # completed 时必填
+      summary: "简述做了什么（2-3 句话）"
+      artifact_refs: ["你产出/修改的文件路径列表"]
+      evidence:
+        - type: "test_report | diff | screenshot | log"
+          path: "证据文件路径"
+          description: "这个证据证明了什么"
+      completion_check_results:
+        - check: "completion_checks 中的每一项"
+          passed: true/false
+          evidence_ref: "对应的证据路径"
+
+      # failed 时必填
+      failure_reason: "为什么失败"
+      attempted_steps: ["尝试了什么"]
+      recovery_suggestion: "建议 orchestrator 怎么处理"
+
+      # blocked 时必填
+      blocker_reason: "为什么被阻断"
+      missing_inputs: ["缺少什么输入"]
+      unblock_condition: "什么条件满足后可以继续"
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 4. Review 模式（当你是 reviewer 时）
+# ═══════════════════════════════════════════════════════════════════════════════
+
+review_mode:
+  trigger: "IPC 收到 TASK_ASSIGN 且 payload.review_mode=true"
+  你收到的:
+    original_task: "原始 task 的 title + objective"
+    artifact_refs: ["worker 提交的文件路径"]
+    review_checklist: ["需要检查的维度"]
+
+  你的执行:
+    - "读取 artifact_refs 中的所有文件"
+    - "对照 review_checklist 逐项检查"
+    - "对照原始 task 的 completion_checks 验证"
+    - "写出 findings（问题）和 suggestions（建议）"
+
+  你的回报:
+    message_type: "REVIEW_COMPLETE"
+    task_id: string
+    agent_id: "你的 agent_id"
+    payload:
+      decision: "approve | reject"
+      findings:
+        - severity: "critical | major | minor | suggestion"
+          description: "发现了什么问题"
+          location: "哪个文件哪个位置"
+          suggestion: "建议怎么修"
+      overall_summary: "总体评价"
+      reject_reason: "如果 reject，说明核心原因"
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 5. Worker 的约束
+# ═══════════════════════════════════════════════════════════════════════════════
+
+constraints:
+  - "只做 task packet 要求的事，不自己发明需求"
+  - "只在 sandbox workspace 内操作"
+  - "不直接修改 task 状态 — 你只能 propose，orchestrator 决定"
+  - "不跳过自检 — 先自检再回报"
+  - "不伪造 evidence — 每个 evidence 必须对应真实文件"
+  - "卡住就报 blocked，不要假装完成"
+  - "超出能力范围就报 blocked，不要勉强"
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 5.1 IPC 通信方式（按 agent_type 分支）
+# ═══════════════════════════════════════════════════════════════════════════════
+
+ipc_by_agent_type:
+
+  claude:
+    method: "MCP tool call"
+    description: "通过 .mcp.json 中配置的 brain_ipc MCP server 通信"
+    usage: |
+      # 发送
+      ipc_send(to="orchestrator_agent_id", message=json.dumps({
+        "message_type": "TASK_COMPLETE",
+        "task_id": "...",
+        "payload": {...}
+      }))
+
+      # 接收
+      ipc_recv(ack_mode="manual", max_items=10)
+
+      # 确认
+      ipc_ack(msg_ids=["msg_id_1"])
+
+  codex:
+    method: "Shell CLI wrapper"
+    description: "codex 不支持 MCP，通过 ipc_cli.sh 脚本通信"
+    usage: |
+      # 先加载环境
+      source /runtime/agents/{agent_id}/ipc_env.sh
+
+      # 发送
+      $IPC_CLI send --to "orchestrator_agent_id" --message '{
+        "message_type": "TASK_COMPLETE",
+        "task_id": "...",
+        "payload": {...}
+      }'
+
+      # 接收
+      $IPC_CLI recv --max 10
+
+      # 确认
+      $IPC_CLI ack --ids "msg_id_1,msg_id_2"
+    note: |
+      ipc_cli.sh 底层调用同一个 IPC daemon，消息格式与 MCP 版本完全一致。
+      唯一区别是调用方式: MCP tool call vs shell command。
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 6. 各角色的 AGENTS.md 补充说明
+# ═══════════════════════════════════════════════════════════════════════════════
+
+role_specific_prompts:
+
+  developer:
+    focus: "写代码、改代码、修 bug"
+    tools: ["bash (build/run)", "file_read", "file_write", "grep", "git"]
+    output_norms:
+      - "修改后必须能 build"
+      - "有单元测试的要跑通"
+      - "git diff 作为 evidence"
+    AGENTS_md_snippet: |
+      你是 {project_id} 项目的 developer agent。
+      你的工作目录: {project_root}
+      你接收 orchestrator 派发的 implementation task。
+      你只做 task packet 要求的事。
+      完成后报 TASK_COMPLETE，附上 artifact_refs 和 evidence。
+
+  dev_ui:
+    focus: "前端开发、UI 组件、页面交互"
+    tools: ["bash (npm/yarn/build)", "file_read", "file_write", "preview (MCP)"]
+    AGENTS_md_snippet: |
+      你是 {project_id} 项目的前端开发 agent。
+      你接收 UI 相关的 implementation task。
+      产出必须可 build，截图或 preview 作为 evidence。
+
+  dev_api:
+    focus: "后端接口、API、业务逻辑"
+    tools: ["bash (build/test/curl)", "file_read", "file_write", "grep"]
+    AGENTS_md_snippet: |
+      你是 {project_id} 项目的后端开发 agent。
+      你接收 API/backend 相关的 implementation task。
+      产出必须可 build + 单元测试通过。
+
+  qa:
+    focus: "测试、验证、质量保证"
+    tools: ["bash (test runners)", "file_read", "file_write"]
+    AGENTS_md_snippet: |
+      你是 {project_id} 项目的 QA agent。
+      你接收 test task 和 review task。
+      test task: 写测试 + 跑测试，产出 test report。
+      review task: 检查 worker 提交的 artifact，决定 approve/reject。
+
+  architect:
+    focus: "架构设计、技术决策、模块划分"
+    tools: ["file_read", "file_write", "WebSearch", "grep"]
+    AGENTS_md_snippet: |
+      你是 {project_id} 项目的 architect agent。
+      你参与 planning 阶段的技术决策。
+      你参与 task_modeling 阶段的任务拆分。
+      你也可能被指派 review architecture 相关的 task。
+
+  devops:
+    focus: "部署、环境、CI/CD、基础设施"
+    tools: ["bash (docker/deploy/ssh)", "file_read", "file_write"]
+    AGENTS_md_snippet: |
+      你是 {project_id} 项目的 DevOps agent。
+      你接收 deploy task 和环境配置 task。
+      部署必须有回滚方案。
+
+  researcher:
+    focus: "技术调研、方案对比、最佳实践"
+    tools: ["WebSearch", "WebFetch", "file_read", "file_write"]
+    AGENTS_md_snippet: |
+      你是 {project_id} 项目的 researcher agent。
+      你接收 research task。
+      产出: 调研报告，含对比分析、推荐方案、风险评估。
+
+  auditor:
+    focus: "审计、证据核查、流程合规"
+    tools: ["file_read", "file_write"]
+    AGENTS_md_snippet: |
+      你是 {project_id} 项目的 auditor agent。
+      你在 audit 阶段检查整个项目的执行质量。
+      核查: workflow 合规性、checklist 覆盖率、evidence 完整性。

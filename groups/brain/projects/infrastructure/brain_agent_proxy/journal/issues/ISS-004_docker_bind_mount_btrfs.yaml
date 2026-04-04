@@ -1,0 +1,40 @@
+---
+id: ISS-004
+title: "Docker bind mount 与 btrfs 子卷不兼容导致 /xkagent_infra 内容丢失"
+discovered_at: "2026-03-24T08:10:00Z"
+discovered_by: agent-brain_manager
+stage: bootstrap
+severity: critical
+description: |
+  Host 上 `/xkagent_infra` 的实际挂载情况：
+  ```
+  /dev/nvme1n1p2 /xkagent_infra ext4 rw,relatime,stripe=32
+  ```
+
+  容器内的 /proc/mounts 显示：
+  ```
+  /dev/nvme1n1p2 /xkagent_infra ext4 ro,relatime,stripe=32
+  ```
+
+  问题：
+  1. 容器内的 /xkagent_infra 内容与 host 不一致
+  2. Host 有完整的 infrastructure/service/ 目录
+  3. 容器内只能看到 brain_agent_proxy 子目录
+  4. Docker bind mount 没有正确传播 btrfs 子卷内容
+
+  尝试的修复：
+  - 添加 /tmp:/tmp 挂载：已添加，但容器内 /tmp 内容仍与 host 不同
+  - 容器内 mount --bind：需要 --privileged（安全风险）
+  - 从 /xkagent_infra 复制文件到 /workspace：失败（源内容已损坏）
+
+impact: "所有 sandbox 实例无法访问 host 的完整 /xkagent_infra 内容，agentctl 等关键工具不可用"
+resolution: "需要 infra 组调查 host Docker 配置与 btrfs 子卷挂载问题"
+resolved_at: ""
+base_upgrade_candidate: true
+base_upgrade_detail: |
+  可能需要：
+  1. 修改 Docker daemon 配置使用 rshared mount propagation
+  2. 在 host 创建 /xkagent_infra 的 bind mount 传播点
+  3. 在 brain/docker-base image 中预装 agentctl 等工具
+workaround: "无（这是系统级基础设施问题）"
+escalated_to: "infra team (ISS-004)"

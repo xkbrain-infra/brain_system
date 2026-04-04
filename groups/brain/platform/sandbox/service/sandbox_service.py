@@ -24,7 +24,10 @@ import yaml
 class SandboxConfig:
     """Sandbox 配置管理"""
 
-    # 类型到目录的映射
+    ROOT = Path("/xkagent_infra/groups/brain/platform/sandbox")
+    GROUP = "brain"
+
+    # 类型到目录的映射（对应新目录结构）
     TYPE_DIR_MAP = {
         "development": "dev",
         "testing": "test",
@@ -33,10 +36,27 @@ class SandboxConfig:
     }
 
     @classmethod
-    def get_instance_dir(cls, dep_type: str) -> Path:
+    def get_type_dir(cls, dep_type: str) -> str:
+        """获取类型对应目录名"""
+        return cls.TYPE_DIR_MAP.get(dep_type, dep_type)
+
+    @classmethod
+    def get_dockerfile_path(cls, dep_type: str) -> Path:
+        """获取对应类型的 Dockerfile 路径"""
+        type_dir = cls.get_type_dir(dep_type)
+        return cls.ROOT / type_dir / "Dockerfile"
+
+    @classmethod
+    def get_compose_template(cls, dep_type: str) -> Path:
+        """获取对应类型的 compose 模板路径"""
+        type_dir = cls.get_type_dir(dep_type)
+        return cls.ROOT / type_dir / "compose.yaml"
+
+    @classmethod
+    def get_instance_dir(cls, dep_type: str, instance_id: str) -> Path:
         """获取实例目录（按类型分类）"""
-        type_dir = cls.TYPE_DIR_MAP.get(dep_type, dep_type)
-        return cls.ROOT / "instances" / type_dir
+        type_dir = cls.get_type_dir(dep_type)
+        return cls.ROOT / "instances" / f"{type_dir}-{instance_id}"
 
     @classmethod
     def load_platform_config(cls) -> Dict:
@@ -246,11 +266,11 @@ class SandboxManager:
             platform_config, project_config, provider_config
         )
 
-        # 7. 启动容器
+        # 7. 启动容器（在 sandbox 根目录执行，compose 使用相对路径）
         print(f"📦 启动容器: {container_name}")
         subprocess.run(
             ["docker", "compose", "-f", compose_file, "up", "-d"],
-            cwd=str(self.config.ROOT / "templates"),
+            cwd=str(self.config.ROOT),
             check=True
         )
 
@@ -320,11 +340,11 @@ class SandboxManager:
                           env_vars: Dict, platform_config: Dict,
                           project_config: Optional[Dict],
                           provider_config: Dict) -> str:
-        """生成 Docker Compose 文件（按类型和实例 ID 分类存储）"""
+        """生成 Docker Compose 文件（使用按类型划分的模板）"""
 
-        # 读取基础模板
-        base_compose = self.config.ROOT / "templates" / "compose.base.yaml"
-        with open(base_compose) as f:
+        # 读取对应类型的 compose 模板
+        type_compose = self.config.get_compose_template(dep_type)
+        with open(type_compose) as f:
             compose_content = f.read()
 
         # 替换变量
@@ -335,8 +355,7 @@ class SandboxManager:
         compose_content = compose_content.replace("${", "__ESCAPED_${")  # 保留未替换的
 
         # 按类型和实例 ID 分类存储: instances/{type}-{id}/{id}.yaml
-        type_prefix = self.config.TYPE_DIR_MAP.get(dep_type, dep_type)
-        instance_dir = self.config.ROOT / "instances" / f"{type_prefix}-{instance_id}"
+        instance_dir = self.config.get_instance_dir(dep_type, instance_id)
         instance_dir.mkdir(parents=True, exist_ok=True)
 
         compose_file = instance_dir / f"{instance_id}.yaml"

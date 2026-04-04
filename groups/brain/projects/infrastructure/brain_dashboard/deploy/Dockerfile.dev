@@ -1,35 +1,28 @@
 # Brain Dashboard Development Sandbox
-FROM python:3.11-slim
+# 继承 brain-sandbox-base：包含 gcc/g++/cmake/python3/node/tmux/claude CLI
+FROM brain-sandbox-base:latest
 
-WORKDIR /workspace
+LABEL brain.sandbox.type="development"
+LABEL brain.project="brain_dashboard"
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    git \
-    curl \
-    sqlite3 \
-    inotify-tools \
-    && rm -rf /var/lib/apt/lists/*
+# 创建项目运行时目录结构
+RUN mkdir -p \
+    /workspace/runtime/agents \
+    /workspace/runtime/template_bundles/agents \
+    /workspace/runtime/config/agentctl \
+    /workspace/brain
 
-# Install Python dependencies
-COPY requirements.txt* ./
-RUN pip install --no-cache-dir \
-    fastapi \
-    uvicorn[standard] \
-    httpx \
-    aiofiles \
-    psutil \
-    pytest \
-    pytest-asyncio
-
-# Create workspace structure
-RUN mkdir -p /workspace/project /workspace/data /workspace/logs
-
-# Set environment
+# 环境变量
 ENV PYTHONPATH=/workspace/project/src
 ENV BRAIN_DASHBOARD_ENV=sandbox
 ENV BRAIN_DASHBOARD_DATA=/workspace/data
+ENV BRAIN_WORKSPACE=/workspace
+ENV RUNTIME_ROOT=/workspace/runtime
+ENV AGENT_RUNTIME_ROOT=/workspace/runtime/agents
+ENV AGENTCTL_CONFIG_DIR=/workspace/runtime/config/agentctl
+ENV BRAIN_WORKTREE=/workspace/brain
+ENV BRAIN_IPC_SOCKET=/tmp/brain_ipc.sock
 
 WORKDIR /workspace/project
 
-CMD ["bash"]
+CMD ["bash", "-c", "echo 'Sandbox ready' && tail -f /dev/null"]

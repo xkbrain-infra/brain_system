@@ -1123,7 +1123,16 @@ def _build_model_selector(agent_type: str, spec: dict[str, Any]) -> str:
 
     Format: provider/model
     Example: minimax/MiniMax-M2.5
+
+    If spec contains 'provider_model' field (e.g. 'anthropic/claude-sonnet-4-6'),
+    use it directly instead of inferring from agent_type + model.
     """
+    # Direct provider/model override - use as-is if provided
+    provider_model = spec.get("provider_model")
+    if provider_model and isinstance(provider_model, str) and "/" in provider_model:
+        return provider_model
+
+    # Fallback: infer from agent_type + model
     model_name = _resolve_model_name(spec)
     provider = _AGENT_TYPE_PROXY_PROVIDER_MAP.get(agent_type, "").strip()
     if provider and model_name:

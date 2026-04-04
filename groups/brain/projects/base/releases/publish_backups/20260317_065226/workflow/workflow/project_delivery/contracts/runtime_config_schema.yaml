@@ -1,0 +1,77 @@
+runtime_config_schema:
+  id: "MWF-CFG-003"
+  version: "0.1"
+  intent: "定义 runtime config、service registration、port allocation、supervisor spec 的统一字段"
+
+config_version:
+  required_fields:
+    - config_id
+    - config_kind
+    - version
+    - group_id
+    - scope
+    - environment
+    - payload_ref
+    - changed_by
+    - created_at
+  optional_fields:
+    - project_id
+    - sandbox_id
+    - supersedes
+    - rollout_strategy
+
+service_registration:
+  required_fields:
+    - service_id
+    - service_name
+    - group_id
+    - project_id
+    - sandbox_id
+    - owner_role
+    - endpoint_ref
+    - config_version_ref
+    - supervisor_spec_ref
+    - health_status
+    - created_at
+  optional_fields:
+    - depends_on_services
+    - ipc_bindings
+
+port_allocation:
+  required_fields:
+    - allocation_id
+    - group_id
+    - project_id
+    - sandbox_id
+    - service_name
+    - protocol
+    - port
+    - status
+    - allocated_at
+  optional_fields:
+    - host_binding
+    - released_at
+
+supervisor_spec:
+  required_fields:
+    - supervisor_spec_id
+    - group_id
+    - project_id
+    - sandbox_id
+    - program_name
+    - command
+    - autostart
+    - autorestart
+    - stdout_log_ref
+    - stderr_log_ref
+    - created_at
+  optional_fields:
+    - environment_ref
+    - stop_signal
+    - healthcheck_command
+
+rules:
+  - "所有 registration/allocation/spec 记录必须包含 group_id"
+  - "所有 service registration 必须可回溯到 config version"
+  - "所有 supervisor spec 必须可回溯到 service_name 或 service_id"
+  - "所有 active endpoint 必须与 port allocation 一致"

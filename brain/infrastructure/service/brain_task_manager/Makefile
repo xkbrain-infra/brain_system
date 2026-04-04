@@ -1,7 +1,8 @@
 CXX      = g++
 CXXFLAGS = -std=c++20 -Wall -Wextra -O2 -pthread \
-           -Iinclude -isystem third_party -isystem third_party/nlohmann
-LDFLAGS  = -pthread
+           -Iinclude -isystem third_party -isystem third_party/nlohmann \
+           -isystem /usr/local/include
+LDFLAGS  = -pthread -L/usr/local/lib -lyaml-cpp
 
 SRC_DIR  = src
 BUILD_DIR = build
@@ -19,7 +20,7 @@ TARGET = $(BIN_DIR)/brain_task_manager
 all: $(TARGET)
 
 $(TARGET): $(OBJS) | $(BIN_DIR)
-	$(CXX) $(LDFLAGS) -o $@ $^
+	$(CXX) -o $@ $^ $(LDFLAGS)
 
 $(BUILD_DIR)/%.o: $(SRC_DIR)/%.cpp
 	@mkdir -p $(dir $@)

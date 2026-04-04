@@ -141,6 +141,30 @@ class TestInlineChecker:
         result = checker.check(context)
         assert result.status == CheckStatus.WARN
 
+    def test_inline_checker_respects_exclude_prefix(self):
+        """Commands routed through an exempt wrapper should not be blocked."""
+        patterns = {
+            "tmux_direct_write": [
+                {
+                    "pattern": r"tmux\s+new-session",
+                    "message": "Direct tmux write detected",
+                    "exclude_prefix": "brain_tmux_api",
+                }
+            ]
+        }
+        checker = InlineChecker(patterns)
+        context = CheckContext(
+            gate_id="TEST-TMUX",
+            tool_name="Bash",
+            tool_input={"command": "brain_tmux_api new-session -s demo -- tmux new-session -d -s demo"},
+            enforcement={"priority": "CRITICAL", "block_message": "Blocked: {message}"},
+            command="brain_tmux_api new-session -s demo -- tmux new-session -d -s demo",
+            file_path=None,
+        )
+
+        result = checker.check(context)
+        assert result.status == CheckStatus.PASS
+
 
 class TestBinaryChecker:
     """Test BinaryChecker subprocess wrapper"""

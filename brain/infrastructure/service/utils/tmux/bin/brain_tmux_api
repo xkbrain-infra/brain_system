@@ -7,6 +7,7 @@
 #   brain_tmux_api capture-pane -t <tgt> [-n lines]  捕获 pane 内容
 #   brain_tmux_api list-panes [-t session]    列出 panes
 #   brain_tmux_api display-message -t <tgt>   显示 tmux 变量
+#   brain_tmux_api new-session -s <name> [-c cwd] [-- command]
 #   brain_tmux_api send -t <tgt> "message"    发送消息到 pane
 
 set -euo pipefail
@@ -91,6 +92,43 @@ print(display_message('$TARGET', '$FMT'))
 "
     ;;
 
+  new-session|new)
+    shift
+    SESSION=""
+    CWD=""
+    CMD=""
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        -s) SESSION="$2"; shift 2 ;;
+        -c) CWD="$2"; shift 2 ;;
+        --) shift; CMD="$*"; break ;;
+        *)
+          if [[ -z "$SESSION" ]]; then
+            SESSION="$1"
+          elif [[ -z "$CMD" ]]; then
+            CMD="$1"
+          else
+            CMD="$CMD $1"
+          fi
+          shift
+          ;;
+      esac
+    done
+    [[ -z "$SESSION" ]] && { echo "usage: brain_tmux_api new-session -s <name> [-c cwd] [-- command]" >&2; exit 1; }
+    export BRAIN_TMUX_SESSION="$SESSION"
+    export BRAIN_TMUX_CWD="$CWD"
+    export BRAIN_TMUX_CMD="$CMD"
+    python3 -c "
+import os, sys; sys.path.insert(0, '$SRC_DIR')
+from tmux_utils import new_session
+print(new_session(
+    os.environ['BRAIN_TMUX_SESSION'],
+    cwd=os.environ.get('BRAIN_TMUX_CWD') or None,
+    command=os.environ.get('BRAIN_TMUX_CMD') or None,
+))
+"
+    ;;
+
   send)
     shift
     exec python3 "$SRC_DIR/tmux_send.py" "$@"
@@ -106,6 +144,8 @@ brain_tmux_api - tmux 操作统一入口 (G-GATE-TMUX-PROXY)
   capture-pane (cap) -t <target> [-n N] 捕获 pane 内容 (默认 200 行)
   list-panes (lp) [-t session]          列出 panes
   display-message (dm) -t <target> [-f fmt]  查询 tmux 变量
+  new-session (new) -s <name> [-c cwd] [-- command]
+                                         创建 detached tmux session
   send -t <target> "message"            发送消息到 pane
 
 所有操作自动记录审计日志。

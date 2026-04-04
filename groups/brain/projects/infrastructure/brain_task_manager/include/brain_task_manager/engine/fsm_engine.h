@@ -6,7 +6,9 @@
 #include <vector>
 
 // FSM Engine: validates task status transitions
-// 7 states, 11 transitions (backward compatible with task_manager C)
+// 10 states, 16 transitions — aligned with project_delivery workflow
+// Pending → Ready → InProgress → Review → Verified → Completed → Archived
+// Blocked 可从 Ready / InProgress / Review 进入，解除后回 Ready
 class FSMEngine {
 public:
   FSMEngine();

@@ -1,0 +1,61 @@
+workflow:
+  id: "MWF-WF-RESEARCH-001"
+  name: "Research and Benchmark Workflow"
+  owner: "architect + researcher + project_orchestrator"
+  trigger: "project passed INTAKE_PASS"
+  note: "该步骤负责外部方案调研、内部经验检索、风险识别和推荐路径形成，是 planning 的前置输入"
+  inputs:
+    - intake_record
+    - workflow_profile
+    - known_constraints
+    - initial_open_questions
+  steps:
+    - "collect relevant internal references and prior project lessons"
+    - "research external reference solutions, orchestration patterns, release/audit practices"
+    - "compare viable approaches in a benchmark matrix"
+    - "identify constraints, risks, and non-goals"
+    - "write recommended approach for planning phase"
+  outputs:
+    - research_report
+    - benchmark_matrix
+    - recommended_approach
+    - known_risks
+    - open_questions
+
+pass_gate:
+  id: "RESEARCH_PASS"
+  rule: "只有形成可供 bootstrap/planning 使用的研究结论，项目才可进入 BOOTSTRAPPING"
+  required_checks:
+    problem_context_understood:
+      description: "需求背景与约束已被研究阶段重新确认"
+    references_collected:
+      description: "已收集内部/外部参考方案"
+    options_compared:
+      description: "至少存在候选方案对比"
+    recommendation_written:
+      description: "已形成推荐路线和拒绝路线说明"
+    risks_identified:
+      description: "已列出主要风险与待解问题"
+
+fail_gate:
+  id: "RESEARCH_HOLD"
+  rule: "研究结论不足时，不得直接进入 BOOTSTRAPPING 或 planning"
+  typical_reasons:
+    - "no benchmark or reference"
+    - "recommendation missing"
+    - "major unknowns unresolved"
+    - "risk list missing"
+
+required_record:
+  name: "research_report"
+  required_fields:
+    - project_id
+    - problem_context
+    - references
+    - benchmark_matrix
+    - recommended_approach
+    - rejected_approaches
+    - known_risks
+    - open_questions
+    - research_decision
+  note: "没有 research_report 的项目不得进入 BOOTSTRAPPING 或 planning"

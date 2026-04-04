@@ -1,0 +1,80 @@
+task_modeling_examples:
+  id: "MWF-TASKMODEL-EXAMPLE-001"
+  version: "0.1"
+  intent: "用软件工程示例说明 plan 如何实例化成 task graph"
+
+example:
+  project: "PRJ-brain-20260311-001"
+  deliverable: "新增订单查询 API + 前端页面 + 集成测试"
+  planning_outputs:
+    modules:
+      - api
+      - frontend
+      - qa
+    interfaces:
+      - "GET /orders"
+  task_graph:
+    - task_id: "PRJ-brain-20260311-001.delivery.T01.impl"
+      title: "实现订单查询 API"
+      owner_role: "developer"
+      participants: ["architect"]
+      depends_on: []
+      todo_list:
+        - "实现 handler"
+        - "补单测"
+        - "输出接口示例"
+      trigger_policy:
+        trigger_mode: "timer"
+        check_interval_s: 1800
+      conflict_keys:
+        - "repo:backend-api"
+    - task_id: "PRJ-brain-20260311-001.delivery.T02.front"
+      title: "接入订单查询页面"
+      owner_role: "frontend"
+      participants: []
+      depends_on: []
+      todo_list:
+        - "接接口"
+        - "渲染状态"
+      trigger_policy:
+        trigger_mode: "timer"
+        check_interval_s: 1800
+      conflict_keys:
+        - "repo:frontend-web"
+    - task_id: "PRJ-brain-20260311-001.testing.T03.test"
+      title: "执行订单查询集成测试"
+      owner_role: "qa"
+      participants: []
+      depends_on:
+        - "PRJ-brain-20260311-001.delivery.T01.impl"
+        - "PRJ-brain-20260311-001.delivery.T02.front"
+      todo_list:
+        - "写集成测试"
+        - "跑回归"
+        - "输出报告"
+      trigger_policy:
+        trigger_mode: "dependency"
+      conflict_keys:
+        - "env:test-slot-1"
+    - task_id: "PRJ-brain-20260311-001.release.T04.smoke"
+      title: "执行 stage/prod smoke 验证"
+      owner_role: "qa"
+      participants:
+        - "devops"
+      depends_on:
+        - "PRJ-brain-20260311-001.testing.T03.test"
+      todo_list:
+        - "stage smoke"
+        - "prod smoke"
+        - "记录验证结果"
+      trigger_policy:
+        trigger_mode: "event"
+      conflict_keys:
+        - "env:stage-slot-1"
+        - "env:prod-slot"
+
+  notes:
+    - "T01 和 T02 可并行，因为无依赖且 conflict_keys 不冲突"
+    - "T03 不是 todo，而是独立 task，因为它有单独 owner、依赖和验收"
+    - "T04 说明 QA 不只是附带检查，而是可以作为显式 release validation task"
+    - "单个 task 内部 todo_list 不应再自动升格为独立 task，除非需要单独跟踪"

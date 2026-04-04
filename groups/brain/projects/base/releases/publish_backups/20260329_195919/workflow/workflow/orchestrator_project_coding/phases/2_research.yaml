@@ -1,0 +1,158 @@
+# Phase 2: RESEARCH — 在 sandbox 内 spawn researcher，调研未知项
+# 来源: workflow_core.yaml → meta.phase_files.research
+# steps: 2_1 (research_if_needed)
+#
+# 与旧版本的关键区别:
+#   旧: brain_researcher 在宿主机执行调研
+#   新: orchestrator spawn researcher worker（sandbox 内），通过 worker_task_protocol 派发
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PHASE 2: RESEARCH — 调研影响架构/范围/交付的关键未知项
+# ═══════════════════════════════════════════════════════════════════════════════
+
+steps:
+
+  # ── 2.1 ────────────────────────────────────────────────────────────────────
+  - step_id: "MWF-OPC:2_1:research_if_needed"
+    phase: research
+    who:
+      executor: project_orchestrator
+      profile: coordinator
+      context: "sandbox 内，如需调研则 lazy spawn researcher worker"
+    purpose: "关闭所有影响 planning 的技术未知项"
+
+    do:
+      - action: "TASK_UPDATE: in_progress"
+        action_id: "MWF-OPC:2_1:research_if_needed:A01"
+        tool: "task_manager API"
+        call: |
+          event_type: TASK_UPDATE
+          task_id:    "MWF-OPC:2_1:research_if_needed"
+          status:     in_progress
+
+      - action: "检查 state/decisions.yaml 中 type=research 的项"
+        action_id: "MWF-OPC:2_1:research_if_needed:A02"
+        tool: "file_read"
+        skip_if: "没有 research 项 → 直接 success，跳过整个 phase"
+
+      - action: "Lazy spawn researcher worker（首次需要时）"
+        action_id: "MWF-OPC:2_1:research_if_needed:A03"
+        tool: "spawn_protocol"
+        details: |
+          按 spawn_protocol 执行:
+            1. 从 provider_profiles.yaml 解析: researcher → profile → provider/model
+            2. 创建 {project_root}/runtime/agents/{researcher_agent_id}/
+            3. 渲染 provider-specific 配置（.claude/ 或 .codex/ 或 ipc_env.sh）
+            4. 渲染 AGENTS.md（worker 版本，含 worker_task_protocol SOP）
+            5. agentctl start --apply {researcher_agent_id}
+            6. 等待 agent 出现在 IPC（超时 60s）
+            7. 记录到 state/agent_roster.yaml
+
+      - action: "派发 research task 给 researcher"
+        action_id: "MWF-OPC:2_1:research_if_needed:A04"
+        tool: "IPC TASK_ASSIGN → {researcher_agent_id}"
+        task_packet:
+          instruction: |
+            对 decisions.yaml 中每个 type=research 的项执行调研:
+              1. 搜索内部参考（brain knowledge base）
+              2. 搜索外部参考（官方文档、技术博客、benchmark）
+              3. 对比候选方案（至少 2 个）
+              4. 写出推荐路径 + 拒绝理由
+          input_refs:
+            - "state/decisions.yaml"
+            - "state/intake.yaml"
+          output_contract:
+            reports: ["state/research.yaml"]
+          completion_checks:
+            - "每个 research item 都有 conclusion"
+            - "每个 conclusion 都有 evidence (references)"
+          evidence_required:
+            - "调研报告文件存在"
+
+      - action: "收集 researcher 回报"
+        action_id: "MWF-OPC:2_1:research_if_needed:A05"
+        tool: "IPC 接收 TASK_COMPLETE"
+        details: "验证 output contract + evidence"
+
+      - action: "orchestrator review 调研结论"
+        action_id: "MWF-OPC:2_1:research_if_needed:A06"
+        tool: "LLM reasoning"
+        details: |
+          检查:
+            - 每个 research item 是否有明确 conclusion
+            - conclusion 是否 actionable（能直接指导 planning）
+            - 是否有重大风险需要上报 PMO
+          如果有风险 → 通过 IPC 通知 brain_pmo
+
+      - action: "更新 decisions.yaml 对应项为 resolved"
+        action_id: "MWF-OPC:2_1:research_if_needed:A07"
+        tool: "file_write"
+
+      - action: "cross_model_validation: 验证 state/research.yaml"
+        action_id: "MWF-OPC:2_1:research_if_needed:A08"
+        type: "cross_model_validation"
+        strategy_ref: "workflow_core.yaml → audit_strategy.cross_model_validation"
+        execution_flow:
+          "1_write_request":
+            path: "{project_root}/state/step_results/MWF-OPC_2_1_research_if_needed/validation_request.yaml"
+            content:
+              step_id: "MWF-OPC:2_1:research_if_needed"
+              validator_model_rule: "不同于 orchestrator 当前模型"
+              artifact: "state/research.yaml"
+              check_items:
+                - {id: "CHK-01", type: "file_exists",  target: "state/research.yaml"}
+                - {id: "CHK-02", type: "field_assert", field: "items",             assert: "非空数组"}
+                - {id: "CHK-03", type: "items_check",  target: "items[*].conclusion",  assert: "非空字符串"}
+                - {id: "CHK-04", type: "items_check",  target: "items[*].references",  assert: "非空数组（每项至少 1 个 evidence）"}
+                - {id: "CHK-05", type: "field_assert", field: "research_decision", assert: "== PASS"}
+                - {id: "CHK-06", type: "cross_file",
+                   source: "state/decisions.yaml",
+                   rule: "items[type=research AND status=open] 为空（所有 research 项均已 resolved）"}
+          "2_spawn_validator":
+            command: "agentctl start --role step_validator --model {validator_model} --ephemeral"
+            note: "validator_model 由 model_selection 规则确定，与 orchestrator 不同"
+          "3_wait_result":
+            wait_for: "IPC: VALIDATE_COMPLETE"
+            timeout: "120s"
+            on_timeout: "fallback → same_model_isolated (见 workflow_core.yaml)"
+          "4_write_completion_check":
+            path: "{project_root}/state/step_results/MWF-OPC_2_1_research_if_needed/completion_check.yaml"
+        on_fail:
+          action: "TASK_UPDATE(blocked) + IPC notify brain_pmo"
+          payload: "completion_check.yaml path + failed check_items"
+
+      - action: "TASK_UPDATE: completed + SPEC_PROGRESS（phase 2 完成）"
+        action_id: "MWF-OPC:2_1:research_if_needed:A09"
+        tool: "task_manager API"
+        call: |
+          # 标记 step task 完成
+          event_type: TASK_UPDATE
+          task_id:    "MWF-OPC:2_1:research_if_needed"
+          status:     completed
+
+          # Phase 2 (research) 完成 → 推进 spec stage 到 S3_research
+          event_type:    SPEC_PROGRESS
+          spec_id:       "{project_id}"
+          target_stage:  S3_research
+
+    artifact: "state/research.yaml"
+    artifact_schema:
+      project_id: string
+      items:
+        - question: string
+          references: [string]
+          options_compared:
+            - name: string
+              pros: [string]
+              cons: [string]
+          conclusion: string
+          rejected_approaches: [string]
+          impact_on_plan: string
+      recommended_approach: string
+      known_risks: [{risk: string, severity: "high|medium|low", mitigation: string}]
+      research_decision: "PASS | HOLD"
+
+    check: "decisions.yaml 中没有 type=research 且 status=open 的项"
+    on_success: "MWF-OPC:3_1:define_plan"
+    on_retry: "部分调研未完成 → 补充后重试"
+    on_blocked: "调研发现根本性风险 → 通过 IPC 上报 brain_pmo"

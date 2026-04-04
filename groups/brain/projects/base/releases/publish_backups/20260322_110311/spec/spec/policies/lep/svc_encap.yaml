@@ -1,0 +1,45 @@
+gate_id: G-GATE-SVC-ENCAP
+name: Service Source Encapsulation
+applies_to: [read]
+rule: |
+  Infrastructure service Python 源码对 Agent 不可见。
+  Agent 只能通过 CLI 接口操作服务，不得读取服务的 Python 实现文件。
+priority: HIGH
+
+enforcement:
+  stage: pre_tool_use
+  method: python_inline
+  priority: HIGH
+
+  triggers:
+    tools: [Read, Grep, Glob]
+
+  patterns:
+    service_source_read:
+      - pattern: "/infrastructure/service/.+\\.py$"
+        message: "检测到读取 infrastructure service Python 源码"
+        suggestion: "通过 CLI 接口操作服务，不要读取源码"
+      - pattern: "/infrastructure/service/[^/]+/src/"
+        message: "检测到读取 infrastructure service src/ 目录"
+        suggestion: "通过 CLI 接口操作服务，不要读取源码"
+
+  block_message: |
+    🚫 Infrastructure service 源码不对 Agent 开放 (G-GATE-SVC-ENCAP)
+    路径: {file_path}
+
+    Agent 应通过 CLI 黑盒方式使用服务，不应读取其 Python 实现。
+
+    ✅ 正确操作：
+    ▸ 通过 CLI 接口使用服务（agentctl、brain-publish 等）
+    ▸ 读取服务配置文件：/brain/infrastructure/service/*/config/**
+    ▸ 需要修改服务行为：走 pending 流程提交 brain-manager 审核
+
+    原因：读取 50KB+ 源码文件会严重消耗 context（约 13,000+ tokens），
+    且导致 Agent 越权直接修改服务实现而非走正规流程。
+
+bindings:
+  hooks:
+    stage: pre_tool_use
+    trigger_tools: [Read, Grep, Glob]
+  related_gates:
+    - G-GATE-SCOP

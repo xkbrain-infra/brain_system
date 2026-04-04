@@ -18,6 +18,7 @@ services:
       - /bin/bash
       - -lc
       - |
+        mkdir -p /xkagent_infra/runtime/logs /xkagent_infra/runtime/config
         if [ -x /xkagent_infra/brain/platform/docker/scripts/container_bootstrap.sh ]; then
           /xkagent_infra/brain/platform/docker/scripts/container_bootstrap.sh
         else
@@ -27,7 +28,7 @@ services:
     networks:
       - brain-network
     volumes:
-      - data-volume:/xkagent_infra
+      - ${INFRA_ROOT_HOST_PATH:-/services/xkagent_infra}:/xkagent_infra:rw
       - root-volume:/root
     ports:
       - "${HOST_SSH_PORT}:22"
@@ -39,6 +40,7 @@ services:
       ENVIRONMENT: ${ENVIRONMENT}
       TZ: ${TZ}
       INSTANCE_ID: ${INSTANCE_ID}
+      AGENTCTL_AUTOSTART_AGENTS: ${AGENTCTL_AUTOSTART_AGENTS:-agent-brain_manager}
     healthcheck:
       test: ["CMD-SHELL", "/xkagent_infra/brain/platform/docker/scripts/healthcheck.sh runtime"]
       interval: 30s
@@ -53,7 +55,5 @@ services:
           memory: ${MEMORY_LIMIT}
 
 volumes:
-  data-volume:
-    name: ${VOLUME_DATA}
   root-volume:
     name: ${VOLUME_ROOT}

@@ -1,6 +1,6 @@
 skill_bindings:
-  version: "1.1"
-  updated: "2026-03-15"
+  version: "1.2"
+  updated: "2026-03-29"
   owner: "brain"
   description: "Agent skill 绑定策略。与 agents_registry.yaml 分离，专门描述 role/agent/workflow 对 skill 的绑定关系。"
 
@@ -21,12 +21,16 @@ skill_bindings:
         - lep
         - agentctl
         - ipc
-        - sandbox
+        - workflow-orchestrator
+        - task-manager
+        - spawn-orchestrator
 
     pmo:
       default_skills:
         - lep
         - ipc
+        - task-manager
+        - spawn-orchestrator
 
     devops:
       default_skills:
@@ -35,6 +39,7 @@ skill_bindings:
         - agentctl
         - tmux
         - sandbox
+        - task-manager
 
     dev:
       default_skills:
@@ -42,15 +47,28 @@ skill_bindings:
         - doc-search
         - tmux
         - sandbox
+        - task-manager
 
     frontdesk:
       default_skills:
         - lep
         - ipc
+        - task-manager
 
-    custom:
+    orchestrator:
       default_skills:
         - lep
+        - ipc
+        - agentctl
+        - agent-coordination
+        - workflow-orchestrator
+        - spawn-orchestrator
+        - task-manager
+
+  custom:
+      default_skills:
+        - lep
+        - task-manager
 
   agents:
     agent-brain_manager:
@@ -66,6 +84,7 @@ skill_bindings:
       required_skills:
         - project_delivery
         - sandbox
+        - task-manager
       recommended_roles:
         - manager
         - pmo

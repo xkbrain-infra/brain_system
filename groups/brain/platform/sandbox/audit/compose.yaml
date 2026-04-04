@@ -1,0 +1,72 @@
+# Brain Sandbox - Audit Environment Compose
+# 用途: 审计审查（只读、不可变、完整日志）
+# 路径: /xkagent_infra/groups/brain/platform/sandbox/audit/compose.yaml
+
+name: ${SANDBOX_NAME:-sandbox-audit}
+
+services:
+  sandbox:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: brain-sandbox-audit:${SANDBOX_VERSION:-2.1.0}
+    container_name: ${CONTAINER_NAME}
+    hostname: ${HOSTNAME}
+
+    working_dir: /workspace/project
+
+    volumes:
+      # 项目源码（只读）
+      - ${PROJECT_ROOT}:/workspace/project:ro
+      # 审计日志输出
+      - ${AUDIT_LOG_PATH:-sandbox_audit_${INSTANCE_ID}}:/workspace/audit:rw
+      # 临时数据（隔离）
+      - sandbox_data_${INSTANCE_ID}:/workspace/data
+
+    environment:
+      - SANDBOX_MODE=full
+      - SANDBOX_TYPE=audit
+      - SANDBOX_INSTANCE_ID=${INSTANCE_ID}
+      - SANDBOX_PROJECT=${PROJECT_NAME}
+      - SANDBOX_GROUP=${GROUP_NAME}
+      - AUDIT_MODE=true
+      - LOG_ALL=true
+      - PROJECT_ROOT=/workspace/project
+      - BRAIN_PATH=/brain
+      - BRAIN_IPC_SOCKET=/tmp/brain_ipc.sock
+
+    networks:
+      - ${NETWORK_NAME}
+
+    deploy:
+      resources:
+        limits:
+          cpus: '${CPU_LIMIT:-0.5}'
+          memory: ${MEMORY_LIMIT:-512M}
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+
+    restart: "no"
+
+    labels:
+      - "brain.sandbox=true"
+      - "brain.sandbox.type=audit"
+      - "brain.audit=true"
+      - "brain.immutable=true"
+      - "brain.group=${GROUP_NAME}"
+      - "brain.project=${PROJECT_NAME}"
+      - "brain.instance=${INSTANCE_ID}"
+
+volumes:
+  sandbox_data_${INSTANCE_ID}:
+    driver: local
+  sandbox_audit_${INSTANCE_ID}:
+    driver: local
+
+networks:
+  ${NETWORK_NAME}:
+    driver: bridge
+    labels:
+      - "brain.sandbox.network=true"
+      - "brain.sandbox.type=audit"

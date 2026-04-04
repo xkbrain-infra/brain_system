@@ -8,6 +8,12 @@ description: |
   行业特化规则不在此层定义。
 
 roles:
+  manager:
+    current_canonical: /brain/base/spec/templates/roles/manager.md
+    legacy_path: ""
+    legacy_runtime_init: ""
+    intent: "workflow 入口判定、bootstrap 触发、phase gate 控制"
+
   pmo:
     current_canonical: /brain/base/spec/templates/roles/pmo.md
     legacy_path: /brain/base/spec/templates/agent/roles/pmo.md

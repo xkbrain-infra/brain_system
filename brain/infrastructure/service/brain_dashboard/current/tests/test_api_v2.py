@@ -42,9 +42,7 @@ def mock_gateway_routes():
     """Mock gateway routes response."""
     return {
         "platforms": {"telegram": "agent-brain_frontdesk"},
-        "keywords": [
-            {"pattern": "(?i)(deploy|release)", "target": "agent-system_devops"}
-        ],
+        "keywords": [],
         "default": "agent-brain_frontdesk"
     }
 

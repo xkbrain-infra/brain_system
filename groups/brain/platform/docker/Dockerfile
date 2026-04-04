@@ -70,8 +70,8 @@ ENV PATH="/opt/venv/bin:$PATH"
 
 COPY groups/brain/platform/docker/configs/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
-# 从构建上下文复制代码（context 是仓库根目录）
-COPY brain /xkagent_infra/brain
+# # 从构建上下文复制代码（context 是仓库根目录）
+# COPY brain /xkagent_infra/brain
 
 RUN ln -sf /xkagent_infra/brain /brain \
     && ln -sf /xkagent_infra/groups /groups \

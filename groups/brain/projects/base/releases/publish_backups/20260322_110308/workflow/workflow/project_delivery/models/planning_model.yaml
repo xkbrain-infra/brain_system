@@ -1,0 +1,99 @@
+planning_model:
+  id: "MWF-PLAN-001"
+  version: "0.1"
+  intent: "定义 planning 阶段在 multicore workflow 中的定位与完整交付产物"
+
+positioning:
+  role: "bridge between research and task modeling"
+  description: "planning 不是 intake，也不是 task decomposition；它负责把 research 结论转成项目执行蓝图"
+
+delivery_target:
+  mode: "complete_delivery"
+  rules:
+    - "project_delivery 默认以完整交付为目标"
+    - "任何 MVP / phase-1 / demo 压缩都必须显式写入 scope_compression_approvals"
+
+inputs:
+  - intake_record
+  - research_report
+  - bootstrap_verification_report
+
+required_outputs:
+  - delivery_target_mode
+  - scope_compression_approvals
+  - implementation_language
+  - runtime_stack
+  - engineering_standards
+  - deliverables
+  - architecture_summary
+  - modules
+  - interfaces
+  - complexity_estimate
+  - execution_phases
+  - milestones
+  - role_roster
+  - project_agent_strategy
+  - external_integrations
+  - integration_plan
+  - test_plan
+  - dependency_strategy
+  - parallelism_strategy
+  - task_design_strategy
+  - task_storage_strategy
+  - task_manager_state_model
+  - dispatch_ack_policy
+  - assignment_strategy
+  - tracking_plan
+  - validation_path
+  - release_path
+  - audit_checkpoints
+
+non_goals:
+  - "planning 不直接生成所有 task_id，但必须定义 task decomposition 规则"
+  - "planning 不替代 runtime dispatch，但必须定义 assignment 与 supervision 策略"
+  - "planning 不等于 bootstrap"
+  - "planning 不以默认 MVP 缩减替代完整交付设计"
+
+rule:
+  - "没有 project_plan，不得进入 task modeling"
+  - "task modeling 必须引用 planning 产物，而不是重新自由发挥"
+  - "architecture / integration / testing / tracking 缺任一主块时，不得通过 PLANNING_PASS"
+
+planning_dimensions:
+  technical_baseline:
+    includes:
+      - implementation language
+      - runtime stack
+      - framework/library choices
+      - coding standards
+      - repository/branch strategy
+      - quality gates
+  architecture:
+    includes:
+      - module decomposition
+      - interface boundaries
+      - data flow
+      - external systems
+      - deployment shape
+  estimation:
+    includes:
+      - estimated modules
+      - estimated interfaces
+      - major work packages
+      - complexity by area
+  test_and_integration:
+    includes:
+      - external integration plan
+      - mock vs real integration policy
+      - unit/integration/e2e/perf/security scope
+      - environment needs
+  execution_design:
+    includes:
+      - task decomposition strategy
+      - assignment strategy
+      - task manager state model
+      - task storage layout
+      - dispatch acknowledgement policy
+      - project agent strategy
+      - parallelism constraints
+      - tracking and reporting cadence

@@ -1,0 +1,130 @@
+---
+# Planning: OAuth Provider Configuration Feature
+# Feature ID: brain-dashboard-oauth-config-2026-03-17
+
+planning:
+  feature_id: brain-dashboard-oauth-config-2026-03-17
+  status: planning_passed
+
+  architecture:
+    overview: |
+      在 brain_dashboard v2.2.0 基础上增量开发 Providers 模块。
+      新增 API 层、OAuth flow 状态管理层、配置持久化层、前端 UI tab。
+
+    components:
+      - name: "api/v2/providers.py"
+        type: new_file
+        responsibility: |
+          - 读取 providers.yaml，脱敏返回 provider 列表和状态
+          - api_key 类型配置保存
+          - provider enable/disable
+          - OAuth flow 发起（device code / authorization code）
+          - OAuth device code 轮询
+        key_classes:
+          - ProvidersConfig: YAML 读写封装
+          - OAuthFlowManager: in-memory 管理 active flows（state→flow_info）
+        endpoints:
+          - "GET /api/v2/providers"
+          - "POST /api/v2/providers/{id}/config"
+          - "POST /api/v2/providers/{id}/toggle"
+          - "POST /api/v2/providers/{id}/oauth/start"
+          - "GET /api/v2/providers/{id}/oauth/poll"
+
+      - name: "app.py（修改）"
+        type: modify
+        responsibility: |
+          注册 OAuth callback 端点 GET /oauth2callback
+          处理 authorization code / PKCE 回调，写入 token 并重定向回 /
+
+      - name: "api/v2/__init__.py（修改）"
+        type: modify
+        responsibility: "引入并注册 providers router"
+
+      - name: "web/templates/index.html（修改）"
+        type: modify
+        responsibility: |
+          新增 "Providers" 导航 tab
+          Providers tab 内容：
+          - per-provider 卡片（名称、类型、enabled 状态、token 状态）
+          - api_key 类型：inline 输入框 + 保存按钮
+          - oauth_device 类型：Start Auth 按钮 → 展示 user_code + URL → 轮询状态
+          - oauth/gemini 类型：Authorize 按钮 → 跳转 auth_url → 回调后刷新状态
+
+    data_flow:
+      providers_yaml_path: "/brain/infrastructure/service/brain_agent_proxy/config/providers.yaml"
+      token_files:
+        openai: "~/.local/share/brain_agent_proxy/tokens/openai_oauth_device.json"
+        gemini: "~/.local/share/brain_agent_proxy/tokens/gemini_oauth_device.json"
+      secret_masking:
+        - "access_token → 显示前 8 位 + ***"
+        - "refresh_token → [已配置] / [未配置]"
+        - "client_secret → [已配置] / [未配置]"
+        - "api_key.key_value → 显示前 8 位 + ***"
+
+    oauth_flows:
+      copilot_authorization_code:
+        step1: "用户点击 Authorize → POST /api/v2/providers/copilot/oauth/start"
+        step2: "backend 生成 state token，返回 GitHub auth_url"
+        step3: "前端 window.open(auth_url)"
+        step4: "用户授权后 GitHub 回调 /oauth2callback?code=...&state=..."
+        step5: "backend 用 code 换 access_token（POST to github token endpoint）"
+        step6: "写入 providers.yaml copilot.oauth.access_token"
+        step7: "重定向到 /?oauth_success=copilot"
+
+      openai_device_code:
+        step1: "用户点击 Start Auth → POST /api/v2/providers/openai/oauth/start"
+        step2: "backend 调用 OpenAI device auth API，获取 device_code + user_code + verification_url"
+        step3: "返回 {user_code, verification_url, expires_in}"
+        step4: "前端展示 user_code 和 verification_url，用户去浏览器完成授权"
+        step5: "前端轮询 GET /api/v2/providers/openai/oauth/poll"
+        step6: "backend 轮询 poll_url，获得 token 后写入 token_file"
+        step7: "poll 返回 {status: success}，前端更新状态"
+
+      gemini_pkce:
+        step1: "用户点击 Authorize → POST /api/v2/providers/gemini/oauth/start"
+        step2: "backend 生成 code_verifier + code_challenge（S256），生成 state"
+        step3: "返回 auth_url（包含 code_challenge + state + redirect_uri=http://localhost:8080/oauth2callback）"
+        step4: "前端 window.open(auth_url)"
+        step5: "用户授权后 Google 回调 /oauth2callback?code=...&state=..."
+        step6: "backend 用 code + code_verifier 换 token（POST to Google token endpoint）"
+        step7: "写入 gemini token_file"
+        step8: "重定向到 /?oauth_success=gemini"
+
+  task_breakdown:
+    - id: T1
+      name: "实现 api/v2/providers.py"
+      type: new_file
+      priority: critical
+      estimated_lines: ~300
+      dependencies: []
+
+    - id: T2
+      name: "修改 api/v2/__init__.py，注册 providers router"
+      type: modify
+      priority: critical
+      estimated_lines: ~3
+      dependencies: [T1]
+
+    - id: T3
+      name: "修改 app.py，注册 /oauth2callback endpoint"
+      type: modify
+      priority: critical
+      estimated_lines: ~50
+      dependencies: [T1]
+
+    - id: T4
+      name: "修改 index.html，新增 Providers tab"
+      type: modify
+      priority: critical
+      estimated_lines: ~200
+      dependencies: [T1]
+
+    - id: T5
+      name: "编写测试 tests/test_providers.py"
+      type: new_file
+      priority: normal
+      estimated_lines: ~100
+      dependencies: [T1, T2]
+
+  planning_decision: PASS
+  next_phase: task_modeling

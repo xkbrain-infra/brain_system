@@ -11,10 +11,12 @@ G-GATE-TMUX-PROXY: 禁止 agent 直接调用 tmux 命令，
   - capture_pane(target, lines) → tmux capture-pane
   - list_panes(session) → tmux list-panes
   - display_message(target, fmt) → tmux display-message
+  - new_session(name, cwd, command) → tmux new-session
 """
 from __future__ import annotations
 
 import subprocess
+import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -28,6 +30,20 @@ from audit_log import agent_name_env, build_record, dual_write, session_name_env
 
 
 def _tmux(*args: str, check: bool = True, capture: bool = True) -> subprocess.CompletedProcess[str]:
+    # TMUX_SOCKET 支持：允许使用自定义 tmux socket 路径（用于跨容器共享）
+    # tmux 识别 TMUX 环境变量，格式: socket_path,pid,flags
+    socket_path = os.environ.get("TMUX_SOCKET")
+    if socket_path:
+        env = os.environ.copy()
+        env["TMUX"] = f"{socket_path},0,0"
+        return subprocess.run(
+            ["tmux", *args],
+            check=check,
+            text=True,
+            stdout=subprocess.PIPE if capture else None,
+            stderr=subprocess.PIPE if capture else None,
+            env=env,
+        )
     return subprocess.run(
         ["tmux", *args],
         check=check,
@@ -35,8 +51,6 @@ def _tmux(*args: str, check: bool = True, capture: bool = True) -> subprocess.Co
         stdout=subprocess.PIPE if capture else None,
         stderr=subprocess.PIPE if capture else None,
     )
-
-
 def _audit(tool_name: str, tool_input: dict) -> None:
     """Write audit record."""
     try:
@@ -168,3 +182,23 @@ def display_message(target: str, fmt: str = "#{pane_id}") -> str:
         return (result.stdout or "").strip()
     except Exception as e:
         return f"error: {e}"
+
+
+def new_session(name: str, cwd: Optional[str] = None, command: Optional[str] = None) -> str:
+    """Create a detached tmux session."""
+    args = ["new-session", "-d", "-s", name]
+    if cwd:
+        args.extend(["-c", cwd])
+    if command:
+        args.append(command)
+
+    _audit("TMUX_NEW_SESSION", {
+        "session": name,
+        "cwd": cwd or "",
+        "has_command": bool(command),
+    })
+
+    result = _tmux(*args, check=False)
+    if result.returncode != 0:
+        raise RuntimeError((result.stderr or result.stdout or "").strip() or "tmux new-session failed")
+    return name

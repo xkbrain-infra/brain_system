@@ -1,17 +1,98 @@
 #!/bin/bash
+set -euo pipefail
+
 PROXY_DIR="/xkagent_infra/brain/infrastructure/service/brain_agent_proxy"
+RUNTIME_ENV="/xkagent_infra/runtime/config/.env"
+AGENT_TOKENS_ENV="/brain/secrets/system/agents/llm_tokens.env"
+
+load_env_file() {
+    local env_file="$1"
+    local line key value
+
+    [ -f "$env_file" ] || return 0
+
+    while IFS= read -r line || [ -n "$line" ]; do
+        line="${line#"${line%%[![:space:]]*}"}"
+        line="${line%"${line##*[![:space:]]}"}"
+        [ -n "$line" ] || continue
+        [ "${line:0:1}" != "#" ] || continue
+
+        case "$line" in
+            export\ *) line="${line#export }" ;;
+        esac
+
+        case "$line" in
+            *=*) ;;
+            *) continue ;;
+        esac
+
+        key="${line%%=*}"
+        value="${line#*=}"
+        key="${key#"${key%%[![:space:]]*}"}"
+        key="${key%"${key##*[![:space:]]}"}"
+        value="${value#"${value%%[![:space:]]*}"}"
+        value="${value%"${value##*[![:space:]]}"}"
+
+        if [[ ! "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+            continue
+        fi
+
+        if [[ "$value" == \"*\" && "$value" == *\" ]]; then
+            value="${value:1:${#value}-2}"
+        elif [[ "$value" == \'*\' && "$value" == *\' ]]; then
+            value="${value:1:${#value}-2}"
+        fi
+
+        printf -v "$key" '%s' "$value"
+        export "$key"
+    done < "$env_file"
+}
+
+usage() {
+    cat <<'EOF'
+Usage: brain_agent_proxy [run] [--host HOST] [--port PORT] [--log-level LEVEL]
+EOF
+}
+
+load_env_file "$RUNTIME_ENV"
+load_env_file "$AGENT_TOKENS_ENV"
+
 HOST="${BRAIN_PROXY_HOST:-0.0.0.0}"
 PORT="${BRAIN_PROXY_PORT:-8210}"
 LOG_LEVEL="${BRAIN_PROXY_LOG_LEVEL:-info}"
-RUNTIME_ENV="/xkagent_infra/runtime/config/.env"
 
-# Load secrets from runtime config
-if [ -f "$RUNTIME_ENV" ]; then
-    set -a
-    # shellcheck disable=SC1090
-    source "$RUNTIME_ENV"
-    set +a
+if [ "${1:-}" = "run" ]; then
+    shift
 fi
+
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --host)
+            [ "$#" -ge 2 ] || { echo "Missing value for $1" >&2; exit 2; }
+            HOST="$2"
+            shift 2
+            ;;
+        --port)
+            [ "$#" -ge 2 ] || { echo "Missing value for $1" >&2; exit 2; }
+            PORT="$2"
+            shift 2
+            ;;
+        --log-level)
+            [ "$#" -ge 2 ] || { echo "Missing value for $1" >&2; exit 2; }
+            LOG_LEVEL="$2"
+            shift 2
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        *)
+            echo "Unknown argument: $1" >&2
+            usage >&2
+            exit 2
+            ;;
+    esac
+done
 
 exec env PYTHONPATH="$PROXY_DIR" /opt/venv/bin/python3 -m uvicorn current.main:app \
     --host "$HOST" --port "$PORT" --log-level "$LOG_LEVEL"

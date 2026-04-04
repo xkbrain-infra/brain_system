@@ -1,0 +1,26 @@
+release:
+  name: brain-system
+  version: 2.1.0
+  build_date: 2026-03-16T06:31:41Z
+  commit: eb7bbb6
+  branch: develop
+  image: brain/system:2.1.0
+
+components:
+  - name: base
+    path: brain/base
+    description: "Core specifications and standards"
+  - name: infrastructure
+    path: brain/infrastructure
+    description: "Infrastructure components"
+  - name: platform
+    path: brain/platform/bin
+    description: "Platform utilities"
+  - name: runtime
+    path: brain/runtime
+    description: "Runtime configuration"
+
+artifacts:
+  image: brain/system:2.1.0
+  tarball: packages/brain-system-2.1.0.tar.gz
+  manifest: packages/manifest-2.1.0.yaml

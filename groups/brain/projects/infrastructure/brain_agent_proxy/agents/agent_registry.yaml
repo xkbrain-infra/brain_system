@@ -1,0 +1,18 @@
+version: "1.0"
+updated: "bootstrap"
+groups:
+  brain:
+    - name: agent-brain_orch_bs-proxy-oom
+      description: BS-PROXY-OOM 项目 orchestrator
+      role: orchestrator
+      scope: project
+      group: brain
+      path: /groups/brain/projects/brain_agent_proxy/agents/agent-brain_orch_bs-proxy-oom
+      agent_type: claude
+      model: claude-opus-4.6
+      transport_mode: proxy
+      desired_state: running
+      status: active
+      project_id: BS-PROXY-OOM
+      sandbox_id: xk11qe
+projects: {}

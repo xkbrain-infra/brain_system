@@ -1,0 +1,259 @@
+# Spec DSL Templates
+# 合并自 dsl/ 目录，用于 S1-S7 各阶段
+#
+# 【强制】所有 id 字段必须带项目前缀: {project_id}-{类型}{序号}
+# 例: BS-025-SC1, BS-025-R1, BS-025-Q1, BS-025-T1
+# 详见 project.yaml global_id_rule
+
+# S0: 项目索引
+index:
+  spec:
+    id: ""
+    owner: ""
+    approver: ""
+    version: "0.1"
+    status: "Draft"           # Draft | Active | Deprecated | Archived
+    type: "standalone"        # standalone | design_task | implementation_task
+    workflow_state: "prepare"
+  refs:
+    parent:
+      project_id: ""
+      path: ""
+      relation: ""            # design_task_of | subtask_of | depends_on
+    outputs:
+      spec: []
+      code: []
+      memory: []
+  related_tasks: []
+  working_set:
+    focus: ""
+    blockers: []
+    next: ""
+
+# S1: Alignment
+alignment:
+  # ★ 业务问题陈述（必填）
+  # 用一句话描述：谁遇到了什么问题，导致什么后果
+  # 反模式：「task_manager 和 task_manager_runtime 要合并」（这是技术方案，不是问题）
+  # 正确示例：「PMO 分配任务后无法追踪项目隔离，不同项目的任务混在一起，超期无人知晓」
+  problem_statement: ""
+
+  background: ""
+
+  # ★ 干系人列表（必填，至少 1 个）
+  # 谁会用这个系统？各自的核心诉求是什么？
+  stakeholders:
+    - role: ""                # 角色（如 PMO、architect、agentctl）
+      needs: ""               # 这个角色最关心什么（用自己的语言描述）
+
+  # ★ 用户场景（必填，至少 2 个）
+  # 描述具体使用场景，格式：「[角色] 在 [情境] 下需要 [做什么]，以便 [达到什么目的]」
+  # 反模式：「支持 TASK_CREATE 接口」（这是接口，不是场景）
+  # 正确示例：「PMO 创建项目后，需要将任务分配给 architect，并在任务超期时同时收到通知」
+  user_scenarios:
+    - id: "{project_id}-US1"
+      actor: ""               # 谁在操作
+      context: ""             # 什么情况下
+      action: ""              # 要做什么
+      goal: ""                # 目的是什么
+
+  goal: ""
+  in_scope: []
+  out_scope: []
+  constraints:
+    time: ""
+    budget: ""
+    tech: ""
+    compliance: ""
+  agents:                       # Agent 分配（从 type_profiles 选择）
+    - role: ""                  # 角色名（如 architect, developer, qa）
+      profile: ""              # type_profiles 中的 PROFILE_ID（如 TP-SD-DEV-CLAUDE-SONNET）
+      count: 1                 # 该角色需要几个实例
+      reason: ""               # 选择该 profile 的理由
+  success_criteria:
+    - id: "{project_id}-SC1"  # 必须带项目前缀
+      text: ""
+      metric: ""              # 怎么量化验收（不能是「功能正常」）
+      target: ""
+  integration_points:         # 集成与基础设施依赖
+    - id: "{project_id}-INT1" # 集成点标识
+      service: ""             # 依赖的服务/组件名（见 infrastructure_reference.md）
+      communication: ""       # 通信方式: socket / HTTP / MCP / stdio / 无
+      verified: false         # 是否已验证可行（查阅文档或实际测试）
+      reference: ""           # 验证依据（文档路径或测试记录）
+
+# S2: Requirements
+requirements:
+  must:
+    - id: "{project_id}-R1"  # 必须带项目前缀
+      # ★ 用户故事（必填）：「作为 [角色]，我需要 [能力]，以便 [达到什么目的]」
+      # 反模式：「实现 TASK_CREATE 接口」（这是实现，不是需求）
+      # 正确示例：「作为 PMO，我需要在创建任务时指定所属项目，以便不同项目的任务互不干扰」
+      user_story: ""
+      # ★ 验收标准（必填，至少 1 条）：「Given [前提] When [操作] Then [结果]」
+      acceptance_criteria:
+        - ""
+      # 需求描述（补充说明）
+      text: ""
+  should: []
+  could: []
+  nfr:
+    performance: ""
+    security_privacy: ""
+    availability: ""
+
+# S3: Research
+research:
+  questions:
+    - id: "{project_id}-Q1"
+      text: ""
+  findings:
+    - id: "{project_id}-F1"
+      summary: ""
+      sources: []
+      confidence: "M"
+      impacts: []
+
+# S4: Analysis
+analysis:
+  insights: []
+  options:
+    - id: "{project_id}-OPT-A"
+      name: "Option A"
+      approach: ""
+      pros: []
+      cons: []
+      cost: { time: "", complexity: "" }
+      risks: []
+      validation: []
+  decision:
+    chosen: ""
+    rationale: []
+    tradeoffs: []
+    exceptions: []
+
+# S5: Solution
+solution:
+  overview: ""
+  integration_proof:               # 集成可行性验证（architect 必填）
+    # 对 S1 alignment.integration_points 逐项验证
+    # 方案定稿前，每个集成点必须有 PoC 跑通的证据
+    # 未验证的集成假设 = 方案不可定稿
+    items:
+      - id: "{project_id}-IP1"     # 对应 S1 的 integration_point ID
+        integration_point: ""      # 引用 S1 的 {project_id}-INT1
+        what_to_verify: ""         # 验证什么（如"Python 进程能否连接 daemon socket 并收发消息"）
+        poc_method: ""             # 如何验证（如"写 10 行脚本连接 /tmp/brain_ipc.sock 发 send action"）
+        poc_result: ""             # 实际结果（如"连接成功，send/recv 均正常"或"失败：MCP 工具仅限 agent CLI 会话"）
+        verdict: ""                # PASS | FAIL | BLOCKED
+        evidence: ""               # 证据路径（PoC 脚本、截图、日志）
+        fallback: ""               # 若 FAIL，替代方案是什么
+    gate: |
+      所有 integration_proof.items 必须 verdict != 空。
+      任何 FAIL 项必须有 fallback 且 fallback 已验证。
+      全部 BLOCKED 的方案不可进入 S6。
+  interfaces:                          # 接口设计（architect 必填）
+    # 方案必须定义完整的接口清单：模块间、对外、事件驱动
+    # S6 任务拆解和 S7 测试用例都基于此接口定义
+    - id: "{project_id}-IF1"
+      name: ""                         # 接口名称（如 "task_status_query"）
+      type: ""                         # API | IPC | CLI | Event | Hook | Socket
+      protocol: ""                     # HTTP/REST | JSON-RPC | protobuf | YAML | shell
+      provider: ""                     # 提供方模块/服务
+      consumer: ""                     # 消费方模块/服务
+      request:                         # 请求格式
+        fields:
+          - name: ""
+            type: ""
+            required: true
+            description: ""
+      response:                        # 响应格式
+        fields:
+          - name: ""
+            type: ""
+            description: ""
+      errors:                          # 错误码/异常
+        - code: ""
+          description: ""
+      notes: ""                        # 补充说明（限流、幂等、鉴权等）
+  dependencies:                        # 依赖清单（architect 必填）
+    # 内部依赖：已有服务/组件，必须 PoC 验证（见 integration_proof）
+    # 外部依赖：需要本项目新开发的组件
+    internal:
+      - id: "{project_id}-DEP-I1"
+        service: ""                    # 依赖的服务/组件名
+        usage: ""                      # 怎么用（调用方式、频率）
+        verified: false                # 是否已通过 integration_proof 验证
+        proof_ref: ""                  # 对应 integration_proof item ID
+    external:
+      - id: "{project_id}-DEP-E1"
+        component: ""                  # 需要新开发的组件名
+        owner: ""                      # 谁负责开发
+        interface_ref: ""              # 对应 interfaces 中的 ID
+        status: "Todo"                 # Todo | InProgress | Ready
+  modules:
+    - id: "{project_id}-MOD1"
+      name: ""
+      responsibilities: []
+      io:
+        inputs: []
+        outputs: []
+      failure_modes: []
+  milestones:
+    - id: "{project_id}-M1"
+      text: ""
+      due: ""
+  test_design:                         # 测试用例设计（QA 必填）
+    # QA 根据 interfaces 设计文字版测试用例
+    # 在代码编写前完成，确保测试独立于实现
+    # 解决 BS-025-ISS005：测试用例不应在代码之后才写
+    owner: ""                          # QA agent 名称
+    cases:
+      - id: "{project_id}-TD1"
+        interface_ref: ""              # 对应 interfaces 中的 ID
+        scenario: ""                   # 测试场景描述
+        precondition: ""               # 前置条件
+        steps: []                      # 测试步骤（文字描述）
+        expected_result: ""            # 预期结果
+        category: ""                   # happy_path | edge_case | error_handling | integration
+    gate: |
+      所有 interfaces 必须至少有 1 条 test_design.case 覆盖。
+      happy_path + error_handling 必须覆盖。
+      QA 完成 test_design 后方可进入 S6。
+
+# S6: Tasks
+tasks:
+  dod_global:
+    - "artifact linked"
+    - "verification passed"
+  items:
+    - id: "{project_id}-T1"
+      title: ""
+      owner: ""
+      priority: ""
+      status: "Todo"
+      execution_policy:
+        mode: "L0"
+      deps: []
+      artifacts: []
+      dod: []
+      due: ""
+      maps:
+        requirements: []
+        solution_modules: []
+
+# S7: Verification
+verification:
+  cases:
+    - id: "{project_id}-TC1"
+      maps_to:
+        success_criteria: []
+        requirements: []
+      method: ""
+      expected: ""
+      status: "NotRun"
+      evidence: []
+      owner: ""
+  summary:
+    decision: "TBD"
+    exceptions: []

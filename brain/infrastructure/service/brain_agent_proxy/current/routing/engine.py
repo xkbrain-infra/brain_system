@@ -106,16 +106,10 @@ class RoutingEngine:
         return False
 
     def parse_client_key(self, api_key: str) -> Optional[Dict[str, str]]:
-        """Parse supported client key formats.
+        """Parse legacy self-describing client key formats.
 
-        New canonical format:
-            bgw-apx-v1--p-{provider}--m-{model}--n-{name}
-
-        Legacy canonical format:
-            bgw-apx-v1--p-{provider}--n-{name}
-
-        Legacy format:
-            proxy-{provider}_{model}_{name}
+        Exact lookup through proxy.yaml `clients` is the primary path.
+        These parsers remain only for backward-compatible fallback.
 
         Args:
             api_key: e.g., bgw-apx-v1--p-minimax--m-minimax_m25--n-dev
@@ -174,9 +168,6 @@ class RoutingEngine:
 
     def find_provider_by_client_key(self, api_key: str) -> Tuple[Optional[ProviderConfig], Optional[ClientConfig]]:
         """Find provider and client info by API key.
-
-        Canonical format: bgw-apx-v1--p-{provider}--m-{model}--n-{name}
-        Legacy format: proxy-{provider}_{model}_{name}
 
         Args:
             api_key: Client API key

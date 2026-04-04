@@ -1,6 +1,6 @@
 task_state_dispatch_contract:
   id: "MWF-TASK-DISPATCH-001"
-  version: "0.1"
+  version: "0.2"
   intent: "定义 project_delivery 中 task manager 的状态机、任务列表、forward 与 dispatch ack double-check 契约"
 
 positioning:
@@ -97,21 +97,40 @@ double_check_policy:
     - "escalate when retry budget exhausted"
 
 storage_contract:
-  local_project_task_root: "spec/06_tasks"
-  required_paths:
-    - "spec/06_tasks/plan.yaml"
-    - "spec/06_tasks/backlog.yaml"
-    - "spec/06_tasks/task_manager.yaml"
-    - "spec/06_tasks/assigned/"
-    - "spec/06_tasks/review/"
-    - "spec/06_tasks/done/"
-    - "spec/06_tasks/events/"
-    - "spec/06_tasks/dispatch/"
-  group_task_artifact_root: "/xkagent_infra/groups/{group_id}/tasks/{task_id}"
+  backend: "SQLite，见 models/brain_db_schema.yaml"
+  db_path: "/xkagent_infra/runtime/data/brain_shared.db"
+
+  storage_boundary:
+    remote_db:
+      stores:
+        - "project 注册与状态 (groups_tm_projects)"
+        - "task 列表与状态 (groups_tm_tasks)"
+        - "assignment 历史 (groups_tm_assignments)"
+        - "dispatch delivery 追踪 (groups_tm_dispatches)"
+        - "project snapshot 历史 (groups_tm_snapshots)"
+        - "task 生命周期事件 (groups_tm_events)"
+      authoritative: true
+    local_sandbox_state:
+      stores:
+        - "task graph 定义 (state/task_graph.yaml) — seed 来源，不是运行态权威"
+        - "dispatch 细节日志 (state/dispatch_log.yaml) — 本地 trace，不替代 DB"
+        - "ipc 消息记录 (state/ipc_log.yaml)"
+        - "collect batch 临时结果 (state/collect_batch.yaml)"
+      authoritative: false
+      note: "sandbox 本地 YAML 是操作工作台，DB 是全局权威；冲突时以 DB 为准"
+
+  jsonl_evidence:
+    project_events: "groups/{group_id}/{project_id}/events.jsonl"
+    dispatch_trace:  "groups/{group_id}/{project_id}/dispatch.jsonl"
+    note: "JSONL 与 groups_tm_events 同步写入，提供 append-only 审计证据"
+
+  task_artifact_root: "/xkagent_infra/groups/{group_id}/tasks/{task_id}"
+
   rules:
     - "task list 与 dispatch evidence 不得只存在 chat 上下文或 manager board"
-    - "task_manager.yaml 必须保存状态机配置、dispatch ack policy、最新 snapshot 与写入策略"
+    - "所有 TASK_UPDATE 必须携带 expected_version 做 CAS，拒绝 version 不匹配的写入"
     - "task artifact 可按 task_id 落到 groups/{group_id}/tasks/{task_id}/"
+    - "dispatch_delivery_state 在 groups_tm_dispatches 追踪，不再在本地 YAML 维护权威状态"
 
 write_contract:
   allowed_operations:

@@ -10,7 +10,6 @@ AUTH_KEYS="${SSH_DIR}/authorized_keys"
 SECRET_SSH_DIR="${SECRET_SSH_DIR:-/xkagent_infra/brain/secrets/system/ssh}"
 HOST_KEY_DIR="${HOST_KEY_DIR:-${SECRET_SSH_DIR}/host_keys}"
 AGENT_AUTH_ROOT="${AGENT_AUTH_ROOT:-/xkagent_infra/brain/secrets/system/agents/auth}"
-LOGIN_INIT_SCRIPT="/xkagent_infra/brain/platform/docker/scripts/agent_login_init.sh"
 TMP_KEYS="$(mktemp)"
 trap "rm -f \"$TMP_KEYS\"" EXIT
 
@@ -126,34 +125,36 @@ sync_agent_auth() {
   sync_auth_file "${AGENT_AUTH_ROOT}/gemini/state.json" "/root/.gemini/state.json" 600
 }
 
-ensure_login_hook_for_shell_rc() {
+cleanup_login_hook_from_shell_rc() {
   local rc_file="$1"
   local marker_begin="# >>> XKAGENT_LOGIN_INIT_HOOK >>>"
   local marker_end="# <<< XKAGENT_LOGIN_INIT_HOOK <<<"
+  local tmp_file
 
-  touch "$rc_file"
+  [[ -f "$rc_file" ]] || return 0
 
-  if grep -Fq "$marker_begin" "$rc_file"; then
+  if ! grep -Fq "$marker_begin" "$rc_file"; then
     return 0
   fi
 
-  cat >>"$rc_file" <<'HOOK'
-# >>> XKAGENT_LOGIN_INIT_HOOK >>>
-if [ -n "${SSH_CONNECTION:-}" ] && [ -t 1 ] && [ -z "${XKAGENT_LOGIN_INIT_RAN:-}" ]; then
-  export XKAGENT_LOGIN_INIT_RAN=1
-  if [ -x /xkagent_infra/brain/platform/docker/scripts/agent_login_init.sh ]; then
-    /xkagent_infra/brain/platform/docker/scripts/agent_login_init.sh || true
-  fi
-fi
-# <<< XKAGENT_LOGIN_INIT_HOOK <<<
-HOOK
-
-  log "installed login init hook in ${rc_file}"
+  tmp_file="$(mktemp)"
+  awk -v begin="$marker_begin" -v end="$marker_end" '
+    $0 == begin { skip=1; next }
+    $0 == end { skip=0; next }
+    !skip { print }
+  ' "$rc_file" >"$tmp_file"
+  mv "$tmp_file" "$rc_file"
+  log "removed login init hook from ${rc_file}"
 }
 
-ensure_login_init_hook() {
-  ensure_login_hook_for_shell_rc /root/.bashrc
-  ensure_login_hook_for_shell_rc /root/.zshrc
+cleanup_login_init_hook() {
+  cleanup_login_hook_from_shell_rc /root/.bashrc
+  cleanup_login_hook_from_shell_rc /root/.zshrc
+}
+
+ensure_runtime_dirs() {
+  mkdir -p /xkagent_infra/runtime/logs
+  log "ensured runtime directories"
 }
 
 MODE="${1:-all}"
@@ -162,12 +163,13 @@ case "$MODE" in
     sync_agent_auth
     ;;
   --ensure-login-hook)
-    ensure_login_init_hook
+    cleanup_login_init_hook
     ;;
   *)
+    ensure_runtime_dirs
     sync_host_keys
     sync_authorized_keys
     sync_agent_auth
-    ensure_login_init_hook
+    cleanup_login_init_hook
     ;;
 esac

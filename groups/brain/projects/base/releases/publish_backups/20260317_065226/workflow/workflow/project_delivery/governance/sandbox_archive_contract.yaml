@@ -1,0 +1,47 @@
+sandbox_archive_contract:
+  id: "MWF-ARCHIVE-001"
+  version: "0.1"
+  intent: "保证 sandbox 销毁前，本地 runtime、日志和执行证据可持久追溯"
+
+archive_gate:
+  name: "ARCHIVE_DUMP_COMPLETE"
+  required_before:
+    - "sandbox destroy"
+    - "workspace cleanup"
+  required_artifacts:
+    - "local_task_runtime_dump"
+    - "execution_trace_dump"
+    - "local_log_bundle"
+    - "artifact_manifest"
+    - "audit_input_bundle"
+
+dump_targets:
+  local_task_runtime_dump:
+    source: "/workspace/runtime"
+    target: "/brain/state/archive/{group_id}/{project_id}/runtime_dump"
+  execution_trace_dump:
+    source: "/workspace/artifacts"
+    target: "/brain/state/archive/{group_id}/{project_id}/execution_trace"
+  local_log_bundle:
+    source: "/workspace/runtime/logs"
+    target: "/brain/state/archive/{group_id}/{project_id}/logs"
+
+destroy_rules:
+  forbidden_if:
+    - "archive gate incomplete"
+    - "required artifacts missing"
+    - "audit hold active"
+  allowed_if:
+    - "archive verification report is complete"
+    - "brain global archive index updated"
+
+verification_report:
+  required_fields:
+    - "project_id"
+    - "sandbox_id"
+    - "archive_status"
+    - "dumped_artifacts"
+    - "missing_artifacts"
+    - "verified_at"
+    - "verified_by"
+

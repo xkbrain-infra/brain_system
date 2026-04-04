@@ -1,0 +1,152 @@
+---
+# Research Report: OAuth Provider Configuration Feature
+# Feature ID: brain-dashboard-oauth-config-2026-03-17
+
+research_report:
+  project_id: brain-dashboard-2026-03-11
+  feature_id: brain-dashboard-oauth-config-2026-03-17
+  status: research_passed
+  completed_at: "2026-03-17T00:00:00Z"
+
+  problem_context: |
+    brain_agent_proxy 通过 providers.yaml 管理所有 LLM provider 的认证凭据。
+    当前需要手动编辑 providers.yaml 完成 OAuth 授权，流程繁琐且缺乏可视化。
+    需要在 brain_dashboard 中提供 Web UI 来完成各 provider 的 OAuth 配置。
+
+    现状分析：
+    1. providers.yaml 包含 4 种 provider 类型：
+       - oauth (copilot): Authorization Code Flow，token 直接存 providers.yaml
+       - oauth_device (openai): Device Code Flow，token 存 token_file
+       - gemini: PKCE Code Flow，token 存 token_file，redirect_uri 当前指向 8085 端口
+       - api_key (alibaba/bytedance/minimax/claude): API Key，通过 env var 引用
+    2. dashboard 以 root 用户运行（supervisord 配置），有权写 providers.yaml
+    3. dashboard 运行在 8080 端口，gemini redirect_uri (8085) 需要统一
+    4. 现有技术栈：FastAPI + HTMX + Tailwind CSS
+
+  references:
+    internal:
+      - path: /brain/infrastructure/service/brain_agent_proxy/config/providers.yaml
+        description: "Provider 认证配置，含各 provider OAuth 参数结构"
+      - path: /xkagent_infra/groups/brain/projects/infrastructure/brain_dashboard/src/app.py
+        description: "Dashboard FastAPI 主应用入口，v2.2.0"
+      - path: /xkagent_infra/groups/brain/projects/infrastructure/brain_dashboard/src/api/v2/
+        description: "现有 API v2 路由结构（proxy/registry/logs/projects/traffic）"
+      - path: /xkagent_infra/groups/brain/projects/infrastructure/brain_dashboard/src/web/templates/index.html
+        description: "现有前端，HTMX + Tailwind，tab-based 单页应用"
+    external:
+      - name: "OAuth 2.0 Authorization Code Flow (RFC 6749)"
+        description: "copilot 使用的标准授权码流程"
+      - name: "OAuth 2.0 Device Authorization Grant (RFC 8628)"
+        description: "openai 使用的设备码授权流程"
+      - name: "PKCE (RFC 7636)"
+        description: "gemini 使用的 PKCE 扩展，防止授权码截取攻击"
+
+  benchmark_matrix:
+    callback_server:
+      - option: "在 dashboard (8080) 增加 /oauth2callback 端点，统一处理所有回调"
+        pros: ["无需额外服务", "单一入口", "与现有框架一致"]
+        cons: ["gemini redirect_uri 需要从 8085 改为 8080（需同步更新 providers.yaml）"]
+        score: 9
+        recommendation: true
+      - option: "保留 8085 独立 callback server"
+        pros: ["不影响现有配置"]
+        cons: ["需要额外进程", "多端口管理复杂"]
+        score: 4
+
+    token_storage:
+      - option: "oauth/copilot：直接更新 providers.yaml access_token/refresh_token 字段"
+        pros: ["与现有结构一致", "proxy 已能读取"]
+        cons: []
+        score: 9
+        recommendation: true
+      - option: "device/PKCE：写入 token_file（按 providers.yaml 中 token_file 路径）"
+        pros: ["与 proxy 已有约定一致", "token_file 路径已配置好"]
+        cons: []
+        score: 9
+        recommendation: true
+      - option: "api_key：写入 providers.yaml api_key 字段（替换 env var 引用为字面量）"
+        pros: ["统一存储", "proxy 读取时字面量优先于 env var"]
+        cons: ["改变了 env var 引用方式，需验证 proxy 解析逻辑"]
+        score: 7
+        recommendation: true
+        risk: medium
+
+    ui_approach:
+      - option: "新增 Providers tab，每个 provider 一张卡片，含配置 modal"
+        pros: ["与现有 tab 风格一致", "无需引入新框架"]
+        cons: []
+        score: 9
+        recommendation: true
+      - option: "独立配置页面 /providers"
+        pros: ["可共享 URL"]
+        cons: ["脱离现有导航模式"]
+        score: 6
+
+    oauth_state_management:
+      - option: "in-memory dict 管理 active OAuth flows（state token → flow info）"
+        pros: ["简单", "够用（单机服务）"]
+        cons: ["重启后 state 丢失（OAuth flow 需要重新发起）"]
+        score: 8
+        recommendation: true
+      - option: "SQLite 持久化 flow state"
+        pros: ["重启可恢复"]
+        cons: ["overkill for transient OAuth flows"]
+        score: 5
+
+  recommended_approach: |
+    **在 brain_dashboard 中增量添加 Provider OAuth 配置模块**
+
+    架构：
+    1. 新增 API 模块 api/v2/providers.py，提供：
+       - GET /api/v2/providers — 列出所有 provider（脱敏）
+       - POST /api/v2/providers/{id}/config — 保存 api_key 类型配置
+       - POST /api/v2/providers/{id}/toggle — enable/disable provider
+       - POST /api/v2/providers/{id}/oauth/start — 启动 OAuth flow
+         * oauth_device: 返回 user_code + verification_url
+         * oauth/gemini: 返回 auth_url（前端跳转）
+       - GET /api/v2/providers/{id}/oauth/poll — 轮询 device code 状态
+    2. 新增 OAuth callback 端点（注册在 app.py 级别）：
+       - GET /oauth2callback — 处理 copilot/gemini 授权码回调
+    3. providers.yaml 统一配置写入：
+       - copilot: 更新 oauth.access_token / oauth.refresh_token / oauth.expires_at
+       - openai/gemini: 写入 token_file JSON
+       - api_key 类型: 写入 providers.yaml api_key.key_value 字段
+    4. gemini redirect_uri 在启动 PKCE 流程时动态指定为 http://localhost:8080/oauth2callback
+    5. 前端新增 "Providers" tab，per-provider 卡片展示状态，点击配置弹出 modal
+
+  rejected_approaches:
+    - name: "保留 8085 独立 callback server"
+      reason: "需要额外进程，复杂度高，统一在 8080 更简洁"
+    - name: "SQLite 持久化 OAuth flow state"
+      reason: "overkill，OAuth flow 是临时状态，内存存储够用"
+
+  known_risks:
+    - id: R1
+      description: "api_key 写入 providers.yaml 后 proxy 解析行为未验证（env var vs 字面量）"
+      mitigation: "在 api_key 下增加 key_value 字段，保留 api_key_env 引用；proxy 优先读 key_value"
+      severity: medium
+    - id: R2
+      description: "gemini PKCE redirect_uri 需要在 Google Cloud Console 中注册 http://localhost:8080/oauth2callback"
+      mitigation: "UI 中明确告知用户需要在 Google Cloud Console 更新 redirect_uri；或保持用户可自定义"
+      severity: medium
+    - id: R3
+      description: "copilot client_id 对应的 GitHub OAuth App 注册的 callback URL 可能不是 localhost:8080"
+      mitigation: "提供手动粘贴 auth code 的方式作为备选，不完全依赖自动回调"
+      severity: low
+
+  open_questions_resolved:
+    - id: Q1
+      question: "copilot callback URL"
+      resolution: "dashboard 增加 /oauth2callback endpoint；已有 client_id 固定，callback URL 可配置显示给用户"
+    - id: Q2
+      question: "providers.yaml 写入权限"
+      resolution: "dashboard 以 root 运行，可写"
+    - id: Q3
+      question: "token 写入位置"
+      resolution: "copilot → providers.yaml 字段；openai/gemini → token_file；api_key → providers.yaml key_value 字段"
+    - id: Q4
+      question: "gemini callback 端口"
+      resolution: "统一使用 dashboard 8080 端口 /oauth2callback，动态覆盖 redirect_uri"
+
+  research_decision: PASS
+  next_phase: bootstrap

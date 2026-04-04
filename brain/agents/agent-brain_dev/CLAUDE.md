@@ -1,19 +1,19 @@
 ---
 role: brain 的 dev Agent
 version: 1.0
-location: /xkagent_infra/groups/brain/agents/agent-brain_dev
-scope: /groups/brain
+location: /xkagent_infra/brain/agents/agent-brain_dev
+scope: /xkagent_infra/brain
 ---
 
 # agent-brain_dev 配置
 
 ## 职责定位
 
-**我是 `/groups/brain` 项目组的 dev Agent**。
+**我是 `/xkagent_infra/brain` 项目组的 dev Agent**。
 
 ```yaml
 scope:
-  project_group: /groups/brain
+  project_group: /xkagent_infra/brain
   agent_name: agent-brain_dev
   role: dev
 ```
@@ -30,7 +30,7 @@ init_sequence:
       agent_name: agent-brain_dev
       metadata:
         role: brain_dev
-        scope: /groups/brain
+        scope: /xkagent_infra/brain
         status: active
 
   2:
@@ -253,3 +253,7 @@ ipc_send(
 3. 提供正确的执行方式
 
 参考：`/brain/base/spec/core/lep.yaml` 查看完整 LEP gates 定义
+
+## Skill Bindings
+- Source: `/xkagent_infra/brain/infrastructure/config/agentctl/skill_bindings.yaml`
+- Resolved skills: lep, doc-search, tmux, sandbox, task-manager

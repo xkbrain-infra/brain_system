@@ -1,0 +1,73 @@
+# Brain Sandbox - Staging Environment Compose
+# 用途: 预发布验证（生产-like、稳定性测试）
+# 路径: /xkagent_infra/groups/brain/platform/sandbox/staging/compose.yaml
+
+name: ${SANDBOX_NAME:-sandbox-staging}
+
+services:
+  sandbox:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: brain-sandbox-staging:${SANDBOX_VERSION:-2.1.0}
+    container_name: ${CONTAINER_NAME}
+    hostname: ${HOSTNAME}
+
+    working_dir: /workspace/project
+
+    volumes:
+      # Staging: 使用命名卷（复制而非挂载）
+      - sandbox_project_${INSTANCE_ID}:/workspace/project
+      - sandbox_data_${INSTANCE_ID}:/workspace/data
+      - sandbox_logs_${INSTANCE_ID}:/workspace/logs
+
+    environment:
+      - SANDBOX_MODE=full
+      - SANDBOX_TYPE=staging
+      - SANDBOX_INSTANCE_ID=${INSTANCE_ID}
+      - SANDBOX_PROJECT=${PROJECT_NAME}
+      - SANDBOX_GROUP=${GROUP_NAME}
+      - STAGING=true
+      - PROD_LIKE=true
+      - PROJECT_ROOT=/workspace/project
+      - BRAIN_PATH=/brain
+      - BRAIN_IPC_SOCKET=/tmp/brain_ipc.sock
+
+    networks:
+      - ${NETWORK_NAME}
+
+    ports:
+      - "${HOST_PORT_APP:-38080}:8080"
+
+    deploy:
+      resources:
+        limits:
+          cpus: '${CPU_LIMIT:-1.0}'
+          memory: ${MEMORY_LIMIT:-1G}
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+    restart: unless-stopped
+
+    labels:
+      - "brain.sandbox=true"
+      - "brain.sandbox.type=staging"
+      - "brain.group=${GROUP_NAME}"
+      - "brain.project=${PROJECT_NAME}"
+      - "brain.instance=${INSTANCE_ID}"
+
+volumes:
+  sandbox_project_${INSTANCE_ID}:
+    driver: local
+  sandbox_data_${INSTANCE_ID}:
+    driver: local
+  sandbox_logs_${INSTANCE_ID}:
+    driver: local
+
+networks:
+  ${NETWORK_NAME}:
+    driver: bridge
+    labels:
+      - "brain.sandbox.network=true"
+      - "brain.sandbox.type=staging"

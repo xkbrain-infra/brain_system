@@ -7,17 +7,26 @@ service daemon (Launcher).
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 import os
 import re
+import shlex
+import socket
+import subprocess
 from pathlib import Path
 from typing import Any
+
+try:
+    import yaml  # type: ignore
+except Exception:  # pragma: no cover
+    yaml = None  # type: ignore
 
 from config.loader import YAMLConfigLoader
 
 # Default MCP server - every agent must bind IPC (C version)
 DEFAULT_MCP_SERVER = {
-    "mcp-brain_ipc_c": {
+    "mcp-brain_ipc": {
         "command": "/brain/bin/mcp/mcp-brain_ipc_c",
         "args": [],
     },
@@ -26,6 +35,14 @@ DEFAULT_MCP_SERVER = {
         "args": [],
         "env": {
             "GOOGLE_CREDENTIALS_PATH": "/brain/secrets/brain_google_api/credentials.json",
+        },
+    },
+    "mcp-brain_task_manager": {
+        "command": "/brain/infrastructure/service/brain_task_manager/bin/mcp-brain_task_manager",
+        "args": [],
+        "env": {
+            "TASK_MANAGER_SERVICE": "service-brain_task_manager",
+            "DAEMON_SOCKET": "/tmp/brain_ipc.sock",
         },
     },
 }
@@ -75,7 +92,7 @@ def generate_mcp_config(
         return
 
     mcp_servers = copy.deepcopy(DEFAULT_MCP_SERVER)
-    mcp_servers["mcp-brain_ipc_c"]["env"] = {
+    mcp_servers["mcp-brain_ipc"]["env"] = {
         "BRAIN_AGENT_NAME": agent_name,
         "BRAIN_TMUX_SESSION": agent_name,  # session name == agent name
         "BRAIN_DAEMON_AUTOSTART": "0",
@@ -129,6 +146,194 @@ def load_runtime_manifest(cwd: str) -> dict[str, Any] | None:
         return json.loads(path.read_text(encoding="utf-8"))
     except Exception:
         return None
+
+
+def _uses_claude_cli_from_strings(agent_type: str, cli_type: str) -> bool:
+    normalized_type = str(agent_type or "").strip()
+    normalized_cli = str(cli_type or "").strip().lower()
+    return normalized_cli in ("claude", "claude_code") or (
+        not normalized_cli
+        and normalized_type in (
+            "claude", "kimi", "minimax", "chatgpt", "gemini", "alibaba", "bytedance", "openai", "copilot"
+        )
+    )
+
+
+def _should_preseed_claude_bootstrap(cwd: str, spec: dict[str, Any]) -> bool:
+    if not cwd:
+        return False
+    if "/runtime/sandbox/" in cwd:
+        return True
+    env_cfg = spec.get("env") or {}
+    if isinstance(env_cfg, dict) and str(env_cfg.get("IS_SANDBOX") or "").strip() == "1":
+        return True
+    return str(os.environ.get("AGENTCTL_DOCKER_CONTAINER") or "").strip() != ""
+
+
+def _seed_claude_bootstrap_payload(cwd: str) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    claude_json_patch: dict[str, Any] = {
+        "numStartups": 1,
+        "hasCompletedOnboarding": True,
+        "projects": {
+            cwd: {
+                "allowedTools": [],
+                "mcpContextUris": [],
+                "mcpServers": {},
+                "enabledMcpjsonServers": [],
+                "disabledMcpjsonServers": [],
+                "hasTrustDialogAccepted": True,
+                "projectOnboardingSeenCount": 0,
+                "hasClaudeMdExternalIncludesApproved": False,
+                "hasClaudeMdExternalIncludesWarningShown": False,
+                "hasCompletedProjectOnboarding": True,
+            }
+        },
+    }
+    settings_patch = {
+        "theme": "dark",
+        "terminalTheme": "dark",
+        "skipDangerousModePermissionPrompt": True,
+    }
+    settings_local_patch = {
+        "terminalTheme": "dark",
+    }
+    return claude_json_patch, settings_patch, settings_local_patch
+
+
+def _merge_claude_bootstrap_state(
+    claude_json: dict[str, Any],
+    settings: dict[str, Any],
+    settings_local: dict[str, Any],
+    *,
+    cwd: str,
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    root = dict(claude_json or {})
+    try:
+        num_startups = int(root.get("numStartups") or 0)
+    except Exception:
+        num_startups = 0
+    root["numStartups"] = max(num_startups, 1)
+    root["hasCompletedOnboarding"] = True
+
+    projects = root.get("projects")
+    if not isinstance(projects, dict):
+        projects = {}
+        root["projects"] = projects
+
+    entry = projects.get(cwd)
+    if not isinstance(entry, dict):
+        entry = {}
+        projects[cwd] = entry
+
+    entry.setdefault("allowedTools", [])
+    entry.setdefault("mcpContextUris", [])
+    entry.setdefault("mcpServers", {})
+    entry.setdefault("enabledMcpjsonServers", [])
+    entry.setdefault("disabledMcpjsonServers", [])
+    entry["hasTrustDialogAccepted"] = True
+    entry["projectOnboardingSeenCount"] = int(entry.get("projectOnboardingSeenCount") or 0)
+    entry.setdefault("hasClaudeMdExternalIncludesApproved", False)
+    entry.setdefault("hasClaudeMdExternalIncludesWarningShown", False)
+    entry["hasCompletedProjectOnboarding"] = True
+
+    merged_settings = dict(settings or {})
+    merged_settings.setdefault("theme", "dark")
+    merged_settings.setdefault("terminalTheme", "dark")
+    merged_settings["skipDangerousModePermissionPrompt"] = True
+
+    merged_settings_local = dict(settings_local or {})
+    merged_settings_local.setdefault("terminalTheme", "dark")
+
+    return root, merged_settings, merged_settings_local
+
+
+def _read_json_dict(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _write_json_dict(path: Path, data: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def _preseed_local_claude_bootstrap_state(cwd: str) -> None:
+    home = Path.home()
+    claude_json_path = home / ".claude.json"
+    settings_path = home / ".claude" / "settings.json"
+    settings_local_path = home / ".claude" / "settings.local.json"
+
+    merged_root, merged_settings, merged_settings_local = _merge_claude_bootstrap_state(
+        _read_json_dict(claude_json_path),
+        _read_json_dict(settings_path),
+        _read_json_dict(settings_local_path),
+        cwd=cwd,
+    )
+    _write_json_dict(claude_json_path, merged_root)
+    _write_json_dict(settings_path, merged_settings)
+    _write_json_dict(settings_local_path, merged_settings_local)
+
+
+def _preseed_container_claude_bootstrap_state(container: str, cwd: str) -> None:
+    def _docker_read_json_dict(path: str) -> dict[str, Any]:
+        p = subprocess.run(
+            ["docker", "exec", "-i", container, "sh", "-lc", f"cat {path} 2>/dev/null || true"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+        raw = str(p.stdout or "").strip()
+        if not raw:
+            return {}
+        try:
+            data = json.loads(raw)
+        except Exception:
+            return {}
+        return data if isinstance(data, dict) else {}
+
+    def _docker_write_json_dict(path: str, data: dict[str, Any]) -> None:
+        parent = str(Path(path).parent)
+        payload = json.dumps(data, ensure_ascii=False, indent=2) + "\n"
+        payload_quoted = shlex.quote(payload)
+        p = subprocess.run(
+            [
+                "docker", "exec", "-i", container, "sh", "-lc",
+                f"mkdir -p {parent} && printf %s {payload_quoted} > {path}",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+        if p.returncode != 0:
+            raise RuntimeError((p.stderr or p.stdout or "").strip() or f"failed to write {path}")
+
+    claude_json_path = "/root/.claude.json"
+    settings_path = "/root/.claude/settings.json"
+    settings_local_path = "/root/.claude/settings.local.json"
+    merged_root, merged_settings, merged_settings_local = _merge_claude_bootstrap_state(
+        _docker_read_json_dict(claude_json_path),
+        _docker_read_json_dict(settings_path),
+        _docker_read_json_dict(settings_local_path),
+        cwd=cwd,
+    )
+    _docker_write_json_dict(claude_json_path, merged_root)
+    _docker_write_json_dict(settings_path, merged_settings)
+    _docker_write_json_dict(settings_local_path, merged_settings_local)
+
+
+def preseed_claude_bootstrap_state(cwd: str, spec: dict[str, Any]) -> None:
+    container = str(os.environ.get("AGENTCTL_DOCKER_CONTAINER") or "").strip()
+    if container:
+        _preseed_container_claude_bootstrap_state(container, cwd)
+        return
+    _preseed_local_claude_bootstrap_state(cwd)
 
 
 def _resolve_runtime_command(spec: dict[str, Any]) -> tuple[str, bool]:
@@ -244,6 +449,13 @@ def generate_runtime_manifest(spec: dict[str, Any]) -> str | None:
     elif agent_type == "kimi":
         env_map.setdefault("KIMI_HOME", f"{cwd}/.kimi")
 
+    # Claude Code launch-time env must include the same transport env as settings.local.json.
+    # Otherwise proxy mode silently falls back to direct because runtime.env wins at process start.
+    if use_claude_cli:
+        for key, value in _build_settings_env(agent_type, spec).items():
+            if key not in _MANAGED_BINDING_ENV_VARS and value:
+                env_map[key] = value
+
     resolved_skills = [str(item).strip() for item in (skill_bindings.get("resolved_skills") or []) if str(item).strip()]
     role_skills = [str(item).strip() for item in (skill_bindings.get("role_skills") or []) if str(item).strip()]
     agent_skills = [str(item).strip() for item in (skill_bindings.get("agent_skills") or []) if str(item).strip()]
@@ -280,12 +492,15 @@ def generate_runtime_manifest(spec: dict[str, Any]) -> str | None:
         if workflow_lep_profiles:
             env_map["BRAIN_WORKFLOW_REQUIRED_LEP_PROFILES"] = ",".join(workflow_lep_profiles)
 
+    raw_env_spec = spec.get("env") or {}
+    spec_sandbox_flag = ""
+    if isinstance(raw_env_spec, dict):
+        spec_sandbox_flag = str(raw_env_spec.get("IS_SANDBOX") or "").strip()
+
     args: list[str] = []
-    if model:
-        if use_claude_cli:
-            args.extend(["--model", model])
-        elif agent_type in ("kimi", "gemini"):
-            args.extend(["--model", model])
+    sandbox_flag = str(env_map.get("IS_SANDBOX") or spec_sandbox_flag or "").strip()
+    if model and not use_claude_cli and agent_type in ("kimi", "gemini"):
+        args.extend(["--model", model])
     if use_claude_cli and reasoning_effort and "--effort" not in cli_args:
         args.extend(["--effort", reasoning_effort])
 
@@ -358,11 +573,16 @@ def _extract_launch_overrides_from_runtime(runtime: dict[str, Any]) -> tuple[lis
     normalized = [str(arg).strip() for arg in args if str(arg).strip()]
     filtered: list[str] = []
     skip_next = False
+    flags_with_values = {
+        "--model",
+        "--permission-mode",
+        "--effort",
+    }
     for arg in normalized:
         if skip_next:
             skip_next = False
             continue
-        if arg == "--model":
+        if arg in flags_with_values:
             skip_next = True
             continue
         filtered.append(arg)
@@ -640,6 +860,15 @@ def _dedupe_preserve_order(items: list[str]) -> list[str]:
     return result
 
 
+def _indent_block(text: str, spaces: int) -> str:
+    raw = str(text or "").strip()
+    if not raw:
+        return ""
+    pad = " " * spaces
+    lines = raw.splitlines()
+    return "\n".join(f"{pad}{line.lstrip()}" if line.strip() else "" for line in lines)
+
+
 def _resolve_bound_skills(spec: dict[str, Any]) -> dict[str, Any]:
     role = str(spec.get("role") or "").strip()
     agent_name = str(spec.get("name") or "").strip()
@@ -807,7 +1036,7 @@ def generate_claude_md(
         "capabilities_list": capabilities_list,
         # Section placeholders from role template
         "role_identity": role_sections.get("role_identity", ""),
-        "init_extra_refs": role_sections.get("init_extra_refs", ""),
+        "init_extra_refs": _indent_block(role_sections.get("init_extra_refs", ""), 6),
         "core_responsibilities": role_sections.get("core_responsibilities", ""),
         "collaboration_extra": role_sections.get("collaboration_extra", ""),
         "health_check_extra": role_sections.get("health_check_extra", ""),
@@ -883,6 +1112,7 @@ def generate_all_configs(
         effective_spec["agent_type"] = agent_type
     if cli_type:
         effective_spec["cli_type"] = cli_type
+    transport_mode = _resolve_transport_mode(effective_spec)
     if isinstance(runtime, dict):
         model = str(effective_spec.get("model") or "").strip()
         if not model:
@@ -895,10 +1125,40 @@ def generate_all_configs(
             runtime_cli_args, runtime_initial_prompt = _extract_launch_overrides_from_runtime(runtime)
             if (not cli_args or not isinstance(cli_args, list)) and runtime_cli_args:
                 effective_spec["cli_args"] = runtime_cli_args
-            if not initial_prompt and runtime_initial_prompt:
+            if (
+                not initial_prompt
+                and (not cli_args or not isinstance(cli_args, list))
+                and runtime_initial_prompt
+            ):
                 effective_spec["initial_prompt"] = runtime_initial_prompt
-        if "env" not in effective_spec and isinstance(runtime.get("env"), dict):
-            effective_spec["env"] = dict(runtime.get("env") or {})
+        if (
+            "env" not in effective_spec
+            and transport_mode != "direct"
+            and isinstance(runtime.get("env"), dict)
+        ):
+            runtime_env = dict(runtime.get("env") or {})
+            inherited_env: dict[str, str] = {}
+            inherited_scope = str(
+                effective_spec.get("scope")
+                or runtime_env.get("BRAIN_AGENT_SCOPE")
+                or ""
+            ).strip()
+            if inherited_scope:
+                inherited_env["BRAIN_AGENT_SCOPE"] = inherited_scope
+            for key in ("BRAIN_PROJECT_ID", "BRAIN_SANDBOX_ID"):
+                value = str(runtime_env.get(key) or "").strip()
+                if value:
+                    inherited_env[key] = value
+            if (
+                inherited_scope == "project"
+                or inherited_env.get("BRAIN_PROJECT_ID")
+                or inherited_env.get("BRAIN_SANDBOX_ID")
+            ):
+                sandbox_flag = str(runtime_env.get("IS_SANDBOX") or "").strip()
+                if sandbox_flag:
+                    inherited_env["IS_SANDBOX"] = sandbox_flag
+            if inherited_env:
+                effective_spec["env"] = inherited_env
     if existing_runtime_manifest:
         result["runtime_manifest"] = str(runtime_manifest_path(cwd))
 
@@ -923,13 +1183,11 @@ def generate_all_configs(
     # Only generate Claude settings for agents that use Claude CLI
     # - Explicitly set cli_type=claude
     # - Legacy implicit claude-cli agent types
-    needs_claude_settings = (
-        cli_type in ("claude", "claude_code")
-        or (not cli_type and agent_type in (
-            "claude", "minimax", "chatgpt", "kimi", "gemini", "alibaba", "bytedance", "openai", "copilot"
-        ))
-    )
+    needs_claude_settings = _uses_claude_cli_from_strings(agent_type, cli_type)
     if needs_claude_settings and agent_type:
+        if _should_preseed_claude_bootstrap(cwd, effective_spec):
+            preseed_claude_bootstrap_state(cwd, effective_spec)
+            result["provider_bootstrap_state"] = "ready"
         effective_spec["_skill_bindings"] = bound_skills
         effective_spec["_lep_bindings"] = bound_lep_profiles
         settings_path = _generate_settings_local(cwd, role, group, effective_spec)
@@ -942,7 +1200,61 @@ def generate_all_configs(
     if runtime_path:
         result["runtime_manifest"] = runtime_path
 
+    # 4. Deploy skill files: copy brain/base/skill/<name>/ → <cwd>/.claude/skills/<name>/
+    deployed_skills = _deploy_skills(cwd, bound_skills.get("resolved_skills") or [])
+    result["deployed_skills"] = deployed_skills
+
     return result
+
+
+def _deploy_skills(cwd: str, skill_names: list[str]) -> list[str]:
+    """Copy skill directories from brain/base/skill/ into agent's .claude/skills/.
+
+    Removes stale managed skill directories that are no longer effective for the
+    target agent, then overwrites active skill files so agents always get the
+    latest version on config regeneration.
+    """
+    import shutil
+
+    if not cwd:
+        return []
+
+    skill_base_candidates = [
+        Path("/xkagent_infra/brain/base/skill"),
+        Path("/brain/base/skill"),
+        Path("/xkagent_infra/runtime/sandbox/_services/base/skill"),
+    ]
+    skill_base = next((path for path in skill_base_candidates if path.is_dir()), None)
+    if skill_base is None:
+        raise FileNotFoundError(
+            "no skill base directory found; checked: "
+            + ", ".join(str(path) for path in skill_base_candidates)
+        )
+    skills_dest = Path(cwd) / ".claude" / "skills"
+    skills_dest.mkdir(parents=True, exist_ok=True)
+
+    managed_skills = {item.name for item in skill_base.iterdir() if item.is_dir()}
+    effective_skills = [name for name in skill_names if (skill_base / name).is_dir()]
+    effective_set = set(effective_skills)
+
+    for existing in skills_dest.iterdir():
+        if not existing.is_dir():
+            continue
+        if existing.name in managed_skills and existing.name not in effective_set:
+            shutil.rmtree(existing)
+
+    deployed: list[str] = []
+
+    for name in effective_skills:
+        src = skill_base / name
+        dst = skills_dest / name
+        dst.mkdir(parents=True, exist_ok=True)
+        for item in src.iterdir():
+            if item.is_file():
+                shutil.copy2(item, dst / item.name)
+        deployed.append(name)
+
+    return deployed
 
 
 # ------------------------------------------------------------------
@@ -952,6 +1264,25 @@ def generate_all_configs(
 _SECRETS_FILE = Path("/brain/secrets/system/agents/llm_tokens.env")
 _GROUPS_BASE_DIR = Path("/xkagent_infra/groups")
 _BRAIN_BASE_DIR = Path("/xkagent_infra/brain")
+_PROXY_CONFIG_PATH = Path("/xkagent_infra/brain/infrastructure/service/brain_agent_proxy/config/proxy.yaml")
+_GLOBAL_AGENTCTL_CONFIG_DIRS = {
+    Path("/brain/infrastructure/config/agentctl"),
+    Path("/xkagent_infra/brain/infrastructure/config/agentctl"),
+}
+
+
+def _is_global_agentctl_config_dir(config_dir: Path) -> bool:
+    try:
+        resolved = config_dir.resolve()
+    except Exception:
+        resolved = config_dir
+    return resolved in _GLOBAL_AGENTCTL_CONFIG_DIRS
+
+
+def _resolve_proxy_registry_path(config_dir: Path) -> Path:
+    if _is_global_agentctl_config_dir(config_dir):
+        return _PROXY_CONFIG_PATH
+    return config_dir / "proxy.yaml"
 
 
 def _resolve_group_scope_path(group: str) -> Path:
@@ -960,9 +1291,42 @@ def _resolve_group_scope_path(group: str) -> Path:
         return _BRAIN_BASE_DIR
     return _GROUPS_BASE_DIR / group_name if group_name else _GROUPS_BASE_DIR
 
+
+def _default_proxy_base_url(sandbox_flag: str) -> str:
+    """Return a proxy URL that matches the local deployment topology."""
+    explicit_proxy_url = str(os.environ.get("BRAIN_PROXY_BASE_URL") or "").strip()
+    if explicit_proxy_url:
+        return explicit_proxy_url
+    if sandbox_flag == "1":
+        sandbox_host = str(os.environ.get("BRAIN_SANDBOX_HOST_IP") or "").strip()
+        if sandbox_host:
+            return f"http://{sandbox_host}:8210"
+        try:
+            socket.gethostbyname("host.docker.internal")
+            return "http://host.docker.internal:8210"
+        except OSError:
+            pass
+    return "http://127.0.0.1:8210"
+
+
+def resolve_proxy_base_url_for_launch(sandbox_flag: str, *, target_in_container: bool) -> str:
+    """Resolve proxy base URL for the actual runtime location of an agent process."""
+    explicit_proxy_url = str(os.environ.get("BRAIN_PROXY_BASE_URL") or "").strip()
+    if explicit_proxy_url:
+        return explicit_proxy_url
+
+    sandbox_host = str(os.environ.get("BRAIN_SANDBOX_HOST_IP") or "").strip()
+    if sandbox_host:
+        return f"http://{sandbox_host}:8210"
+
+    if sandbox_flag == "1" and target_in_container:
+        return "http://host.docker.internal:8210"
+    return "http://127.0.0.1:8210"
+
 # agent_type -> provider_id in brain_agent_proxy (proxy-first defaults)
 _AGENT_TYPE_PROXY_PROVIDER_MAP: dict[str, str] = {
     "claude": "claude",
+    "kimi": "kimi",
     "openai": "openai",
     "copilot": "copilot",
     "gemini": "gemini",
@@ -1063,9 +1427,13 @@ _STATUS_LINE = {
         '// .contextWindow.percentUsed '
         '// .session.context_window.used_percentage '
         '// .usage.context_window.used_percentage '
-        '// empty) as $reported | '
+        '// empty) as $reported_raw | '
         '(.context_window // .contextWindow // .session.context_window // .usage.context_window // {}) as $ctx | '
-        'if ($reported | tostring | length) > 0 then $reported else token_pct($ctx) end'
+        '(($ctx.context_window_size // 0) | tonumber? // 0) as $window_size | '
+        '(if ($reported_raw | tostring | length) > 0 then ($reported_raw | tonumber?) else null end) as $reported | '
+        'if $reported != null and ($reported > 0 or $window_size > 0) then $reported '
+        'elif $window_size > 0 then token_pct($ctx) '
+        'else empty end'
         '\'); '
         'if [ -n "$used" ]; then '
         'printf "%s | %s | Context: %.1f%% used" "$model" "$dir" "$used"; '
@@ -1100,22 +1468,41 @@ def _resolve_model_name(spec: dict[str, Any]) -> str:
     return model
 
 
+def _resolve_explicit_proxy_client_key(spec: dict[str, Any]) -> str:
+    """Return an explicit proxy client key if the registry provides one."""
+    for field_name in ("proxy_auth_token", "proxy_client_key", "client_key"):
+        raw_value = str(spec.get(field_name) or "").strip()
+        if raw_value:
+            return raw_value
+
+    env_cfg = spec.get("env") or {}
+    if isinstance(env_cfg, dict):
+        for field_name in ("BRAIN_PROXY_CLIENT_KEY",):
+            raw_value = str(env_cfg.get(field_name) or "").strip()
+            if raw_value:
+                return raw_value
+
+    return ""
+
+
 def _build_proxy_auth_token(agent_type: str, spec: dict[str, Any]) -> str:
-    """Build deterministic proxy token.
+    """Build a stable opaque proxy client key.
 
-    New canonical format:
-      bgw-apx-v1--p-{provider}--m-{model_key}--n-{name}
-
-    Keep only [a-z0-9_] for model/name segments to avoid parser ambiguity.
+    The token is only a client identifier for proxy-side registry lookup.
+    It must not encode provider/model semantics.
     """
     provider = _AGENT_TYPE_PROXY_PROVIDER_MAP.get(agent_type, "").strip()
     if not provider:
         return ""
-    model_name = _resolve_model_name(spec)
-    model_part = re.sub(r"[^a-z0-9]+", "_", model_name.lower()).strip("_") or "default"
+    explicit_key = _resolve_explicit_proxy_client_key(spec)
+    if explicit_key:
+        return explicit_key
+
     name = str(spec.get("name") or "").strip().lower()
-    name_part = re.sub(r"[^a-z0-9]+", "_", name).strip("_")[:32] or "dev"
-    return f"bgw-apx-v1--p-{provider}--m-{model_part}--n-{name_part}"
+    group = str(spec.get("group") or "").strip().lower()
+    seed = f"brain-proxy-client-v1:{group}:{name}"
+    digest = hashlib.sha256(seed.encode("utf-8")).hexdigest()[:32]
+    return f"bgw-client-v1-{digest}"
 
 
 def _build_model_selector(agent_type: str, spec: dict[str, Any]) -> str:
@@ -1125,10 +1512,125 @@ def _build_model_selector(agent_type: str, spec: dict[str, Any]) -> str:
     Example: minimax/MiniMax-M2.5
     """
     model_name = _resolve_model_name(spec)
+    if _resolve_transport_mode(spec) == "direct":
+        return model_name
     provider = _AGENT_TYPE_PROXY_PROVIDER_MAP.get(agent_type, "").strip()
+    if model_name and "/" in model_name:
+        return model_name
     if provider and model_name:
         return f"{provider}/{model_name}"
     return model_name
+
+
+def _uses_claude_cli(agent_type: str, spec: dict[str, Any]) -> bool:
+    """Return whether this agent runs through Claude Code CLI."""
+    cli_type = str(spec.get("cli_type") or spec.get("agent_cli") or "").strip().lower()
+    if cli_type in ("claude", "claude_code"):
+        return True
+    if cli_type == "native":
+        return False
+    return agent_type in (
+        "claude",
+        "kimi",
+        "minimax",
+        "chatgpt",
+        "gemini",
+        "openai",
+        "copilot",
+        "alibaba",
+        "bytedance",
+    )
+
+
+def _build_proxy_client_entry(group_name: str, spec: dict[str, Any]) -> tuple[str, dict[str, str]] | None:
+    """Build one proxy client mapping entry from an agent registry spec."""
+    agent_type = str(spec.get("agent_type") or "").strip()
+    if not agent_type or not _uses_claude_cli(agent_type, spec):
+        return None
+    if _resolve_transport_mode(spec) != "proxy":
+        return None
+
+    provider = _AGENT_TYPE_PROXY_PROVIDER_MAP.get(agent_type, "").strip()
+    model_selector = _build_model_selector(agent_type, spec)
+    if not provider or not model_selector or "/" not in model_selector:
+        return None
+
+    client_key = _build_proxy_auth_token(agent_type, spec)
+    if not client_key:
+        return None
+
+    model_provider, _, model_name = model_selector.partition("/")
+    provider = model_provider.strip() or provider
+    model_name = model_name.strip()
+    if not provider or not model_name:
+        return None
+
+    agent_name = str(spec.get("name") or "").strip()
+    description = str(spec.get("description") or "").strip()
+    if not description:
+        role = str(spec.get("role") or "").strip()
+        description = f"{group_name}/{role or agent_name}"
+
+    return client_key, {
+        "agent_name": agent_name,
+        "description": description,
+        "provider": provider,
+        "model": model_name,
+    }
+
+
+def sync_proxy_clients_config(config_dir: str | Path) -> dict[str, Any]:
+    """Rebuild proxy client registry from agents_registry.yaml."""
+    if yaml is None:
+        raise RuntimeError("pyyaml is required to write proxy.yaml")
+
+    config_dir = Path(config_dir)
+    loader = YAMLConfigLoader(config_dir=config_dir)
+    cfg = loader.get_agents_registry()
+    groups = cfg.get("groups", {}) if isinstance(cfg, dict) else {}
+    proxy_config_path = _resolve_proxy_registry_path(config_dir)
+
+    clients: dict[str, dict[str, str]] = {}
+    for group_name, group_agents in groups.items():
+        if not isinstance(group_agents, list):
+            continue
+        for raw_spec in group_agents:
+            if not isinstance(raw_spec, dict):
+                continue
+            entry = _build_proxy_client_entry(str(group_name), raw_spec)
+            if not entry:
+                continue
+            client_key, client_cfg = entry
+            existing = clients.get(client_key)
+            if existing and existing.get("agent_name") != client_cfg["agent_name"]:
+                raise ValueError(
+                    f"duplicate proxy client key '{client_key}' for agents "
+                    f"'{existing.get('agent_name')}' and '{client_cfg['agent_name']}'"
+                )
+            clients[client_key] = client_cfg
+
+    existing_data: dict[str, Any] = {}
+    if proxy_config_path.exists():
+        loaded = yaml.safe_load(proxy_config_path.read_text(encoding="utf-8")) or {}
+        if isinstance(loaded, dict):
+            existing_data = loaded
+
+    proxy_config = {
+        "version": str(existing_data.get("version") or "1.0"),
+        "clients": clients,
+        "model_routing": dict(existing_data.get("model_routing") or {}),
+        "default_strategy": str(existing_data.get("default_strategy") or "capability_match"),
+        "model_strategy_map": dict(existing_data.get("model_strategy_map") or {}),
+    }
+
+    proxy_config_path.parent.mkdir(parents=True, exist_ok=True)
+    with proxy_config_path.open("w", encoding="utf-8") as f:
+        yaml.safe_dump(proxy_config, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
+
+    return {
+        "path": str(proxy_config_path),
+        "clients": len(clients),
+    }
 
 
 def _resolve_transport_mode(spec: dict[str, Any]) -> str:
@@ -1160,7 +1662,13 @@ def _build_settings_env(agent_type: str, spec: dict[str, Any]) -> dict[str, str]
     # 1. Proxy-first defaults for provider-backed agent types.
     proxy_token = _build_proxy_auth_token(agent_type, spec)
     if proxy_token and transport_mode != "direct":
-        env["ANTHROPIC_BASE_URL"] = os.environ.get("BRAIN_PROXY_BASE_URL", "http://127.0.0.1:8210")
+        sandbox_flag = str(spec.get("env", {}).get("IS_SANDBOX") or os.environ.get("IS_SANDBOX") or "").strip()
+        target_in_container = bool(str(os.environ.get("AGENTCTL_DOCKER_CONTAINER") or "").strip())
+        default_proxy_url = resolve_proxy_base_url_for_launch(
+            sandbox_flag,
+            target_in_container=target_in_container,
+        )
+        env["ANTHROPIC_BASE_URL"] = os.environ.get("BRAIN_PROXY_BASE_URL", default_proxy_url)
         env["ANTHROPIC_AUTH_TOKEN"] = proxy_token
     else:
         # 1b. Legacy direct mode for non-proxy agent types.
@@ -1179,6 +1687,8 @@ def _build_settings_env(agent_type: str, spec: dict[str, Any]) -> dict[str, str]
         canonical_url = _AGENT_TYPE_BASE_URL.get(agent_type)
         if canonical_url:
             env["ANTHROPIC_BASE_URL"] = canonical_url
+        if agent_type == "kimi":
+            env.pop("ANTHROPIC_AUTH_TOKEN", None)
 
     # 2. Model env vars
     model_name = _build_model_selector(agent_type, spec)
@@ -1192,6 +1702,18 @@ def _build_settings_env(agent_type: str, spec: dict[str, Any]) -> dict[str, str]
     # 3. Timeout and traffic settings
     env["API_TIMEOUT_MS"] = "3000000"
     env["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] = "1"
+    if agent_type == "kimi":
+        env["ENABLE_TOOL_SEARCH"] = "false"
+
+    project_id = str(spec.get("project") or spec.get("project_id") or "").strip()
+    sandbox_id = str(spec.get("sandbox_id") or "").strip()
+    scope = str(spec.get("scope") or "").strip()
+    if project_id:
+        env["BRAIN_PROJECT_ID"] = project_id
+    if sandbox_id:
+        env["BRAIN_SANDBOX_ID"] = sandbox_id
+    if scope:
+        env["BRAIN_AGENT_SCOPE"] = scope
 
     return env
 
@@ -1199,8 +1721,8 @@ def _build_settings_env(agent_type: str, spec: dict[str, Any]) -> dict[str, str]
 def _build_mcp_servers(agent_name: str, spec: dict[str, Any]) -> dict[str, Any]:
     """Build mcpServers config for settings.local.json."""
     mcp_servers: dict[str, Any] = {
-        "mcp-brain_ipc_c": {
-            "command": DEFAULT_MCP_SERVER["mcp-brain_ipc_c"]["command"],
+        "mcp-brain_ipc": {
+            "command": DEFAULT_MCP_SERVER["mcp-brain_ipc"]["command"],
             "args": [],
             "env": {
                 "BRAIN_AGENT_NAME": agent_name,
@@ -1226,7 +1748,7 @@ def _generate_settings_local(
     - statusLine
     - enabledPlugins
     - language
-    - mcpServers (mcp-brain_ipc_c + extras)
+    - mcpServers (mcp-brain_ipc + extras)
     - skipDangerousModePermissionPrompt
     - hooks (if configured in registry)
     """
@@ -1244,11 +1766,13 @@ def _generate_settings_local(
 
     agent_name = str(spec.get("name") or "").strip()
     agent_type = str(spec.get("agent_type") or "claude").strip()
+    transport_mode = _resolve_transport_mode(spec)
+    permission_mode = "bypassPermissions"
 
     # --- Build settings ---
     settings: dict[str, Any] = dict(existing_settings)
 
-    # 1. Permissions — use dontAsk + allow list (works reliably with Kimi/non-claude models)
+    # 1. Permissions
     settings["permissions"] = {
         "allow": [
             "Bash:*:*",
@@ -1263,13 +1787,15 @@ def _generate_settings_local(
             "AskUserQuestion:*:*",
             "NotebookEdit:*:*",
         ],
-        "defaultMode": "bypassPermissions",
+        "defaultMode": permission_mode,
     }
 
     # 2. Env (non-claude agent types need API credential + model mapping)
     env_map = _build_settings_env(agent_type, spec)
     if env_map:
         settings["env"] = env_map
+    elif agent_type == "claude" and transport_mode == "direct":
+        settings.pop("env", None)
     elif "env" in settings and isinstance(settings["env"], dict):
         settings["env"] = dict(settings["env"])
 
@@ -1328,8 +1854,8 @@ def _generate_settings_local(
 
     # 9. Hooks
     hooks_list = [str(item).strip() for item in (spec.get("hooks") or []) if str(item).strip()]
-    if resolved_lep_profiles:
-        hooks_list = _dedupe_preserve_order([*hooks_list, "pre_tool_use", "post_tool_use"])
+    if resolved_lep_profiles and not hooks_list:
+        hooks_list = ["pre_tool_use", "post_tool_use"]
     if hooks_list:
         hooks_config: dict[str, Any] = {}
 
@@ -1347,6 +1873,15 @@ def _generate_settings_local(
             "BRAIN_AGENT_GROUP": group or "",
             "BRAIN_SCOPE_PATH": scope_path,
         }
+        project_id = settings.get("env", {}).get("BRAIN_PROJECT_ID") if isinstance(settings.get("env"), dict) else None
+        sandbox_id = settings.get("env", {}).get("BRAIN_SANDBOX_ID") if isinstance(settings.get("env"), dict) else None
+        agent_scope = settings.get("env", {}).get("BRAIN_AGENT_SCOPE") if isinstance(settings.get("env"), dict) else None
+        if project_id:
+            hook_env["BRAIN_PROJECT_ID"] = str(project_id)
+        if sandbox_id:
+            hook_env["BRAIN_SANDBOX_ID"] = str(sandbox_id)
+        if agent_scope:
+            hook_env["BRAIN_AGENT_SCOPE"] = str(agent_scope)
         for key in _MANAGED_LEP_ENV_VARS:
             value = settings.get("env", {}).get(key) if isinstance(settings.get("env"), dict) else None
             if value:

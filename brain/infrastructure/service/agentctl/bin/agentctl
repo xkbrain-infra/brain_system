@@ -52,29 +52,131 @@ class AgentSpec:
     raw_spec: dict = None  # type: ignore[assignment]
 
 
-def _tmux(*args: str, timeout_s: float = 8.0) -> subprocess.CompletedProcess[str]:
+_LEGACY_SANDBOX_TMUX_DIRS = (
+    "/tmp/sandbox_tmux",
+    "/home/ubuntu/.tmux-sock",
+)
+
+
+def _sandbox_id_from_context() -> str:
+    for value in (
+        os.environ.get("BRAIN_SANDBOX_ID", "").strip(),
+        os.environ.get("SANDBOX_INSTANCE_ID", "").strip(),
+    ):
+        if value:
+            return value
+    config_dir_hint = os.environ.get("AGENTCTL_CONFIG_DIR_HINT", "").strip()
+    marker = "/runtime/sandbox/"
+    if marker in config_dir_hint:
+        tail = config_dir_hint.split(marker, 1)[1]
+        parts = [p for p in tail.split("/") if p]
+        if parts:
+            return parts[0]
+    return ""
+
+
+def _sandbox_tmux_tmpdir(instance_id: str) -> str | None:
+    value = str(instance_id or "").strip()
+    if not value:
+        return None
+    return f"/xkagent_infra/runtime/sandbox/{value}/.tmux"
+
+
+def _tmux_context_is_sandbox() -> bool:
+    config_dir_hint = os.environ.get("AGENTCTL_CONFIG_DIR_HINT", "").strip()
+    return (
+        os.environ.get("AGENTCTL_DOCKER_CONTAINER", "").strip() != ""
+        or os.environ.get("IS_SANDBOX", "").strip() == "1"
+        or os.environ.get("BRAIN_SANDBOX_ID", "").strip() != ""
+        or "/runtime/sandbox/" in config_dir_hint
+    )
+
+
+def _preferred_tmux_tmpdir() -> str | None:
+    explicit = os.environ.get("TMUX_TMPDIR", "").strip()
+    if explicit:
+        return explicit
+    if _tmux_context_is_sandbox():
+        runtime_tmpdir = _sandbox_tmux_tmpdir(_sandbox_id_from_context())
+        if runtime_tmpdir:
+            return runtime_tmpdir
+        return "/tmp/sandbox_tmux"
+    return None
+
+
+def _tmux_tmpdir_candidates() -> list[str | None]:
+    candidates: list[str | None] = []
+    seen: set[str] = set()
+
+    def _push(path: str | None) -> None:
+        key = path or "__default__"
+        if key in seen:
+            return
+        seen.add(key)
+        candidates.append(path)
+
+    _push(_preferred_tmux_tmpdir())
+    if _tmux_context_is_sandbox():
+        for path in _LEGACY_SANDBOX_TMUX_DIRS:
+            _push(path)
+    _push(None)
+    return candidates
+
+
+def _run_tmux(*args: str, timeout_s: float = 8.0, tmux_tmpdir: str | None = None) -> subprocess.CompletedProcess[str]:
+    container = os.environ.get("AGENTCTL_DOCKER_CONTAINER", "").strip()
+    env = os.environ.copy()
+    if container:
+        if tmux_tmpdir:
+            quoted_dir = shlex.quote(tmux_tmpdir)
+            quoted_args = " ".join(shlex.quote(arg) for arg in args)
+            shell_cmd = f"mkdir -p {quoted_dir} && TMUX_TMPDIR={quoted_dir} tmux {quoted_args}"
+            cmd = ["docker", "exec", "-i", container, "bash", "-lc", shell_cmd]
+        else:
+            cmd = ["docker", "exec", "-i", container, "tmux", *args]
+    else:
+        if tmux_tmpdir:
+            Path(tmux_tmpdir).mkdir(parents=True, exist_ok=True)
+            env["TMUX_TMPDIR"] = tmux_tmpdir
+        else:
+            env.pop("TMUX_TMPDIR", None)
+        cmd = ["tmux", *args]
     return subprocess.run(
-        ["tmux", *args],
+        cmd,
         capture_output=True,
         text=True,
         timeout=timeout_s,
         check=False,
+        env=env,
     )
 
 
+def _tmux(*args: str, timeout_s: float = 8.0) -> subprocess.CompletedProcess[str]:
+    return _run_tmux(*args, timeout_s=timeout_s, tmux_tmpdir=_preferred_tmux_tmpdir())
+
+
+def _find_session_tmux_tmpdir(name: str) -> tuple[bool, str | None]:
+    for tmux_tmpdir in _tmux_tmpdir_candidates():
+        p = _run_tmux("has-session", "-t", name, timeout_s=8.0, tmux_tmpdir=tmux_tmpdir)
+        if p.returncode == 0:
+            return True, tmux_tmpdir
+    return False, None
+
+
 def _has_session(name: str) -> bool:
-    p = _tmux("has-session", "-t", name)
-    return p.returncode == 0
+    found, _tmux_tmpdir = _find_session_tmux_tmpdir(name)
+    return found
 
 
 def _kill_session(name: str, *, apply: bool) -> None:
-    if not _has_session(name):
+    found, tmux_tmpdir = _find_session_tmux_tmpdir(name)
+    if not found:
         print(f"- {name}: not running")
         return
     if not apply:
         print(f"- {name}: would stop (tmux kill-session -t {name})")
         return
-    p = _tmux("kill-session", "-t", name)
+    p = _run_tmux("kill-session", "-t", name, tmux_tmpdir=tmux_tmpdir)
     if p.returncode != 0:
         raise RuntimeError((p.stderr or p.stdout or "").strip() or "tmux kill-session failed")
     print(f"- {name}: stopped")
@@ -220,11 +322,12 @@ def _generate_configs(spec: AgentSpec, *, force_claude_md: bool = False) -> None
 
 
 def _start_session(spec: AgentSpec, *, apply: bool, config_gen: bool = True, force_claude_md: bool = False) -> None:
+    from services.claude_auth import claude_auth_status, spec_requires_claude_auth
+    from services.config_generator import load_runtime_manifest
+
     if _has_session(spec.tmux_session):
         print(f"- {spec.name}: already running ({spec.tmux_session})")
         return
-    if not spec.start_cmd:
-        raise RuntimeError(f"{spec.name}: missing start_cmd in agents_registry.yaml")
     if not apply:
         cwd = spec.cwd or "/brain"
         print(f"- {spec.name}: would start (tmux new-session -d -s {spec.tmux_session} -c {cwd} {spec.start_cmd})")
@@ -233,6 +336,40 @@ def _start_session(spec: AgentSpec, *, apply: bool, config_gen: bool = True, for
     # Generate config files before starting
     if config_gen:
         _generate_configs(spec, force_claude_md=force_claude_md)
+
+    raw = spec.raw_spec or {}
+    if spec_requires_claude_auth(raw):
+        ok, detail = claude_auth_status()
+        if not ok:
+            raise RuntimeError(f"{spec.name}: {detail}")
+
+    cli_type = str(raw.get("cli_type") or "").strip().lower()
+    uses_claude_cli = (
+        cli_type in ("claude", "claude_code")
+        or (not cli_type and spec.agent_type in ("claude", "kimi", "minimax", "chatgpt", "gemini", "openai", "copilot", "alibaba", "bytedance"))
+    )
+    effective_start_cmd = spec.start_cmd
+    runtime_env: dict[str, str] = {}
+    if uses_claude_cli:
+        effective_start_cmd = "IS_SANDBOX=1 claude --dangerously-skip-permissions"
+    else:
+        manifest = load_runtime_manifest(spec.cwd or "") if spec.cwd else None
+        runtime = manifest.get("runtime") if isinstance(manifest, dict) else None
+        if isinstance(runtime, dict):
+            command = str(runtime.get("command") or "").strip()
+            args = [str(arg).strip() for arg in (runtime.get("args") or []) if str(arg).strip()]
+            if command:
+                effective_start_cmd = " ".join([command, *args]).strip()
+            env_spec = runtime.get("env") or {}
+            if isinstance(env_spec, dict):
+                for env_key, env_val in env_spec.items():
+                    key = str(env_key).strip()
+                    value = str(env_val).strip()
+                    if key:
+                        runtime_env[key] = value
+
+    if not effective_start_cmd:
+        raise RuntimeError(f"{spec.name}: missing start_cmd in agents_registry.yaml")
 
     cmd = ["new-session", "-d", "-s", spec.tmux_session]
     if spec.cwd:
@@ -244,22 +381,17 @@ def _start_session(spec: AgentSpec, *, apply: bool, config_gen: bool = True, for
     ]
     if spec.cwd:
         shell_parts.append(f"cd {shlex.quote(spec.cwd)}")
-    shell_parts.extend([
-        f"export TMUX_SESSION={spec.tmux_session}",
-        "export TMUX_PANE=$(tmux display-message -p '#{pane_id}' 2>/dev/null)",
-    ])
+    if not uses_claude_cli:
+        shell_parts.extend([
+            f"export TMUX_SESSION={spec.tmux_session}",
+            "export TMUX_PANE=$(tmux display-message -p '#{pane_id}' 2>/dev/null)",
+        ])
     if spec.agent_type == "codex" and spec.cwd:
         shell_parts.append(f"export CODEX_HOME={spec.cwd}/.codex")
     elif spec.agent_type == "kimi" and spec.cwd:
         shell_parts.append(f"export KIMI_HOME={spec.cwd}/.kimi")
 
     # Inject legacy direct env mapping only for native CLIs.
-    raw = spec.raw_spec or {}
-    cli_type = str(raw.get("cli_type") or "").strip().lower()
-    uses_claude_cli = (
-        cli_type in ("claude", "claude_code")
-        or (not cli_type and spec.agent_type in ("claude", "kimi", "minimax", "chatgpt", "gemini", "openai", "copilot", "alibaba", "bytedance"))
-    )
     if not uses_claude_cli:
         mapping = _AGENT_TYPE_ENV_MAP.get(spec.agent_type)
         if mapping:
@@ -271,12 +403,16 @@ def _start_session(spec: AgentSpec, *, apply: bool, config_gen: bool = True, for
 
     # Inject explicit env vars from registry spec (for all agent types).
     # Needed for vars like IS_SANDBOX that must be set before claude starts.
-    raw_env = raw.get("env") or {}
-    if isinstance(raw_env, dict):
-        for env_key, env_val in raw_env.items():
-            shell_parts.append(f"export {env_key}={shlex.quote(str(env_val))}")
+    if not uses_claude_cli:
+        raw_env = raw.get("env") or {}
+        if isinstance(raw_env, dict):
+            for env_key, env_val in raw_env.items():
+                shell_parts.append(f"export {env_key}={shlex.quote(str(env_val))}")
 
-    shell_parts.append(spec.start_cmd)
+        for env_key, env_val in runtime_env.items():
+            shell_parts.append(f"export {env_key}={shlex.quote(env_val)}")
+
+    shell_parts.append(effective_start_cmd)
 
     cmd += [" && ".join(shell_parts)]
     p = _tmux(*cmd, timeout_s=12.0)
@@ -285,11 +421,30 @@ def _start_session(spec: AgentSpec, *, apply: bool, config_gen: bool = True, for
     print(f"- {spec.name}: started ({spec.tmux_session})")
 
 
+def _preflight_start_targets(targets: list[AgentSpec], *, apply: bool) -> None:
+    from services.claude_auth import claude_auth_status, spec_requires_claude_auth
+
+    if not apply:
+        return
+
+    for spec in targets:
+        raw = spec.raw_spec or {}
+        if not spec_requires_claude_auth(raw):
+            continue
+        ok, detail = claude_auth_status()
+        if not ok:
+            raise RuntimeError(f"{spec.name}: {detail}")
+        return
+
+
 def _list_sessions() -> set[str]:
-    p = _tmux("list-sessions", "-F", "#{session_name}", timeout_s=8.0)
-    if p.returncode != 0:
-        return set()
-    return {line.strip() for line in (p.stdout or "").splitlines() if line.strip()}
+    sessions: set[str] = set()
+    for tmux_tmpdir in _tmux_tmpdir_candidates():
+        p = _run_tmux("list-sessions", "-F", "#{session_name}", timeout_s=8.0, tmux_tmpdir=tmux_tmpdir)
+        if p.returncode != 0:
+            continue
+        sessions.update(line.strip() for line in (p.stdout or "").splitlines() if line.strip())
+    return sessions
 
 
 def _load_spec(config_dir: Path) -> dict[str, AgentSpec]:
@@ -325,15 +480,22 @@ def _load_spec(config_dir: Path) -> dict[str, AgentSpec]:
         manifest = load_runtime_manifest(cwd or "") if cwd else None
         runtime = manifest.get("runtime") if isinstance(manifest, dict) else None
         if isinstance(runtime, dict) and runtime.get("command"):
-            cmd_parts = [str(runtime.get("command")).strip()]
-            cmd_parts.extend(str(arg).strip() for arg in (runtime.get("args") or []) if str(arg).strip())
-            start_cmd = " ".join(cmd_parts).strip()
             agent_type = str(runtime.get("agent_type") or agent_type).strip()
+            if bool(runtime.get("use_claude_cli")):
+                start_cmd = "IS_SANDBOX=1 claude --dangerously-skip-permissions"
+            else:
+                cmd_parts = [str(runtime.get("command")).strip()]
+                cmd_parts.extend(str(arg).strip() for arg in (runtime.get("args") or []) if str(arg).strip())
+                start_cmd = " ".join(cmd_parts).strip()
         else:
             cli_type = str(a.get("cli_type") or a.get("agent_cli") or "").strip().lower()
             cli_args = a.get("cli_args", [])
             export_cmd = a.get("export_cmd", {})
             initial_prompt = a.get("initial_prompt", "")
+            env_spec = a.get("env") or {}
+            sandbox_flag = ""
+            if isinstance(env_spec, dict):
+                sandbox_flag = str(env_spec.get("IS_SANDBOX") or "").strip()
             exports = [f"export {key}={value}" for key, value in export_cmd.items()]
 
             if cli_type in ("claude", "claude_code"):
@@ -355,10 +517,23 @@ def _load_spec(config_dir: Path) -> dict[str, AgentSpec]:
 
             cmd_parts = [cmd]
             model = str(a.get("model") or a.get("agent_model") or "").strip()
-            if use_claude_cli and model:
+            if not use_claude_cli and model and agent_type in ("kimi", "gemini"):
                 cmd_parts += ["--model", model]
-            elif not use_claude_cli and model and agent_type in ("kimi", "gemini"):
-                cmd_parts += ["--model", model]
+            if use_claude_cli:
+                start_cmd = "IS_SANDBOX=1 claude --dangerously-skip-permissions"
+                out[name] = AgentSpec(
+                    name=name,
+                    tmux_session=tmux_session,
+                    start_cmd=start_cmd,
+                    cwd=cwd,
+                    status=str(a.get("status") or "active"),
+                    agent_type=agent_type,
+                    role=str(a.get("role") or "").strip(),
+                    group=str(a.get("group") or group_name).strip(),
+                    description=str(a.get("description") or "").strip(),
+                    raw_spec=dict(a),
+                )
+                continue
             cmd_parts += cli_args
             if use_claude_cli and initial_prompt:
                 cmd_parts.append(f"'{initial_prompt}'")
@@ -499,6 +674,50 @@ def _check_service_health(endpoint: str, timeout_s: float = 5.0) -> tuple[str, s
         return "error", str(e)
 
 
+def _reload_proxy_config(timeout_s: float = 5.0) -> tuple[bool, str]:
+    """Ask brain_agent_proxy to reload proxy.yaml without restart."""
+    import urllib.request
+    import urllib.error
+
+    base_url = (
+        os.environ.get("BRAIN_PROXY_BASE_URL")
+        or os.environ.get("ANTHROPIC_BASE_URL")
+        or "http://127.0.0.1:8210"
+    ).rstrip("/")
+    endpoint = f"{base_url}/reload-config"
+    request = urllib.request.Request(
+        endpoint,
+        data=b"{}",
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout_s) as resp:
+            body = resp.read().decode("utf-8", errors="replace")
+        return True, body
+    except urllib.error.URLError as e:
+        return False, str(e.reason)
+    except Exception as e:
+        return False, str(e)
+
+
+def _sync_proxy_clients(config_dir: Path, *, apply: bool) -> None:
+    """Refresh proxy client registry after config changes."""
+    from services.config_generator import sync_proxy_clients_config
+
+    if not apply:
+        return
+
+    result = sync_proxy_clients_config(config_dir)
+    print(f"proxy: synced {result['clients']} client keys -> {result['path']}")
+
+    ok, detail = _reload_proxy_config()
+    if ok:
+        print("proxy: reloaded config")
+    else:
+        print(f"proxy: reload skipped ({detail})")
+
+
 def cmd_list(args: argparse.Namespace) -> int:
     """List configured agents and tmux status."""
     from config.loader import YAMLConfigLoader
@@ -578,9 +797,12 @@ def cmd_start(args: argparse.Namespace) -> int:
     """Start agent(s) by name, or 'all'."""
     spec = _load_spec(Path(args.config_dir))
     targets = _resolve_targets(spec, args.names, all_flag=getattr(args, "all", False))
+    _preflight_start_targets(targets, apply=bool(args.apply))
     _update_desired_state(Path(args.config_dir), targets, "running", apply=bool(args.apply))
     config_gen = not getattr(args, "no_config_gen", False)
     force = getattr(args, "force", False)
+    if config_gen:
+        _sync_proxy_clients(Path(args.config_dir), apply=bool(args.apply))
     for agent in targets:
         _start_session(agent, apply=bool(args.apply), config_gen=config_gen, force_claude_md=force)
     return 0
@@ -600,9 +822,12 @@ def cmd_restart(args: argparse.Namespace) -> int:
     """Restart agent(s) by name, or 'all'."""
     spec = _load_spec(Path(args.config_dir))
     targets = _resolve_targets(spec, args.names, all_flag=getattr(args, "all", False))
+    _preflight_start_targets(targets, apply=bool(args.apply))
     _update_desired_state(Path(args.config_dir), targets, "running", apply=bool(args.apply))
     config_gen = not getattr(args, "no_config_gen", False)
     force = getattr(args, "force", False)
+    if config_gen:
+        _sync_proxy_clients(Path(args.config_dir), apply=bool(args.apply))
     for agent in targets:
         if not args.apply:
             cwd = agent.cwd or "/brain"
@@ -683,6 +908,7 @@ def cmd_apply_config(args: argparse.Namespace) -> int:
         if not parts:
             parts.append("no-op")
         print(f"- {agent.name}: generated {', '.join(parts)}")
+    _sync_proxy_clients(Path(args.config_dir), apply=bool(args.apply))
     return 0
 
 
@@ -715,6 +941,8 @@ def cmd_start_group(args: argparse.Namespace) -> int:
 
     config_gen = not getattr(args, "no_config_gen", False)
     force = getattr(args, "force", False)
+    if config_gen:
+        _sync_proxy_clients(Path(args.config_dir), apply=bool(args.apply))
     for agent in group_agents:
         _start_session(agent, apply=bool(args.apply), config_gen=config_gen, force_claude_md=force)
     return 0
@@ -942,10 +1170,11 @@ def cmd_purge(args: argparse.Namespace) -> int:
     targets = _resolve_targets(spec, args.names, all_flag=getattr(args, "all", False))
 
     if not args.apply:
+        registry_paths = _registry_paths_for(Path(args.config_dir))
         for agent in targets:
             print(f"- {agent.name}: would purge")
             print(f"    • Stop tmux session: {agent.tmux_session}")
-            for rp in _REGISTRY_PATHS:
+            for rp in registry_paths:
                 if rp.exists():
                     print(f"    • Delete from registry: {rp}")
             if agent.cwd:
@@ -975,7 +1204,7 @@ def cmd_purge(args: argparse.Namespace) -> int:
     # Step 2: Delete from all registries
     print("\n=== Step 2: Deleting from registries ===")
     target_names = {t.name for t in targets}
-    for rp in _REGISTRY_PATHS:
+    for rp in _registry_paths_for(Path(args.config_dir)):
         if not rp.exists():
             continue
         try:
@@ -1017,16 +1246,46 @@ def cmd_purge(args: argparse.Namespace) -> int:
 # Add single agent
 # ============================================================
 
-# All known registry paths to keep in sync
-_REGISTRY_PATHS = [
-    Path("/brain/infrastructure/config/agentctl/agents_registry.yaml"),
-    Path("/brain/groups/org/brain_system/projects/agent_orchestrator/config/agents_registry.yaml"),
-]
+_GLOBAL_AGENTCTL_CONFIG_DIRS = {
+    Path("/brain/infrastructure/config/agentctl"),
+    Path("/xkagent_infra/brain/infrastructure/config/agentctl"),
+}
 _GROUPS_BASE_DIR = Path("/xkagent_infra/groups")
 _BRAIN_BASE_DIR = Path("/xkagent_infra/brain")
 
 
-def _resolve_agent_dir(group: str, name: str) -> Path:
+def _registry_paths_for(config_dir: Path) -> list[Path]:
+    return [config_dir / "agents_registry.yaml"]
+
+
+def _is_global_config_dir(config_dir: Path) -> bool:
+    try:
+        resolved = config_dir.resolve()
+    except Exception:
+        resolved = config_dir
+    return resolved in _GLOBAL_AGENTCTL_CONFIG_DIRS
+
+
+def _default_project_runtime_root(config_dir: Path, runtime_root: str = "") -> str:
+    explicit = str(runtime_root or "").strip()
+    if explicit:
+        return explicit
+
+    try:
+        resolved = config_dir.resolve()
+    except Exception:
+        resolved = config_dir
+
+    if resolved.name == "agentctl" and resolved.parent.name == "config":
+        return str(resolved.parent.parent)
+
+    return "/workspace/runtime"
+
+
+def _resolve_agent_dir(group: str, name: str, *, scope: str = "group", runtime_root: str = "") -> Path:
+    if str(scope or "").strip() == "project":
+        root = Path(str(runtime_root or "").strip() or "/workspace/runtime")
+        return root / "agents" / name
     group_name = str(group or "").strip()
     if group_name == "brain":
         return _BRAIN_BASE_DIR / "agents" / name
@@ -1038,9 +1297,14 @@ def cmd_add(args: argparse.Namespace) -> int:
     from config.registry_editor import AgentEntry, append_agent_to_group
     from services.provisioner import ROLE_DEFAULTS, ROLE_FALLBACK
 
+    config_dir = Path(args.config_dir)
     name = args.name
     group = args.group
     role = args.role or ""
+    scope = str(args.scope or "group").strip().lower()
+    project = str(args.project or "").strip()
+    sandbox_id = str(args.sandbox_id or "").strip()
+    runtime_root = str(args.runtime_root or "").strip()
 
     # Auto-detect role from name: agent_{group}_{role} or agent_{alias}_{role}
     if not role:
@@ -1087,16 +1351,42 @@ def cmd_add(args: argparse.Namespace) -> int:
         tags = role_defaults.get("tags", [])
 
     desired_state = args.desired_state or "stopped"
-    agent_dir = str(_resolve_agent_dir(group, name))
+    if scope == "project" and not project:
+        raise RuntimeError("project-scoped agents require --project")
+    if scope == "project" and _is_global_config_dir(config_dir):
+        raise RuntimeError(
+            "project-scoped agents must use a sandbox-local registry bridge via --config-dir "
+            "(for example /xkagent_infra/runtime/sandbox/<sandbox_id>/config/agentctl), not the host global registry"
+        )
+    if scope == "project":
+        runtime_root = _default_project_runtime_root(config_dir, runtime_root)
+
+    explicit_agent_dir = str(args.path or args.cwd or "").strip()
+    if explicit_agent_dir:
+        agent_dir = explicit_agent_dir
+    else:
+        agent_dir = str(_resolve_agent_dir(group, name, scope=scope, runtime_root=runtime_root))
+
+    default_hooks = ["pre_tool_use", "session_start"]
+    env_map = {
+        "IS_SANDBOX": "1",
+        "BRAIN_TRANSPORT_MODE": transport_mode,
+    }
+    if project:
+        env_map["BRAIN_PROJECT_ID"] = project
+    if sandbox_id:
+        env_map["BRAIN_SANDBOX_ID"] = sandbox_id
 
     entry = AgentEntry(
         name=name,
         tmux_session=name,
-        cwd="",
-        description=f"{group} 的 {role} Agent",
+        cwd=agent_dir,
+        description=f"{group}{('/' + project) if project else ''} 的 {role} Agent",
         role=role,
-        scope="group",
+        scope=scope,
         group=group,
+        project=project,
+        sandbox_id=sandbox_id,
         path=agent_dir,
         agent_type=agent_type,
         agent_cli=cli_type,
@@ -1109,12 +1399,19 @@ def cmd_add(args: argparse.Namespace) -> int:
         status="active",
         capabilities=capabilities or None,
         tags=tags or None,
+        hooks=default_hooks,
+        env=env_map,
     )
 
     if not args.apply:
         print(f"add: {name} (dry-run)")
         print(f"  group: {group}")
         print(f"  role: {role}")
+        print(f"  scope: {scope}")
+        if project:
+            print(f"  project: {project}")
+        if sandbox_id:
+            print(f"  sandbox_id: {sandbox_id}")
         print(f"  agent_type: {agent_type}")
         if cli_type:
             print(f"  cli_type: {cli_type}")
@@ -1130,7 +1427,7 @@ def cmd_add(args: argparse.Namespace) -> int:
         print(f"  capabilities: {capabilities}")
         print(f"  tags: {tags}")
         print(f"\n  registries to update:")
-        for rp in _REGISTRY_PATHS:
+        for rp in _registry_paths_for(config_dir):
             exists = "✓" if rp.exists() else "✗ (missing)"
             print(f"    - {rp} {exists}")
         print(f"  directory to create: {agent_dir}")
@@ -1146,7 +1443,7 @@ def cmd_add(args: argparse.Namespace) -> int:
     # Step 2: Write to all registries
     print(f"\n=== Step 2: Updating registries ===")
     updated = 0
-    for rp in _REGISTRY_PATHS:
+    for rp in _registry_paths_for(config_dir):
         if not rp.exists():
             print(f"⚠ {rp}: not found, skipping")
             continue
@@ -1161,9 +1458,6 @@ def cmd_add(args: argparse.Namespace) -> int:
     print(f"\n=== Step 3: Generating configs ===")
     try:
         from services.config_generator import generate_all_configs
-        # Default hooks based on role
-        from services.provisioner import ROLE_DEFAULTS as _RD
-        default_hooks = ["pre_tool_use", "session_start"]
         spec = {
             "name": name,
             "agent_type": agent_type,
@@ -1173,9 +1467,13 @@ def cmd_add(args: argparse.Namespace) -> int:
             "cwd": agent_dir,
             "role": role,
             "group": group,
+            "scope": scope,
+            "project": project,
+            "project_id": project,
+            "sandbox_id": sandbox_id,
             "path": agent_dir,
             "capabilities": capabilities,
-            "env": {"IS_SANDBOX": "1", "BRAIN_TRANSPORT_MODE": transport_mode},
+            "env": env_map,
             "hooks": default_hooks,
         }
         result = generate_all_configs(spec, force_claude_md=True)
@@ -1339,6 +1637,12 @@ def main() -> int:
     p_add.add_argument("--cli-type", default="", help="CLI type: claude|native (default: infer from agent_type)")
     p_add.add_argument("--transport", default="proxy", choices=["proxy", "direct"], help="Transport for Claude CLI: proxy(default)|direct")
     p_add.add_argument("--model", default="", help="Model name (default: from role template)")
+    p_add.add_argument("--scope", default="group", choices=["group", "project"], help="Agent scope: group(default) or project")
+    p_add.add_argument("--project", default="", help="Project id for project-scoped agents")
+    p_add.add_argument("--sandbox-id", default="", help="Sandbox instance id for project-scoped agents")
+    p_add.add_argument("--runtime-root", default="", help="Runtime root for project-scoped agents (default: derive from sandbox-local --config-dir, else /workspace/runtime)")
+    p_add.add_argument("--path", default="", help="Explicit runtime path/cwd override")
+    p_add.add_argument("--cwd", default="", help="Alias of --path")
     p_add.add_argument("--desired-state", default="stopped", choices=["stopped", "running"], help="Initial desired_state (default: stopped)")
     p_add.add_argument("--capabilities", default="", help="Comma-separated capabilities (default: from role template)")
     p_add.add_argument("--tags", default="", help="Comma-separated tags (default: from role template)")
@@ -1376,6 +1680,7 @@ def main() -> int:
     p_auth.add_argument("auth_args", nargs=argparse.REMAINDER, help="Additional passthrough arguments")
 
     args = parser.parse_args()
+    os.environ["AGENTCTL_CONFIG_DIR_HINT"] = str(getattr(args, "config_dir", "") or "")
 
     # Route to command handler
     if args.cmd == "list":

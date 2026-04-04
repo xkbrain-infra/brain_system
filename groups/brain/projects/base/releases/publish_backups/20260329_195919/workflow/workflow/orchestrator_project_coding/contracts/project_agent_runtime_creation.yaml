@@ -1,0 +1,98 @@
+project_agent_runtime_creation:
+  id: "MWF-AGENT-RUNTIME-001"
+  version: "0.2"
+  intent: "定义 orchestrator_project_coding workflow 下，sandboxctl create --with-agent orchestrator 驱动的 project-scoped agent runtime bridge、provider bootstrap 与启动校验契约"
+
+canonical_scope:
+  workflow: "/brain/base/workflow/orchestrator_project_coding/workflow_core.yaml"
+  applies_to:
+    - "brain devops bootstrap"
+    - "sandbox-local orchestrator runtime"
+    - "project-scoped worker runtime materialization"
+  legacy_compatibility_ref: "/brain/base/workflow/project_delivery/contracts/project_agent_runtime_creation.yaml"
+
+bootstrap_entrypoint:
+  canonical_command: "sandboxctl create <project_id> --type development --with-agent orchestrator [--pending-id <pending_id>] [--model <provider/model>]"
+  guarantees:
+    - "容器已创建并 healthy/running"
+    - "sandbox-local agents_registry bridge 已生成"
+    - "orchestrator runtime 已物化到 /xkagent_infra/runtime/sandbox/{sandbox_id}/agents/{agent_id}"
+    - "provider bootstrap 状态已准备完成"
+    - "sandbox-local IPC bridge 已准备完成（/tmp/brain_ipc.sock 与 /tmp/brain_ipc_notify.sock）"
+    - "agentctl start 已成功，tmux session 可见"
+
+runtime_paths:
+  runtime_root: "/xkagent_infra/runtime/sandbox/{sandbox_id}"
+  agent_runtime_root: "/xkagent_infra/runtime/sandbox/{sandbox_id}/agents"
+  template_bundle_root: "/xkagent_infra/runtime/sandbox/{sandbox_id}/template_bundles/agents"
+  registry_bridge_root: "/xkagent_infra/runtime/sandbox/{sandbox_id}/config/agentctl"
+  registry_bridge_file: "/xkagent_infra/runtime/sandbox/{sandbox_id}/config/agentctl/agents_registry.yaml"
+  proxy_client_overlay_file: "/xkagent_infra/runtime/sandbox/{sandbox_id}/config/agentctl/proxy.yaml"
+  runtime_state_root: "/xkagent_infra/runtime/sandbox/{sandbox_id}/.bootstrap"
+  service_helper_root: "/xkagent_infra/brain/infrastructure/service/brain_sandbox_service/"
+
+creation_phases:
+  - id: "phase_1_materialize_host_runtime_bridge"
+    actions:
+      - "物化 /xkagent_infra/runtime/sandbox/{sandbox_id}/agents/{agent_id}"
+      - "写入 provider-specific config、runtime_meta.yaml、.brain/agent_runtime.json"
+      - "生成 sandbox-local agents_registry bridge"
+      - "生成 sandbox-local proxy client overlay（供 host brain_agent_proxy 合并加载）"
+      - "将 runtime bridge 同步进容器"
+  - id: "phase_2_prepare_provider_bootstrap_state"
+    actions:
+      - "若走 brain proxy，写入 container-reachable ANTHROPIC_BASE_URL / ANTHROPIC_AUTH_TOKEN / ANTHROPIC_MODEL"
+      - "写入 BRAIN_PROXY_BASE_URL=http://host.docker.internal:8210，供 sandbox-local agentctl reload host proxy"
+      - "若 provider 为 Claude Code CLI，复制 /root/.claude/ 与 /root/.claude.json，并预写当前 runtime cwd 的 trust/onboarding"
+  - id: "phase_3_prepare_sandbox_ipc_bridge"
+    actions:
+      - "启动 host TCP bridge：9800 -> /brain/tmp_ipc/brain_ipc.sock"
+      - "启动 host TCP bridge：9801 -> /tmp/brain_ipc_notify.sock"
+      - "使用 /xkagent_infra/brain/infrastructure/service/brain_sandbox_service/current/ipc_socket_bridge.py 启动 bridge"
+      - "在 sandbox 内启动本地 Unix bridge：/tmp/brain_ipc.sock -> host.docker.internal:9800"
+      - "在 sandbox 内启动本地 Unix bridge：/tmp/brain_ipc_notify.sock -> host.docker.internal:9801"
+  - id: "phase_4_lifecycle_start"
+    actions:
+      - "invoke agentctl start --apply {agent_id} --no-config-gen"
+  - id: "phase_5_online_verification"
+    actions:
+      - "verify tmux session exists"
+      - "verify .brain/agent_runtime.json exists"
+      - "verify provider bootstrap 没停在 theme/trust prompt"
+      - "verify proxy settings point to host-reachable base URL when provider uses brain proxy"
+      - "verify sandbox-local /tmp/brain_ipc.sock accepts ping and returns status=ok"
+
+provider_rendering:
+  common:
+    proxy_bridge_contract:
+      rules:
+        - "brain proxy 模式下，sandbox 容器内不要求原始上游 provider API key"
+        - "必须写入 ANTHROPIC_BASE_URL、ANTHROPIC_AUTH_TOKEN、ANTHROPIC_MODEL"
+        - "ANTHROPIC_BASE_URL 在容器内必须指向 host proxy（例如 http://host.docker.internal:8210）"
+        - "project-scoped child agents 的 client 映射必须写入 sandbox-local proxy overlay，而不是 host global proxy.yaml"
+  claude:
+    required_files:
+      - ".claude/settings.local.json"
+      - ".mcp.json"
+      - "CLAUDE.md"
+      - ".brain/agent_runtime.json"
+    required_global_state:
+      - "/root/.claude/"
+      - "/root/.claude.json"
+    required_project_state:
+      - "projects[{runtime cwd}].hasTrustDialogAccepted=true"
+      - "projects[{runtime cwd}].hasCompletedProjectOnboarding=true"
+  codex:
+    required_files:
+      - ".codex/config.toml"
+      - ".mcp.json"
+      - "AGENTS.md"
+      - ".brain/agent_runtime.json"
+
+rules:
+  - "agentctl 负责生命周期；bootstrap 负责 runtime bridge、provider bootstrap state 与 sandbox-local registry"
+  - "project-scoped child agents 必须把 proxy client 映射写入 sandbox-local proxy overlay，不得直接写 host /xkagent_infra/brain/.../proxy.yaml"
+  - "provider 首启阻塞（例如 Claude Code 的 theme/trust prompt）属于 bootstrap failure，不得留给人工首登处理"
+  - "不得假定 host Unix socket bind mount 在 sandbox 内可见；bootstrap 必须提供可用的 sandbox-local IPC bridge 或等效传输层"
+  - "没有 registry bridge、provider bootstrap state 与 online verification 的 sandbox，不得声称 BOOTSTRAP_COMPLETE"
+  - ".bootstrap 目录只允许存放 runtime state，不允许复制 helper code 进去"

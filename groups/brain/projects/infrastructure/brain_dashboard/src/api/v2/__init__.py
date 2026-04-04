@@ -1,7 +1,7 @@
 """API V2 Module - Phase 1 Core API."""
 
 from fastapi import APIRouter
-from . import proxy, registry, logs, projects, traffic
+from . import proxy, registry, logs, projects, traffic, providers
 
 # Create v2 router
 router = APIRouter(prefix="/api/v2")
@@ -12,3 +12,4 @@ router.include_router(registry.router)
 router.include_router(logs.router)
 router.include_router(projects.router)
 router.include_router(traffic.router)
+router.include_router(providers.router)

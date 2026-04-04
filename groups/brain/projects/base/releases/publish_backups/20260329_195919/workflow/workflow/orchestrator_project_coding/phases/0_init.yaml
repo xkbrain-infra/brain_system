@@ -1,0 +1,574 @@
+# Phase 0: INIT — Orchestrator 自举
+# 来源: workflow_core.yaml → meta.phase_files.init
+# steps: 0_1 (environment_init)
+#
+# 完结条件: sandbox 环境 ready（挂载 OK + 网络通 + git 分支 OK + 全局配置写入 + PMO 已通知）。
+# orchestrator 不在此阶段做任何项目业务，仅做环境自检和初始化。
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 目录结构总览
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# ── 预挂载（容器启动时由 brain 侧完成，orchestrator 不创建）──────────────────
+#
+#   /xkagent_infra/brain/                          只读挂载 (host: /xkagent_infra/brain)
+#     base/
+#       spec/                        规范
+#       workflow/
+#         project_delivery/
+#           orchestrator_project_coding/   ← 本 workflow 所在目录（只读）
+#             workflow_core.yaml
+#             phases/
+#             config/
+#             worker_task_protocol.yaml
+#             orchestrator_agents_md_template.md
+#       knowledge/                   知识库
+#     infrastructure/                基础设施配置
+#     agents/                        brain 侧 agent 定义
+#
+#   {project_root}/payload/                        brain devops 写入（挂载前已在宿主机创建）
+#     project_init.yaml              启动参数（project_id/group_id/pending_id/requested_by/...）
+#
+#   {project_root}/                        可读写挂载 (host: groups/{gid}/projects/{pid})
+#     .git/                          git 仓库（已切到 feature/{pending_id} 分支）
+#     src/ ...                       项目源代码（由 worker 修改）
+#     payload/
+#       project_init.yaml            启动参数（brain devops 写入）
+#
+#   /xkagent_infra/runtime/sandbox/{sandbox_id}/
+#     config/agentctl/agents_registry.yaml   sandbox-local agentctl bridge
+#     agents/{orchestrator_agent_id}/        orchestrator 运行时目录（由 sandboxctl create --with-agent 物化）
+#       CLAUDE.md / .mcp.json / .claude/settings.local.json / .brain/agent_runtime.json
+#
+# ── init 阶段创建（action 3）────────────────────────────────────────────────
+#
+#   {project_root}/state/                  orchestrator 全部状态文件根目录
+#     step_results/                  每个 step 的完整结果（append-only）
+#     checkpoints/                   context checkpoint 文件（每 step 一个）
+#   {project_root}/artifacts/tasks/        task 产出物根目录
+#   /xkagent_infra/runtime/sandbox/{sandbox_id}/agents/  project agent 运行时根目录（spawn 时在此创建子目录）
+#
+# ── init 阶段写入（action 4/6/7/8）────────────────────────────────────────
+#
+#   {project_root}/state/.base_commit           git HEAD（用于 diff 和 rollback）
+#   {project_root}/state/global_config.yaml     命名约定、路径、IPC 配置（所有 phase/worker 共用）
+#   {project_root}/state/project_snapshot.yaml  项目全局状态本地缓存（每步更新）
+#   task_manager 项目空间（远端）          workflow phase/step 进度的权威状态
+#
+# ── 后续各 phase 写入（仅列文件，不在 init 创建）──────────────────────────
+#
+#   Phase 1 (intake):    {project_root}/state/intake.yaml, decisions.yaml
+#   Phase 2 (research):  {project_root}/state/research.yaml, sandbox_plan.yaml
+#   Phase 3 (planning):  {project_root}/state/project_plan.yaml, spec_checklist.yaml
+#   Phase 4 (task_modeling): {project_root}/state/task_graph.yaml
+#   Phase 5 (execution): {project_root}/state/agent_roster.yaml, dispatch_log.yaml,
+#                         collect_batch.yaml, release_readiness.yaml
+#                         {project_root}/artifacts/tasks/{task_id}/  (worker 产出)
+#   Phase 6 (release):   {project_root}/state/release_record.yaml
+#   Phase 7 (audit):     {project_root}/state/audit_report.yaml
+#
+# ── agent 运行时目录（spawn 时在 /xkagent_infra/runtime/sandbox/{sandbox_id}/agents/ 下创建）────────────────
+#
+#   /xkagent_infra/runtime/sandbox/{sandbox_id}/agents/{agent_id}/
+#     AGENTS.md                       worker 的角色 prompt
+#     runtime_meta.yaml               agent_id/role/profile/provider/model/ipc_method
+#     .mcp.json                       (claude/copilot agents)
+#     .claude/settings.local.json     (claude/copilot agents)
+#     .codex/config.toml              (codex/gemini agents)
+#     ipc_env.sh                      (codex/gemini agents, CLI IPC wrapper)
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# task_manager 数据模型（action 7 初始化后可查询）
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# task_manager 是 workflow 进度的 source of truth（权威状态）。
+# project_snapshot.yaml 是本地缓存，从 task_manager 同步。
+#
+# 数据模型: spec + tasks（没有 project/phase/step 层级）
+#
+#   spec:
+#     spec_id:  {project_id}           ← spec_id = project_id
+#     title:    "{project_id} project delivery"
+#     group:    {group_id}
+#     owner:    {pmo_agent_id}
+#     stage:    S1_alignment            ← 初始 stage，随工作流推进
+#               （S1_alignment → S2_requirements → S3_research → S4_analysis
+#                → S5_solution → S6_tasks → S7_verification → S8_complete）
+#
+#   tasks（每个 workflow step = 一个 task，由 PMO 在 SPEC_CREATE 后批量创建）:
+#     spec_id:  {project_id}           ← 所有 workflow step tasks 归属同一 spec
+#     task_id:  "MWF-OPC:0_1:environment_init"   → status: in_progress（当前执行中）
+#     task_id:  "MWF-OPC:1_1:capture_requirement"→ status: pending
+#     task_id:  "MWF-OPC:1_2:classify_unknowns"  → status: pending
+#     task_id:  "MWF-OPC:2_1:research_if_needed" → status: pending
+#     task_id:  "MWF-OPC:3_1:define_plan"        → status: pending
+#     task_id:  "MWF-OPC:3_2:create_spec_checklist" → status: pending
+#     task_id:  "MWF-OPC:4_1:model_tasks"        → status: pending
+#     task_id:  "MWF-OPC:5_1:dispatch_ready_tasks"→ status: pending
+#     task_id:  "MWF-OPC:5_2:collect_results"    → status: pending
+#     task_id:  "MWF-OPC:5_2b:dispatch_review"   → status: pending
+#     task_id:  "MWF-OPC:5_3:resolve_blocker"    → status: pending
+#     task_id:  "MWF-OPC:5_4:evaluate_release_readiness" → status: pending
+#     task_id:  "MWF-OPC:6_1:drive_release"      → status: pending
+#     task_id:  "MWF-OPC:7_1:run_audit"          → status: pending
+#     task_id:  "MWF-OPC:7_2:workflow_complete"  → status: pending
+#
+# 进度追踪方式:
+#   - 每个 workflow step 开始时: TASK_UPDATE(task_id=..., status=in_progress)
+#   - 每个 workflow step 完成时: TASK_UPDATE(task_id=..., status=completed)
+#   - 每个 phase 完成时: SPEC_PROGRESS(spec_id=project_id, target_stage=Sx) 推进 spec stage
+#   - 查询整体进度: SPEC_QUERY(spec_id=project_id) → SPEC_QUERY_RESULT.specs[0].stage
+#   - 查询 step task 状态: TASK_QUERY(spec_id=project_id) → TASK_QUERY_RESULT
+#
+# task 状态流转:
+#   pending → ready → in_progress → review → verified → completed
+#                  ↘ blocked
+#                  ↘ failed
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# global_config.yaml（action 6 写入）
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# 模板定义见: config/global_config.template.yaml
+# 渲染后写入: {project_root}/state/global_config.yaml
+# 所有后续 phase 和 worker 从此文件读取，不重复推算命名约定、路径和服务地址。
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PHASE 0: INIT — 环境自检 + 项目注册 + 初始化 + 通知就绪
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# agent 注册由 agentctl start 时自动完成，orchestrator 无需主动调用 ipc_register。
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PHASE 0 前置：Brain 侧启动流程（orchestrator 运行前完成）
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# 完整定义见: config/sandbox_config.template.yaml → startup_sequence
+# 此处为摘要，供阅读 0_init.yaml 时了解完整 Phase 0 上下文。
+#
+# on_failure 处理规则见: sandbox_config.template.yaml → startup_sequence.on_failure
+
+brain_side_startup:
+  source: "config/sandbox_config.template.yaml → startup_sequence"
+  note: "此处为摘要，完整定义（含 details/commands/on_failure）见 source 文件"
+
+  pmo_steps:
+    P1:
+      caller: "brain PMO"
+      action: "创建项目空间"
+      result: "已有→沿用，新→/xkagent_infra/groups/draft/{project_id}，确定 project_root"
+
+    P2:
+      caller: "brain PMO"
+      action: "task_manager SPEC_CREATE（event_type: SPEC_CREATE, spec_id={project_id}, title=..., group={group_id}, owner={pmo_agent_id}）"
+      result: "SPEC_CREATED + intake_task_id（自动创建）；spec stage = S1_alignment；PMO 批量创建所有 workflow step tasks（status=pending）"
+
+    P3:
+      caller: "brain PMO"
+      action: "task_manager TASK_CREATE({project_id}_BOOTSTRAP) + IPC → brain_devops BOOTSTRAP_DISPATCH"
+      result: "devops 收到派发，bootstrap task 进入 task_manager 追踪"
+
+  devops_steps:
+    D0:  {caller: "brain devops", action: "TASK_UPDATE({project_id}_BOOTSTRAP, in_progress)"}
+    D1:  {caller: "brain devops", action: "准备项目目录（mkdir + git checkout feature/{pending_id}）"}
+    D2:  {caller: "brain devops", action: "写入 {project_root}/payload/project_init.yaml"}
+    D3:  {caller: "brain devops", action: "sandboxctl create --with-agent orchestrator [--model <provider/model>]，原子完成容器创建 + runtime bridge + sandbox-local IPC bridge + orchestrator start"}
+    D4:  {caller: "brain devops", action: "验证容器 healthy + tmux session + .brain/agent_runtime.json + sandbox 内 proxy/Claude bootstrap 状态 + /tmp/brain_ipc.sock ping"}
+    D5:
+      caller: "brain devops"
+      action: "收尾：TASK_UPDATE({project_id}_BOOTSTRAP, completed) + TASK_UPDATE(MWF-OPC:0_1:environment_init, ready) + IPC → PMO BOOTSTRAP_COMPLETE"
+      result: |
+        task_manager: {project_id}_BOOTSTRAP = completed
+        task_manager: MWF-OPC:0_1:environment_init = ready
+        brain PMO 收到 BOOTSTRAP_COMPLETE 通知
+        （PHASE_READY / PHASE_BLOCKED 事件不存在；用 TASK_QUERY / SPEC_QUERY 查询状态）
+
+  handoff:
+    trigger: "D5 完成，task MWF-OPC:0_1:environment_init = ready，orchestrator 已在线"
+    next: "orchestrator 冷启动后执行 MWF-OPC:0_1:environment_init（下方 steps 部分）"
+    note: "orchestrator 间接承担 PMO 角色，与 brain PMO 双向 IPC，严格按 workflow 编排 Phase 1-7"
+
+steps:
+
+  # ── 0.1 环境初始化（自举）────────────────────────────────────────────────────
+  - step_id: "MWF-OPC:0_1:environment_init"
+    phase: init
+    who:
+      executor: project_orchestrator
+      profile: coordinator
+      context: "sandbox 容器内冷启动"
+    purpose: "sandbox 环境自检与初始化：验证挂载/网络/git、初始化目录、写全局配置、通知 brain 就绪"
+
+    do:
+      - action: "TASK_UPDATE: in_progress"
+        action_id: "MWF-OPC:0_1:environment_init:A01"
+        tool: "task_manager API"
+        call: |
+          event_type: TASK_UPDATE
+          task_id:    "MWF-OPC:0_1:environment_init"
+          status:     in_progress
+        note: "每个 step 的第一个 action，在 task_manager 中标记本 step 开始执行"
+
+      - action: "验证 task_manager 项目 spec"
+        action_id: "MWF-OPC:0_1:environment_init:A02"
+        tool: "task_manager API: SPEC_QUERY"
+        call: |
+          event_type: SPEC_QUERY
+          spec_id:    "{project_id}"
+        details: |
+          确认 SPEC_QUERY_RESULT.specs[0].stage = S1_alignment
+          （spec 由 brain PMO 在立项时通过 SPEC_CREATE 创建，stage 初始为 S1_alignment）
+          如果 spec 不存在 → BLOCKED "task_manager 无 spec 记录，请确认立项流程已执行"
+          如果 stage ≠ S1_alignment → BLOCKED "spec stage 异常: {stage}"
+
+      - action: "检查只读挂载完整性"
+        action_id: "MWF-OPC:0_1:environment_init:A03"
+        tool: "bash"
+        details: |
+          验证只读:
+            touch /xkagent_infra/brain/.writetest 2>/dev/null && echo "FAIL: writable" || echo "OK: read-only"
+          关键路径检查:
+            test -d /xkagent_infra/brain/base/spec/          || BLOCKED "brain/base/spec 不存在"
+            test -d /xkagent_infra/brain/base/workflow/      || BLOCKED "brain/base/workflow 不存在"
+            test -d /xkagent_infra/brain/base/knowledge/     || BLOCKED "brain/base/knowledge 不存在"
+            test -f /xkagent_infra/tmp/orchestrator_project_coding/workflow_core.yaml \
+                                               || BLOCKED "workflow_core.yaml 不存在"
+
+      - action: "检查项目目录挂载"
+        action_id: "MWF-OPC:0_1:environment_init:A04"
+        tool: "bash"
+        details: |
+          test -d {project_root}/ || BLOCKED "{project_root} 不存在"
+          touch {project_root}/.writetest && rm {project_root}/.writetest || BLOCKED "{project_root} 不可写"
+
+      - action: "初始化 state 目录"
+        action_id: "MWF-OPC:0_1:environment_init:A05"
+        tool: "bash"
+        details: |
+          # 必须在 git 分支验证和写 global_config 之前完成
+          mkdir -p {project_root}/state/step_results/
+          mkdir -p {project_root}/state/checkpoints/
+          mkdir -p {project_root}/artifacts/tasks/
+      - action: "验证 git 分支"
+        action_id: "MWF-OPC:0_1:environment_init:A06"
+        tool: "bash"
+        details: |
+          cd {project_root}
+          CURRENT_BRANCH=$(git branch --show-current)
+          EXPECTED_BRANCH="feature/${PENDING_ID}"
+          if [ "$CURRENT_BRANCH" != "$EXPECTED_BRANCH" ]; then
+            git checkout -b "$EXPECTED_BRANCH" || git checkout "$EXPECTED_BRANCH"
+          fi
+          # state/ 已在上一步创建，可以安全写入
+          git rev-parse HEAD > {project_root}/state/.base_commit
+
+      - action: "检查 brain 网络服务连通性"
+        action_id: "MWF-OPC:0_1:environment_init:A07"
+        tool: "bash + ipc"
+        details: |
+          三个服务均必须 ok，任一失败均 status=blocked:
+            IPC daemon    — ipc_list_agents() 返回正常
+            agentctl      — agentctl list 返回正常
+            task_manager  — task_manager status 返回正常
+
+      - action: "自检完成，通知 brain PMO: ORCHESTRATOR_READY"
+        action_id: "MWF-OPC:0_1:environment_init:A08"
+        tool: "ipc_send"
+        target: "{pmo_agent_id}（从环境变量 BRAIN_AGENT_NAME 或 payload.requested_by 获取）"
+        message_type: "ORCHESTRATOR_READY"
+        payload: |
+          {
+            "type":             "ORCHESTRATOR_READY",
+            "project_id":       "{project_id}",
+            "orchestrator_id":  "{orchestrator_agent_id}",
+            "sandbox_id":       "{sandbox_id}",
+            "step_id":          "MWF-OPC:0_1:environment_init",
+            "checks_passed": {
+              "brain_mount":    true,
+              "project_mount":  true,
+              "git_branch":     true,
+              "ipc_daemon":     true,
+              "agentctl":       true,
+              "task_manager":   true
+            }
+          }
+        ipc_log_append:
+          direction: send
+          to:        "{pmo_agent_id}"
+          type:      ORCHESTRATOR_READY
+          step_id:   "MWF-OPC:0_1:environment_init"
+          ref_id:    "{project_id}"
+          summary:   "orchestrator 自检通过，等待 PMO 确认后继续"
+
+      - action: "等待 brain PMO 确认: PROCEED_CONFIRMED"
+        action_id: "MWF-OPC:0_1:environment_init:A09"
+        tool: "ipc_recv"
+        wait_for: "PROCEED_CONFIRMED"
+        timeout: "120s"
+        details: |
+          PMO 收到 ORCHESTRATOR_READY 后，确认项目信息无误，回复:
+            { "type": "PROCEED_CONFIRMED", "project_id": "{project_id}", "confirmed_by": "{pmo_agent_id}" }
+          orchestrator 收到后方可继续 A10+。
+
+          on_timeout:
+            → TASK_UPDATE(task_id="MWF-OPC:0_1:environment_init", status=blocked, description="PMO 未在 120s 内回复 PROCEED_CONFIRMED")
+          on_reject (PMO 回复 PROCEED_REJECTED):
+            → TASK_UPDATE(task_id="MWF-OPC:0_1:environment_init", status=blocked, description="PMO 拒绝继续: {reject.reason}")
+        ipc_log_append:
+          direction: recv
+          from:      "{pmo_agent_id}"
+          type:      PROCEED_CONFIRMED
+          step_id:   "MWF-OPC:0_1:environment_init"
+          ref_id:    "{project_id}"
+          summary:   "PMO 确认，开始读取 payload 执行初始化"
+
+      - action: "读取启动 payload"
+        action_id: "MWF-OPC:0_1:environment_init:A10"
+        tool: "file_read"
+        target: "{project_root}/payload/project_init.yaml"
+        details: |
+          读取字段:
+            project_id, group_id, sandbox_id, pending_id
+            project_path    — 宿主机项目路径（记录用）
+            requested_by    — brain_pmo agent_id，后续 ipc_send 的目标，必须存在
+            intake_seed     — optional，PMO 已有的初步需求描述
+          如果文件不存在 → 从环境变量读取（PROJECT_ID/GROUP_ID/SANDBOX_ID/PENDING_ID/BRAIN_AGENT_NAME）
+
+      - action: "写入 global_config.yaml"
+        action_id: "MWF-OPC:0_1:environment_init:A11"
+        tool: "file_write"
+        template: "config/global_config.template.yaml"
+        target: "{project_root}/state/global_config.yaml"
+        details: |
+          渲染 config/global_config.template.yaml，替换 payload + 环境变量，写入目标路径。
+          关键字段:
+            naming.agent_prefix = "agent_{group_id}_{project_id}_"
+              — spawn worker 时用此前缀生成 agent_id，全局唯一且可溯源
+            ipc.orchestrator_agent_id = $BRAIN_AGENT_NAME
+              — worker 向 orchestrator 回报 TASK_COMPLETE 时，to 字段填这个值
+            paths.* / services.*
+              — 固化目录路径和 brain 服务地址，后续不再硬编码
+
+      - action: "写入初始 project_snapshot"
+        action_id: "MWF-OPC:0_1:environment_init:A12"
+        tool: "file_write"
+        target: "{project_root}/state/project_snapshot.yaml"
+        details: |
+          本地缓存，从 task_manager 同步关键状态，供 orchestrator context checkpoint / 冷启动恢复用。
+          project_id:       {project_id}
+          group_id:         {group_id}
+          sandbox_id:       {sandbox_id}
+          pending_id:       {pending_id}
+          git_branch:       "feature/{pending_id}"
+          git_base_commit:  {从 state/.base_commit 读取}
+          current_phase:    init
+          current_step:     "MWF-OPC:0_1:environment_init"
+          project_status:   INIT
+          task_summary:     {total: 0, ready: 0, active: 0, review: 0, done: 0, blocked: 0, failed: 0}
+          active_blockers:  []
+          updated_at:       {ISO8601}
+
+      - action: "通知 brain devops: 请求外部验证"
+        action_id: "MWF-OPC:0_1:environment_init:A13"
+        tool: "ipc_send"
+        # Phase 0 的验证者是 brain devops，不是 orchestrator 自身。
+        # orchestrator 在 sandbox 内，它是被验证的对象，不能自证清白。
+        # brain devops 在 sandbox 外，持有独立视角，是天然的验证者。
+        target: "brain_devops (从 payload.requested_by 对应的 devops agent 获取)"
+        message_type: "SANDBOX_VERIFY_REQUEST"
+        payload: |
+          project_id:   "{project_id}"
+          step_id:      "MWF-OPC:0_1:environment_init"
+          sandbox_id:   "{sandbox_id}"
+          report_back_to: "{orchestrator_agent_id}"
+          state_files:
+            - "{project_root}/state/global_config.yaml"
+            - "{project_root}/state/project_snapshot.yaml"
+          check_items:
+            - id: "global_config"
+              type: file_read
+              target: "{project_root}/state/global_config.yaml"
+              assert:
+                parse: yaml
+                fields:
+                  project_id:            { eq: "{project_id}" }
+                  group_id:              { eq: "{group_id}" }
+                  pending_id:            { eq: "{pending_id}" }
+                  paths.brain_root:      { eq: "/xkagent_infra/brain" }
+                  paths.project_root:    { eq: "{project_root}" }
+                  services.ipc:          { not_empty: true }
+                  services.agentctl:     { not_empty: true }
+                  services.task_manager: { not_empty: true }
+            - id: "project_snapshot"
+              type: file_read
+              target: "{project_root}/state/project_snapshot.yaml"
+              assert:
+                fields:
+                  init_decision:                      { eq: "PASS" }
+                  environment_status.brain_mount:     { eq: "ok" }
+                  environment_status.project_mount:   { eq: "ok" }
+                  environment_status.project_writable:{ eq: "ok" }
+                  environment_status.git_branch:      { eq: "ok" }
+                  environment_status.ipc_daemon:      { eq: "ok" }
+                  environment_status.agentctl:        { eq: "ok" }
+                  environment_status.task_manager:    { eq: "ok" }
+            - id: "directory_structure"
+              type: bash
+              # brain devops 在宿主机或 brain 容器内执行，通过共享卷访问同一路径
+              commands:
+                - "test -d {project_root}/state/step_results"
+                - "test -d {project_root}/state/checkpoints"
+                - "test -d {project_root}/artifacts/tasks"
+                - "test -d {project_root}/runtime/agents"
+              assert: { all_exit_0: true }
+            - id: "git_branch"
+              type: bash
+              command: "git -C {project_root} branch --show-current"
+              assert: { stdout_eq: "feature/{pending_id}" }
+            - id: "container_health"
+              type: bash
+              # brain devops 从宿主机验证容器本身的健康状态
+              command: "docker inspect --format='{{.State.Health.Status}}' {sandbox_id}"
+              assert: { stdout_eq: "healthy" }
+        ipc_log_append:
+          direction: send
+          to:        "{devops_agent_id}"
+          type:      SANDBOX_VERIFY_REQUEST
+          step_id:   "MWF-OPC:0_1:environment_init"
+          ref_id:    "{project_id}"
+          summary:   "请求 brain devops 从 sandbox 外独立验证环境 + 状态文件"
+
+      - action: "等待 brain devops 验证结果"
+        action_id: "MWF-OPC:0_1:environment_init:A14"
+        tool: "ipc_recv"
+        wait_for: "SANDBOX_VERIFY_RESULT"
+        # orchestrator 被动等待，brain devops 是主动验证方
+        details: |
+          等待 brain devops 发送 IPC message:
+            message_type: SANDBOX_VERIFY_RESULT
+            step_id:      "MWF-OPC:0_1:environment_init"
+            passed:       true | false
+            verified_by:  "{devops_agent_id}"
+            verified_at:  "{ISO8601}"
+            items:
+              - {id: "global_config",      status: ok | fail, detail: ""}
+              - {id: "project_snapshot",   status: ok | fail, detail: ""}
+              - {id: "directory_structure",status: ok | fail, detail: ""}
+              - {id: "git_branch",         status: ok | fail, detail: ""}
+              - {id: "container_health",   status: ok | fail, detail: ""}
+          orchestrator 收到后原样写入:
+            {project_root}/state/step_results/MWF-OPC_0_1_environment_init/completion_check.yaml
+          timeout: 300s
+          on_timeout: → TASK_UPDATE(task_id="MWF-OPC:0_1:environment_init", status=blocked, description="brain devops 验证超时，未收到 SANDBOX_VERIFY_RESULT")
+        ipc_log_append:
+          direction: recv
+          from:      "{devops_agent_id}"
+          type:      SANDBOX_VERIFY_RESULT
+          step_id:   "MWF-OPC:0_1:environment_init"
+          ref_id:    "{project_id}"
+          summary:   "收到验证结果，passed={passed}，写入 completion_check.yaml"
+
+      - action: "TASK_UPDATE: completed 或 blocked；SPEC_PROGRESS（phase 0 完成）"
+        action_id: "MWF-OPC:0_1:environment_init:A15"
+        tool: "task_manager API"
+        call: |
+          SANDBOX_VERIFY_RESULT.passed=true  →
+            # 标记 step task 完成
+            event_type: TASK_UPDATE
+            task_id:    "MWF-OPC:0_1:environment_init"
+            status:     completed
+
+            # Phase 0 完成 → spec stage 保持 S1_alignment（0_init 完成即为 alignment 阶段完成）
+            event_type:    SPEC_PROGRESS
+            spec_id:       "{project_id}"
+            target_stage:  S1_alignment
+            # 下一 phase (1_intake) 的 task 状态可通过 TASK_QUERY(spec_id=project_id) 查询
+
+          completion_check passed=false →
+            event_type: TASK_UPDATE
+            task_id:    "MWF-OPC:0_1:environment_init"
+            status:     blocked
+            description: "{completion_check 中第一条 fail.detail}"
+            # 注意: PHASE_READY / PHASE_BLOCKED 事件不存在，不要使用
+            # 使用 SPEC_QUERY(spec_id=project_id) 或 TASK_QUERY(spec_id=project_id) 查询当前状态
+
+    artifact: |
+      {project_root}/state/global_config.yaml
+      {project_root}/state/project_snapshot.yaml
+      {project_root}/state/ipc_log.yaml                          ← 本 step 新建，追加 4 条记录
+      {project_root}/state/step_results/MWF-OPC_0_1_environment_init/completion_check.yaml
+      task_manager: task MWF-OPC:0_1:environment_init = completed
+      task_manager: SPEC_PROGRESS → spec stage = S1_alignment（0_init phase 完成标记）
+
+    artifact_schema:
+      global_config.yaml:
+        project_id: string
+        group_id: string
+        sandbox_id: string
+        pending_id: string
+        naming:
+          agent_prefix: "agent_{group_id}_{project_id}_"
+          task_prefix: "{group_id}_{project_id}_TASK_"
+        ipc:
+          orchestrator_agent_id: string
+        paths:
+          workflow_root: string
+          project_root: string
+          state_dir: string
+          artifacts_dir: string
+          agents_dir: string
+          brain_root: string
+          payload_file: string
+        services:
+          ipc: string
+          agentctl: string
+          task_manager: string
+      project_snapshot.yaml:
+        project_id: string
+        group_id: string
+        sandbox_id: string
+        pending_id: string
+        git_branch: string
+        git_base_commit: string
+        current_phase: "init"
+        current_step: string
+        project_status: "INIT"
+        environment_status:
+          brain_mount: "ok | missing"
+          brain_readonly: "ok | writable"
+          project_mount: "ok | missing"
+          project_writable: "ok | readonly"
+          git_branch: "ok | wrong_branch"
+          ipc_daemon: "ok | unreachable"
+          agentctl: "ok | unreachable"
+          task_manager: "ok | unreachable"
+        init_decision: "PASS | BLOCKED"
+
+    check: |
+      # completion_check 是真正的完结判据（A14 回读验证）:
+      completion_check.passed = true  AND
+      completion_check.items 全部 status=ok:
+        ① global_config.yaml 存在且字段完整
+        ② project_snapshot.yaml 存在且 init_decision=PASS, environment_status all=ok
+        ③ 所有目录存在
+        ④ git branch = feature/{pending_id}（独立再确认）
+        ⑤ container health = healthy
+      AND ipc_log.yaml 存在且包含 4 条记录:
+        send  ORCHESTRATOR_READY    → brain_pmo
+        recv  PROCEED_CONFIRMED     ← brain_pmo
+        send  SANDBOX_VERIFY_REQUEST → brain_devops
+        recv  SANDBOX_VERIFY_RESULT  ← brain_devops
+      AND
+      task_manager: task MWF-OPC:0_1:environment_init = completed
+      task_manager: SPEC_QUERY(spec_id=project_id).stage = S1_alignment
+
+    on_success: "MWF-OPC:1_1:capture_requirement"
+    on_retry: "网络暂时不可达 → 等待后重试"
+    on_blocked: |
+      event_type: TASK_UPDATE
+      task_id:    "MWF-OPC:0_1:environment_init"
+      status:     blocked
+      description: "{具体原因}"
+      # 注意: PHASE_BLOCKED 事件不存在，不要使用
+      # brain PMO 可通过 TASK_QUERY(spec_id=project_id, status=blocked) 查询阻断 task
+      # orchestrator_driver.py 检测到 session 持续无心跳后会触发 restart

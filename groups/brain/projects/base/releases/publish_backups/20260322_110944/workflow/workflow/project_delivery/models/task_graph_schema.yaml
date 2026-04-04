@@ -1,0 +1,146 @@
+# Task Graph Schema
+# task_modeling 阶段的输出格式规范
+# 文件位置（sandbox 内）: /workspace/project/spec/06_tasks/task_graph.yaml
+#
+# task_modeling 完成后，orchestrator 调用 seed_task_graph.py 将此文件写入 task_manager
+
+task_graph_schema:
+  version: "1.0"
+  description: "task_modeling 产出的 task graph，seeding 脚本据此初始化 task_manager"
+
+  # ── 文件级元数据 ─────────────────────────────────────────────────────────────
+  required_fields:
+    project_id:     "string — 项目唯一 ID"
+    group_id:       "string — 所属 group"
+    created_at:     "ISO8601 UTC — task_modeling 完成时间"
+    task_design_report_ref: "string — task_design_report 文件路径"
+    tasks:          "list<TaskDef> — 所有任务定义"
+    initial_ready_set: "list<task_id> — 初始可派发任务（无依赖或依赖已满足）"
+
+  # ── 单个 TaskDef 字段 ─────────────────────────────────────────────────────────
+  task_def:
+    required:
+      task_id:
+        type: string
+        format: "task_{project_key}_{sequence:03d}"
+        example: "task_dashboard_001"
+      title:
+        type: string
+        max_length: 120
+      owner:
+        type: string
+        description: "负责执行的 agent role（如 developer、qa）；seeding 时映射为 agent_id"
+      priority:
+        type: enum
+        values: [critical, high, normal, low]
+        default: normal
+      depends_on:
+        type: list<task_id>
+        default: []
+        description: "前置任务 ID 列表，全部 completed 后本任务才可进入 READY"
+
+    optional:
+      description:
+        type: string
+        description: "任务详细描述，包含验收条件"
+      review_by:
+        type: string
+        description: "执行完成后由谁 review（agent role）"
+      deadline:
+        type: string
+        format: ISO8601
+      tags:
+        type: list<string>
+        description: "自定义标签，seeding 时会附加 workflow 状态标签"
+      spec_id:
+        type: string
+        description: "关联的 spec checklist item ID"
+      kind:
+        type: enum
+        values: [implementation, review, test, deploy, research, planning, audit]
+        description: "任务类型，供 orchestrator 决策 spawn 哪种 worker"
+      stage:
+        type: enum
+        values: [research, planning, execution, release, audit]
+        description: "所属项目阶段"
+
+  # ── 状态映射（project_delivery → task_manager）───────────────────────────────
+  # task_manager 现支持完整的 10 态状态机，与 project_delivery 直接对齐
+  state_mapping:
+    description: |
+      orchestrator 使用 project_delivery 状态名驱动任务推进；
+      task_manager status 字段直接使用相同名称，无需 tags 变通。
+      FSM 转换路径: Pending → Ready → InProgress → Review → Verified → Completed
+
+    mapping:
+      BACKLOG:
+        tm_status: pending
+        condition:  "依赖未满足，不可派发"
+        fsm_trigger: "ready（当所有 depends_on 均 completed 时由 orchestrator 触发）"
+      READY:
+        tm_status: ready
+        condition:  "依赖满足，等待 orchestrator dispatch"
+        fsm_trigger: "start（orchestrator dispatch worker 时触发）"
+      ACTIVE:
+        tm_status: in_progress
+        condition:  "worker 已接受任务，正在执行"
+        fsm_trigger: "submit（worker 实现完成时触发）"
+      REVIEW:
+        tm_status: review
+        condition:  "等待 reviewer/qa"
+        fsm_trigger: "approve / reject"
+      VERIFIED:
+        tm_status: verified
+        condition:  "review/test 通过，等待 orchestrator 最终提交"
+        fsm_trigger: "done（orchestrator 验收）"
+      DONE:
+        tm_status: completed
+        condition:  "任务完成"
+      BLOCKED:
+        tm_status: blocked
+        condition:  "执行中遇到阻塞"
+        fsm_trigger: "unblock → ready（解除后重入派发队列）"
+      FAILED:
+        tm_status: failed
+
+    orchestrator_query_patterns:
+      find_ready:    "status=ready"
+      find_active:   "status=in_progress"
+      find_review:   "status=review"
+      find_verified: "status=verified"
+
+  # ── 示例 task_graph.yaml ──────────────────────────────────────────────────────
+  example:
+    project_id: brain_dashboard
+    group_id: brain
+    created_at: "2026-03-17T10:00:00Z"
+    task_design_report_ref: "/workspace/project/spec/06_tasks/task_design_report.yaml"
+    initial_ready_set: [task_dashboard_001, task_dashboard_002]
+    tasks:
+      - task_id: task_dashboard_001
+        title: "实现 Dashboard API 层"
+        owner: dev_api
+        priority: high
+        kind: implementation
+        stage: execution
+        depends_on: []
+        review_by: qa
+        description: "实现 /api/v1/dashboard/* 接口，含单元测试覆盖 ≥ 80%"
+
+      - task_id: task_dashboard_002
+        title: "搭建前端脚手架"
+        owner: dev_ui
+        priority: normal
+        kind: implementation
+        stage: execution
+        depends_on: []
+        review_by: qa
+
+      - task_id: task_dashboard_003
+        title: "前后端集成测试"
+        owner: qa
+        priority: high
+        kind: test
+        stage: execution
+        depends_on: [task_dashboard_001, task_dashboard_002]
+        description: "验证 API 与前端 UI 联调，所有核心路径通过"

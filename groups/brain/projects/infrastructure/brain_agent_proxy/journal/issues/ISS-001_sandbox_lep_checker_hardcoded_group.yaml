@@ -1,0 +1,25 @@
+---
+id: ISS-001
+title: "SandboxLEPChecker 硬编码 group 值，不读取 project config"
+discovered_at: "2026-03-23T17:10:00Z"
+discovered_by: agent-brain_manager
+stage: bootstrap
+severity: high
+description: |
+  在执行 brain_agent_proxy 项目的 sandbox bootstrap 时发现：
+  - SandboxLEPChecker.__init__ 硬编码 self.group = "brain"
+  - 不读取 .sandbox/config.yaml 中的 naming.group 配置
+  - 导致即使配置了 group: infrastructure 也无法生效
+
+  影响：项目名含下划线（如 brain_agent_proxy）时，
+  生成的容器名 brain-brain_agent_proxy-xxx 违反命名规范
+  ^[a-z][a-z0-9-]{0,63}$，LEP 检查必然失败。
+impact: "无法通过正常流程创建 sandbox，必须使用 --skip-lep 或等待修复"
+resolution: "✅ 已修复 - 添加了 PROJECT_ALIAS_MAP 和 get_project_alias 方法"
+resolved_at: "2026-03-24T08:20:00Z"
+base_upgrade_candidate: true
+base_upgrade_detail: |
+  文件：/xkagent_infra/groups/brain/projects/base/sandbox/service/sandbox_service.py
+  类：SandboxLEPChecker
+  方法：__init__
+  修复：将 self.group = "brain" 改为从 project_config 读取

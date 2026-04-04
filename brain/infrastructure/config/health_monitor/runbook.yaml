@@ -1,7 +1,7 @@
 # 健康监控操作手册
 # spec_ref: BS-027-ipc-health-monitor / 05_solution.yaml (runbook_schema)
 # created_at: 2026-02-24
-# owner: agent-system_devops
+# owner: agent-brain_manager
 
 health_monitor:
   # 默认配置（未在 targets 中定义的目标使用此配置）

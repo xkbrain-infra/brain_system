@@ -1,0 +1,9 @@
+---
+plan:
+  project_id: brain_agent_proxy
+  version: 1.0
+  created_at: "2026-03-23"
+  created_by: agent-brain_manager
+
+  tasks: []
+  status: open

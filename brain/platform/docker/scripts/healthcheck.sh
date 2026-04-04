@@ -32,7 +32,7 @@ check_init() {
   require_dir /xkagent_infra/groups
   require_dir /xkagent_infra/brain/infrastructure/config/agentctl
   require_dir /xkagent_infra/runtime
-  require_path /xkagent_infra/brain/infrastructure/service/brain_ipc/bin/current/brain_ipc
+  require_path /xkagent_infra/brain/infrastructure/service/brain_ipc/bin/brain_ipc
   require_path /xkagent_infra/brain/infrastructure/service/agentctl/bin/brain-agentctl
   require_path /etc/supervisor/conf.d/supervisord.conf
   log "init checks passed"
@@ -46,7 +46,6 @@ check_runtime() {
   local status
   status="$(supervisorctl status || true)"
   [[ "$status" == *"sshd                             RUNNING"* ]] || fail "sshd not running"
-  [[ "$status" == *"brain_ipc                        RUNNING"* ]] || fail "brain_ipc not running"
   [[ "$status" == *"agent_orchestrator               RUNNING"* ]] || fail "agent_orchestrator not running"
 
   local agentctl="python3 /xkagent_infra/brain/infrastructure/service/agentctl/bin/brain-agentctl"
@@ -61,8 +60,6 @@ check_runtime() {
     list_out="$(AGENTCTL_CONFIG_DIR=/xkagent_infra/brain/infrastructure/config/agentctl bash -lc "$agentctl list" || true)"
     local required_agents=(
       "agent-brain_manager"
-      "agent-system_devops"
-      "agent-system_pmo"
     )
     local a
     for a in "${required_agents[@]}"; do

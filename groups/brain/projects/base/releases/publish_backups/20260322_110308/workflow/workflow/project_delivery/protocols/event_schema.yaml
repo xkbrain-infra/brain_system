@@ -1,0 +1,51 @@
+event_schema:
+  id: "MWF-EVENT-001"
+  version: "0.1"
+  intent: "定义统一事件模型，供 sync/release/audit 共享"
+
+event_fields:
+  required:
+    - event_id
+    - event_type
+    - group_id
+    - project_id
+    - source
+    - severity
+    - ts
+  optional:
+    - sandbox_id
+    - orchestrator_id
+    - task_id
+    - agent_id
+    - service_name
+    - config_id
+    - port
+    - summary
+    - details
+    - artifact_refs
+
+event_types:
+  - project.started
+  - project.snapshot.updated
+  - task.assigned
+  - task.blocked
+  - task.review.requested
+  - task.done
+  - agent.offline
+  - sandbox.degraded
+  - release.candidate.ready
+  - release.deployed.staging
+  - release.deployed.production
+  - release.rollback
+  - audit.finding.created
+  - config.version.updated
+  - service.registered
+  - endpoint.registered
+  - supervisor.registered
+  - port.allocated
+
+severity_levels:
+  - info
+  - warning
+  - high
+  - critical

@@ -35,6 +35,7 @@
                     <button onclick="switchTab('registry')" id="nav-registry" class="nav-tab px-4 py-2 rounded text-sm font-medium">Registry</button>
                     <button onclick="switchTab('logs')" id="nav-logs" class="nav-tab px-4 py-2 rounded text-sm font-medium">Logs</button>
                     <button onclick="switchTab('traffic')" id="nav-traffic" class="nav-tab px-4 py-2 rounded text-sm font-medium">📊 Traffic</button>
+                    <button onclick="switchTab('providers')" id="nav-providers" class="nav-tab px-4 py-2 rounded text-sm font-medium">🔑 Providers</button>
                 </div>
                 <div class="flex items-center gap-2">
                     <span id="nav-status" class="flex items-center gap-1 text-xs">
@@ -433,6 +434,22 @@
             </div>
         </div>
 
+        <!-- PROVIDERS TAB -->
+        <div id="tab-providers" class="tab-content">
+            <div class="flex items-center justify-between mb-6">
+                <div>
+                    <h2 class="text-xl font-bold">Provider OAuth Configuration</h2>
+                    <p class="text-sm text-gray-400 mt-1">Configure authentication for each LLM provider</p>
+                </div>
+                <button onclick="loadProviders()" class="text-xs px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded transition-colors">
+                    Refresh
+                </button>
+            </div>
+            <div id="providers-grid" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                <p class="text-gray-500 text-sm col-span-full">Loading providers...</p>
+            </div>
+        </div>
+
         <!-- TRAFFIC TAB -->
         <div id="tab-traffic" class="tab-content">
             <!-- Traffic Stats Cards -->
@@ -579,6 +596,7 @@
                 loadProjects();
                 loadProjectsTasks();
             }
+            if (tabName === 'providers') loadProviders();
         }
 
         // ==================== SSE CONNECTION (for Home/Agents) ====================
@@ -1264,6 +1282,341 @@
         setInterval(loadTrafficEndpoints, 30000);
         setInterval(loadTrafficMessageTypes, 30000);
         setInterval(loadTrafficHistory, 60000);
+
+        // ================================================================
+        // PROVIDERS TAB
+        // ================================================================
+
+        let devicePollTimers = {};
+
+        function getProviderTypeLabel(type) {
+            const labels = {
+                'oauth': 'OAuth Code',
+                'oauth_device': 'OAuth Device',
+                'gemini': 'OAuth PKCE',
+                'api_key': 'API Key',
+            };
+            return labels[type] || type;
+        }
+
+        function getProviderTypeColor(type) {
+            const colors = {
+                'oauth': 'bg-purple-900 text-purple-300',
+                'oauth_device': 'bg-blue-900 text-blue-300',
+                'gemini': 'bg-green-900 text-green-300',
+                'api_key': 'bg-yellow-900 text-yellow-300',
+            };
+            return colors[type] || 'bg-gray-700 text-gray-300';
+        }
+
+        function renderApiKeyCard(p) {
+            const status = p.auth_status || {};
+            return `
+            <div id="provider-card-${p.id}" class="bg-gray-800 rounded-lg border border-gray-700 p-4 card-hover">
+                <div class="flex items-start justify-between mb-3">
+                    <div>
+                        <div class="flex items-center gap-2 mb-1">
+                            <span class="font-semibold">${p.name}</span>
+                            <span class="text-xs px-2 py-0.5 rounded ${getProviderTypeColor(p.type)}">${getProviderTypeLabel(p.type)}</span>
+                            ${p.enabled ? '<span class="text-xs text-green-400">● Enabled</span>' : '<span class="text-xs text-red-400">○ Disabled</span>'}
+                        </div>
+                        <div class="text-xs text-gray-400">${p.description}</div>
+                    </div>
+                    <button onclick="toggleProvider('${p.id}')" class="text-xs px-2 py-1 rounded border border-gray-600 hover:border-gray-400 transition-colors">
+                        ${p.enabled ? 'Disable' : 'Enable'}
+                    </button>
+                </div>
+                <div class="mb-3">
+                    <div class="text-xs text-gray-400 mb-1">API Key ${status.has_key ? '<span class="text-green-400">✓ Configured</span>' : '<span class="text-yellow-400">⚠ Not set</span>'}</div>
+                    ${status.key_value_preview ? `<div class="text-xs font-mono text-gray-300 mb-2">${status.key_value_preview}</div>` : ''}
+                    ${status.api_base_url ? `<div class="text-xs text-gray-500 mb-2">Base: ${status.api_base_url}</div>` : ''}
+                </div>
+                <div class="flex gap-2">
+                    <input type="password" id="apikey-input-${p.id}" placeholder="Enter API Key..."
+                        class="flex-1 text-xs bg-gray-700 border border-gray-600 rounded px-2 py-1.5 text-gray-200 focus:outline-none focus:border-blue-500"/>
+                    <button onclick="saveApiKey('${p.id}')"
+                        class="text-xs px-3 py-1.5 bg-blue-600 hover:bg-blue-500 rounded transition-colors">Save</button>
+                </div>
+                <div id="provider-msg-${p.id}" class="mt-2 text-xs hidden"></div>
+            </div>`;
+        }
+
+        function renderOAuthCodeCard(p) {
+            const status = p.auth_status || {};
+            const hasToken = status.has_token;
+            return `
+            <div id="provider-card-${p.id}" class="bg-gray-800 rounded-lg border border-gray-700 p-4 card-hover">
+                <div class="flex items-start justify-between mb-3">
+                    <div>
+                        <div class="flex items-center gap-2 mb-1">
+                            <span class="font-semibold">${p.name}</span>
+                            <span class="text-xs px-2 py-0.5 rounded ${getProviderTypeColor(p.type)}">${getProviderTypeLabel(p.type)}</span>
+                            ${p.enabled ? '<span class="text-xs text-green-400">● Enabled</span>' : '<span class="text-xs text-red-400">○ Disabled</span>'}
+                        </div>
+                        <div class="text-xs text-gray-400">${p.description}</div>
+                    </div>
+                    <button onclick="toggleProvider('${p.id}')" class="text-xs px-2 py-1 rounded border border-gray-600 hover:border-gray-400 transition-colors">
+                        ${p.enabled ? 'Disable' : 'Enable'}
+                    </button>
+                </div>
+                <div class="mb-3 text-xs">
+                    <div class="text-gray-400 mb-1">Token: ${hasToken
+                        ? `<span class="text-green-400">✓ ${status.access_token_preview || 'Configured'}</span>`
+                        : '<span class="text-yellow-400">⚠ Not authorized</span>'}</div>
+                    ${status.client_id ? `<div class="text-gray-500">Client ID: ${status.client_id}</div>` : ''}
+                    ${status.expires_at ? `<div class="text-gray-500">Expires: ${new Date(status.expires_at * 1000).toLocaleString()}</div>` : ''}
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="startOAuthFlow('${p.id}', 'code')"
+                        class="text-xs px-3 py-1.5 bg-purple-600 hover:bg-purple-500 rounded transition-colors">
+                        ${hasToken ? 'Re-authorize' : 'Authorize'}
+                    </button>
+                </div>
+                <div id="provider-msg-${p.id}" class="mt-2 text-xs hidden"></div>
+            </div>`;
+        }
+
+        function renderOAuthDeviceCard(p) {
+            const status = p.auth_status || {};
+            const hasToken = status.has_token;
+            return `
+            <div id="provider-card-${p.id}" class="bg-gray-800 rounded-lg border border-gray-700 p-4 card-hover">
+                <div class="flex items-start justify-between mb-3">
+                    <div>
+                        <div class="flex items-center gap-2 mb-1">
+                            <span class="font-semibold">${p.name}</span>
+                            <span class="text-xs px-2 py-0.5 rounded ${getProviderTypeColor(p.type)}">${getProviderTypeLabel(p.type)}</span>
+                            ${p.enabled ? '<span class="text-xs text-green-400">● Enabled</span>' : '<span class="text-xs text-red-400">○ Disabled</span>'}
+                        </div>
+                        <div class="text-xs text-gray-400">${p.description}</div>
+                    </div>
+                    <button onclick="toggleProvider('${p.id}')" class="text-xs px-2 py-1 rounded border border-gray-600 hover:border-gray-400 transition-colors">
+                        ${p.enabled ? 'Disable' : 'Enable'}
+                    </button>
+                </div>
+                <div class="mb-3 text-xs">
+                    <div class="text-gray-400 mb-1">Token: ${hasToken
+                        ? `<span class="text-green-400">✓ ${status.token_preview || 'Configured'}</span>`
+                        : '<span class="text-yellow-400">⚠ Not authorized</span>'}</div>
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="startOAuthFlow('${p.id}', 'device')"
+                        class="text-xs px-3 py-1.5 bg-blue-600 hover:bg-blue-500 rounded transition-colors">
+                        ${hasToken ? 'Re-authorize' : 'Start Auth'}
+                    </button>
+                </div>
+                <div id="device-flow-${p.id}" class="mt-3 hidden">
+                    <div class="bg-gray-900 rounded p-3 border border-blue-800">
+                        <div class="text-xs text-gray-400 mb-2">Enter this code at the verification URL:</div>
+                        <div id="device-usercode-${p.id}" class="text-2xl font-mono font-bold text-blue-300 tracking-widest mb-2"></div>
+                        <a id="device-verifyurl-${p.id}" href="#" target="_blank"
+                            class="text-xs text-blue-400 hover:text-blue-300 underline break-all"></a>
+                        <div id="device-status-${p.id}" class="mt-2 text-xs text-yellow-400">Waiting for authorization...</div>
+                    </div>
+                </div>
+                <div id="provider-msg-${p.id}" class="mt-2 text-xs hidden"></div>
+            </div>`;
+        }
+
+        function renderGeminiCard(p) {
+            const status = p.auth_status || {};
+            const hasToken = status.has_token;
+            return `
+            <div id="provider-card-${p.id}" class="bg-gray-800 rounded-lg border border-gray-700 p-4 card-hover">
+                <div class="flex items-start justify-between mb-3">
+                    <div>
+                        <div class="flex items-center gap-2 mb-1">
+                            <span class="font-semibold">${p.name}</span>
+                            <span class="text-xs px-2 py-0.5 rounded ${getProviderTypeColor(p.type)}">${getProviderTypeLabel(p.type)}</span>
+                            ${p.enabled ? '<span class="text-xs text-green-400">● Enabled</span>' : '<span class="text-xs text-red-400">○ Disabled</span>'}
+                        </div>
+                        <div class="text-xs text-gray-400">${p.description}</div>
+                    </div>
+                    <button onclick="toggleProvider('${p.id}')" class="text-xs px-2 py-1 rounded border border-gray-600 hover:border-gray-400 transition-colors">
+                        ${p.enabled ? 'Disable' : 'Enable'}
+                    </button>
+                </div>
+                <div class="mb-3 text-xs">
+                    <div class="text-gray-400 mb-1">Token: ${hasToken
+                        ? `<span class="text-green-400">✓ ${status.token_preview || 'Configured'}</span>`
+                        : '<span class="text-yellow-400">⚠ Not authorized</span>'}</div>
+                    <div class="text-gray-500">Client ID env: ${status.client_id_env || '-'}
+                        ${status.client_id_configured ? '<span class="text-green-400 ml-1">✓</span>' : '<span class="text-red-400 ml-1">✗ Not set</span>'}
+                    </div>
+                    <div class="text-gray-500 mt-1 text-xs">Callback: <code class="text-gray-300">http://localhost:8080/oauth2callback</code></div>
+                    <div class="text-yellow-600 text-xs mt-1">⚠ Ensure this redirect URI is registered in Google Cloud Console</div>
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="startOAuthFlow('${p.id}', 'pkce')"
+                        class="${status.client_id_configured ? 'bg-green-600 hover:bg-green-500' : 'bg-gray-600 cursor-not-allowed'} text-xs px-3 py-1.5 rounded transition-colors"
+                        ${status.client_id_configured ? '' : 'disabled title="Set GEMINI_OAUTH_CLIENT_ID env var first"'}>
+                        ${hasToken ? 'Re-authorize' : 'Authorize with Google'}
+                    </button>
+                </div>
+                <div id="provider-msg-${p.id}" class="mt-2 text-xs hidden"></div>
+            </div>`;
+        }
+
+        function renderProviderCard(p) {
+            if (p.type === 'api_key') return renderApiKeyCard(p);
+            if (p.type === 'oauth') return renderOAuthCodeCard(p);
+            if (p.type === 'oauth_device') return renderOAuthDeviceCard(p);
+            if (p.type === 'gemini') return renderGeminiCard(p);
+            return `<div class="bg-gray-800 rounded-lg border border-gray-700 p-4">
+                <div class="font-semibold">${p.name}</div>
+                <div class="text-xs text-gray-400">${p.type}</div>
+            </div>`;
+        }
+
+        async function loadProviders() {
+            const grid = document.getElementById('providers-grid');
+            try {
+                const resp = await fetch('/api/v2/providers');
+                const providers = await resp.json();
+                if (!providers || providers.length === 0) {
+                    grid.innerHTML = '<p class="text-gray-500 text-sm col-span-full">No providers configured</p>';
+                    return;
+                }
+                // Sort by priority
+                providers.sort((a, b) => (a.priority || 99) - (b.priority || 99));
+                grid.innerHTML = providers.map(renderProviderCard).join('');
+            } catch (e) {
+                grid.innerHTML = `<p class="text-red-400 text-sm col-span-full">Failed to load providers: ${e.message}</p>`;
+            }
+        }
+
+        function showProviderMsg(id, msg, isError) {
+            const el = document.getElementById(`provider-msg-${id}`);
+            if (!el) return;
+            el.textContent = msg;
+            el.className = `mt-2 text-xs ${isError ? 'text-red-400' : 'text-green-400'}`;
+            el.classList.remove('hidden');
+            setTimeout(() => el.classList.add('hidden'), 4000);
+        }
+
+        async function saveApiKey(providerId) {
+            const input = document.getElementById(`apikey-input-${providerId}`);
+            if (!input || !input.value.trim()) {
+                showProviderMsg(providerId, 'Please enter an API key', true);
+                return;
+            }
+            try {
+                const resp = await fetch(`/api/v2/providers/${providerId}/config`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({key_value: input.value.trim()}),
+                });
+                if (!resp.ok) {
+                    const err = await resp.json();
+                    throw new Error(err.detail || 'Save failed');
+                }
+                input.value = '';
+                showProviderMsg(providerId, 'API key saved successfully', false);
+                setTimeout(loadProviders, 500);
+            } catch (e) {
+                showProviderMsg(providerId, `Error: ${e.message}`, true);
+            }
+        }
+
+        async function toggleProvider(providerId) {
+            try {
+                const resp = await fetch(`/api/v2/providers/${providerId}/toggle`, {method: 'POST'});
+                if (!resp.ok) throw new Error('Toggle failed');
+                loadProviders();
+            } catch (e) {
+                showProviderMsg(providerId, `Error: ${e.message}`, true);
+            }
+        }
+
+        async function startOAuthFlow(providerId, flowType) {
+            try {
+                const resp = await fetch(`/api/v2/providers/${providerId}/oauth/start`, {method: 'POST'});
+                if (!resp.ok) {
+                    const err = await resp.json();
+                    throw new Error(err.detail || 'Failed to start OAuth flow');
+                }
+                const data = await resp.json();
+
+                if (flowType === 'device') {
+                    // Show device code UI
+                    const flowDiv = document.getElementById(`device-flow-${providerId}`);
+                    const userCodeEl = document.getElementById(`device-usercode-${providerId}`);
+                    const verifyUrlEl = document.getElementById(`device-verifyurl-${providerId}`);
+                    const statusEl = document.getElementById(`device-status-${providerId}`);
+                    if (flowDiv && userCodeEl && verifyUrlEl) {
+                        userCodeEl.textContent = data.user_code || '';
+                        verifyUrlEl.textContent = data.verification_uri || '';
+                        verifyUrlEl.href = data.verification_uri || '#';
+                        flowDiv.classList.remove('hidden');
+                        if (statusEl) statusEl.textContent = 'Waiting for authorization...';
+                    }
+                    // Start polling
+                    startDevicePolling(providerId, data.interval || 5);
+                } else if (flowType === 'code' || flowType === 'pkce') {
+                    // Open auth URL in new window
+                    if (data.auth_url) {
+                        window.open(data.auth_url, '_blank', 'width=600,height=700');
+                        showProviderMsg(providerId, 'Authorization window opened. Complete the flow in your browser.', false);
+                    }
+                }
+            } catch (e) {
+                showProviderMsg(providerId, `Error: ${e.message}`, true);
+            }
+        }
+
+        function startDevicePolling(providerId, interval) {
+            // Clear any existing timer
+            if (devicePollTimers[providerId]) {
+                clearInterval(devicePollTimers[providerId]);
+            }
+            devicePollTimers[providerId] = setInterval(async () => {
+                try {
+                    const resp = await fetch(`/api/v2/providers/${providerId}/oauth/poll`);
+                    const data = await resp.json();
+                    const statusEl = document.getElementById(`device-status-${providerId}`);
+
+                    if (data.status === 'success') {
+                        clearInterval(devicePollTimers[providerId]);
+                        delete devicePollTimers[providerId];
+                        if (statusEl) statusEl.textContent = '✓ Authorization successful!';
+                        if (statusEl) statusEl.className = 'mt-2 text-xs text-green-400';
+                        setTimeout(loadProviders, 1000);
+                    } else if (data.status === 'expired') {
+                        clearInterval(devicePollTimers[providerId]);
+                        delete devicePollTimers[providerId];
+                        if (statusEl) statusEl.textContent = '✗ Flow expired. Please try again.';
+                        if (statusEl) statusEl.className = 'mt-2 text-xs text-red-400';
+                    } else if (data.status === 'error') {
+                        clearInterval(devicePollTimers[providerId]);
+                        delete devicePollTimers[providerId];
+                        if (statusEl) statusEl.textContent = `✗ Error: ${data.detail || 'unknown'}`;
+                        if (statusEl) statusEl.className = 'mt-2 text-xs text-red-400';
+                    }
+                    // pending → keep polling
+                } catch (e) {
+                    // Network error, keep polling
+                }
+            }, interval * 1000);
+        }
+
+        // Check for OAuth callback result in URL params
+        function checkOAuthResult() {
+            const params = new URLSearchParams(window.location.search);
+            const success = params.get('oauth_success');
+            const error = params.get('oauth_error');
+            if (success || error) {
+                switchTab('providers');
+                if (success) {
+                    setTimeout(() => showProviderMsg(success, `OAuth authorization successful for ${success}`, false), 500);
+                } else if (error) {
+                    console.error('OAuth error:', error);
+                }
+                // Clean URL
+                window.history.replaceState({}, '', window.location.pathname);
+            }
+        }
+
+        checkOAuthResult();
     </script>
 </body>
 </html>

@@ -20,6 +20,10 @@ if [[ "${1:-}" == "--force" ]]; then
   FORCE=1
 fi
 
+AUTOSTART_RAW="${AGENTCTL_AUTOSTART_AGENTS:-agent-brain_manager}"
+AUTOSTART_RAW="${AUTOSTART_RAW//,/ }"
+read -r -a AUTOSTART_TARGETS <<<"$AUTOSTART_RAW"
+
 mkdir -p "$MARKER_DIR"
 
 if [[ "$FORCE" -eq 0 && -f "$MARKER_FILE" ]]; then
@@ -221,8 +225,12 @@ if [[ "$MISSING" -eq 1 ]]; then
 fi
 
 if [[ -n "$PYTHON_BIN" ]]; then
-  run_step "apply agent configs" "$PYTHON_BIN" "$AGENTCTL" apply-config --all --apply --force
-  run_step "start all agents" "$PYTHON_BIN" "$AGENTCTL" start --all --apply --force
+  if [[ "${#AUTOSTART_TARGETS[@]}" -gt 0 ]]; then
+    run_step "apply autostart agent configs" "$PYTHON_BIN" "$AGENTCTL" apply-config "${AUTOSTART_TARGETS[@]}" --apply --force
+    run_step "start autostart agents" "$PYTHON_BIN" "$AGENTCTL" start "${AUTOSTART_TARGETS[@]}" --apply --force
+  else
+    log "skip autostart: AGENTCTL_AUTOSTART_AGENTS is empty"
+  fi
   run_step "show agent list" "$PYTHON_BIN" "$AGENTCTL" list
   run_step "show online agents" "$PYTHON_BIN" "$AGENTCTL" online
 else

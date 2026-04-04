@@ -1,0 +1,89 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# global_config.template.yaml — 项目全局配置模板
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# 由 orchestrator 在 Phase 0 (environment_init) 渲染并写入:
+#   {project_root}/state/global_config.yaml
+#
+# 渲染时替换: {project_id}, {group_id}, {sandbox_id}, {pending_id},
+#              {orchestrator_agent_id}  (来自环境变量 BRAIN_AGENT_NAME)
+#              {BRAIN_IPC_HOST}, {BRAIN_IPC_PORT}
+#              {BRAIN_AGENTCTL_HOST}, {BRAIN_AGENTCTL_PORT}
+#              {BRAIN_TASK_MANAGER_HOST}, {BRAIN_TASK_MANAGER_PORT}
+#
+# 用途:
+#   所有后续 phase 和 worker 从 {project_root}/state/global_config.yaml 读取，
+#   不重复推算命名约定、路径和服务地址。
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 1. 项目身份
+# ─────────────────────────────────────────────────────────────────────────────
+project_id: "{project_id}"
+group_id: "{group_id}"
+sandbox_id: "{sandbox_id}"
+pending_id: "{pending_id}"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 2. 命名约定
+# ─────────────────────────────────────────────────────────────────────────────
+naming:
+  # 所有 project-scoped agent 的 agent_id 前缀
+  # spawn 时: {agent_prefix}{role_key}_{slot:02d}
+  # 示例:
+  #   agent_brain_dashboard_developer_01
+  #   agent_brain_dashboard_qa_01
+  #   agent_brain_dashboard_devops_01
+  agent_prefix: "agent_{group_id}_{project_id}_"
+
+  # task_id 前缀（task modeling 时使用）
+  # 示例: brain_dashboard_TASK_001
+  task_prefix: "{group_id}_{project_id}_TASK_"
+
+  # sandbox 内 supervisor program 名称前缀（如果用 supervisord 管理 worker 进程）
+  supervisor_prefix: "proj_{project_id}_"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 3. IPC 配置
+# ─────────────────────────────────────────────────────────────────────────────
+ipc:
+  # orchestrator 自身的 IPC agent_id（来自环境变量 BRAIN_AGENT_NAME）
+  # worker 向 orchestrator 回报 TASK_COMPLETE 时，to 字段填这个值
+  orchestrator_agent_id: "{orchestrator_agent_id}"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 4. 路径约定
+# ─────────────────────────────────────────────────────────────────────────────
+paths:
+  # brain 只读挂载根目录
+  brain_root: "/xkagent_infra/brain"
+
+  # 本 workflow 所在目录（orchestrator 从此处加载 phase 文件）
+  # 注意: 此路径是设计时路径，实际运行时 orchestrator 从只读挂载访问
+  # 容器挂载: host_xkagent_infra:/xkagent_infra:ro
+  # 容器内访问: /xkagent_infra/tmp/orchestrator_project_coding
+  workflow_root: "/xkagent_infra/tmp/orchestrator_project_coding"
+
+  # 启动参数（brain devops 在项目目录下预写，orchestrator 启动时读取）
+  payload_file: "{project_root}/payload/project_init.yaml"
+
+  # 项目目录
+  # 已有项目: /xkagent_infra/groups/{group_id}/projects/{project_id}
+  # 草稿项目: /xkagent_infra/groups/draft/{project_id}
+  project_root: "{project_root}"
+
+  # orchestrator 状态文件根目录
+  state_dir: "{project_root}/state"
+
+  # task 产出物根目录（worker 写入 tasks/{task_id}/ 子目录）
+  artifacts_dir: "{project_root}/artifacts"
+
+  # agent 运行时根目录（spawn 时在此创建 {agent_id}/ 子目录）
+  agents_dir: "{project_root}/runtime/agents"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 5. Brain 服务地址
+# ─────────────────────────────────────────────────────────────────────────────
+services:
+  ipc:          "{BRAIN_IPC_HOST}:{BRAIN_IPC_PORT}"
+  agentctl:     "{BRAIN_AGENTCTL_HOST}:{BRAIN_AGENTCTL_PORT}"
+  task_manager: "{BRAIN_TASK_MANAGER_HOST}:{BRAIN_TASK_MANAGER_PORT}"

@@ -1,0 +1,32 @@
+service_prompt_contract:
+  id: "MWF-CFG-004"
+  version: "0.1"
+  intent: "定义 agent/orchestrator 面向 config registry service 的使用约束与 prompt 规则"
+
+applies_to:
+  - "project orchestrator"
+  - "bootstrap pipeline"
+  - "worker agents creating auxiliary services"
+  - "release manager"
+
+mandatory_prompt_rules:
+  - "不得自行选择正式监听端口，必须先调用 ALLOCATE_PORT"
+  - "不得在未 REGISTER_SERVICE 的情况下将 endpoint 作为正式依赖"
+  - "不得绕过 REGISTER_SUPERVISOR 直接把长期进程挂入 supervisor"
+  - "读取配置时优先调用 GET_CONFIG/GET_ENV_BASELINE，不得假设环境变量完整存在"
+  - "本地配置 override 若影响正式执行，必须回写 PUT_CONFIG_VERSION"
+  - "创建新 service 前必须先解析 service_name、owner_role、healthcheck、config_version"
+
+agent_decision_model:
+  preferred_order:
+    - "resolve baseline and env config"
+    - "allocate resources"
+    - "register service and supervisor"
+    - "start process"
+    - "register endpoint"
+    - "emit config/runtime logs"
+
+failure_rules:
+  - "配置缺失时不得继续装配正式 service"
+  - "端口冲突时不得 fallback 到随机端口"
+  - "supervisor registration 失败时应进入 bootstrap hold 或 runtime escalation"

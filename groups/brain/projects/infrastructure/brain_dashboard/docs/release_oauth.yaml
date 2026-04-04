@@ -1,0 +1,71 @@
+---
+# Release Record
+# Feature: brain-dashboard-oauth-config-2026-03-17
+
+release:
+  feature_id: brain-dashboard-oauth-config-2026-03-17
+  version: 2.3.0
+  release_date: "2026-03-17"
+  status: RELEASED
+
+  summary: >
+    Provider OAuth Configuration UI for brain_dashboard.
+    Enables configuring all LLM provider OAuth credentials (copilot, openai,
+    gemini, alibaba, bytedance, minimax, claude) through the web dashboard
+    instead of manually editing providers.yaml.
+
+  changes:
+    - file: src/api/v2/providers.py
+      type: new
+      description: >
+        Provider OAuth Configuration API (560 lines).
+        Endpoints: GET/providers, GET/providers/{id}, POST/providers/{id}/config,
+        POST/providers/{id}/toggle, POST/providers/{id}/oauth/start,
+        GET/providers/{id}/oauth/poll.
+        Supports 4 OAuth flow types: authorization_code, device_code, gemini, api_key.
+        Secret masking via _mask() helper (shows first 8 chars + ***).
+
+    - file: src/api/v2/__init__.py
+      type: modified
+      description: Registered providers router.
+
+    - file: src/app.py
+      type: modified
+      description: Added GET /oauth2callback endpoint for OAuth code flow callback.
+
+    - file: src/web/templates/index.html
+      type: modified
+      description: >
+        Added Providers tab with provider cards for all auth types.
+        JS: loadProviders, renderProviderCard, saveApiKey, toggleProvider,
+        startOAuthFlow, startDevicePolling, checkOAuthResult.
+
+    - file: tests/test_providers.py
+      type: new
+      description: 25 unit tests covering all API endpoints and the _mask helper.
+
+    - file: deploy/Dockerfile.dev
+      type: modified
+      description: Added tmux, Node.js 22.x, pyyaml, runtime workspace dirs, env vars.
+
+    - file: deploy/compose.dev.yaml
+      type: modified
+      description: Changed to network_mode host (required for proxy connectivity), port 18082.
+
+  test_results:
+    unit_tests:
+      total: 25
+      passed: 25
+      failed: 0
+      duration: "0.53s"
+    smoke_tests:
+      - endpoint: "GET /api/v2/providers"
+        result: "7 providers returned, sorted by priority"
+        status: PASS
+      - endpoint: "GET /api/v2/providers/copilot"
+        result: "returns auth_status with masked token"
+        status: PASS
+
+  acceptance: APPROVED
+  approved_by: orchestrator_01
+  approved_at: "2026-03-17T00:30:00+08:00"

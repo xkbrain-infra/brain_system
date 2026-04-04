@@ -1,20 +1,63 @@
 {
   "version": 1,
   "agent_name": "agent-brain_devops",
+  "skill_bindings": {
+    "source": "/xkagent_infra/brain/infrastructure/config/agentctl/skill_bindings.yaml",
+    "resolved_skills": [
+      "brain-publish",
+      "lep",
+      "agentctl",
+      "tmux",
+      "sandbox",
+      "task-manager"
+    ],
+    "role_skills": [
+      "brain-publish",
+      "lep",
+      "agentctl",
+      "tmux",
+      "sandbox",
+      "task-manager"
+    ],
+    "agent_skills": [],
+    "workflow_skills": []
+  },
+  "lep_bindings": {
+    "source": "/xkagent_infra/brain/infrastructure/config/agentctl/lep_bindings.yaml",
+    "resolved_lep_profiles": [
+      "runtime-ops"
+    ],
+    "role_lep_profiles": [
+      "runtime-ops"
+    ],
+    "agent_lep_profiles": [],
+    "workflow_lep_profiles": []
+  },
   "runtime": {
     "command": "claude",
     "args": [
-      "--model",
-      "alibaba/kimi-k2.5",
       "--dangerously-skip-permissions",
-      "agent-brain_devops"
+      "agent-brain_devops\n\n[Brain Skill Bindings]\nEnabled skills: brain-publish, lep, agentctl, tmux, sandbox, task-manager.\nWhen a task matches these skills or the bound workflow, load and follow the corresponding skill before execution.\nRole defaults: brain-publish, lep, agentctl, tmux, sandbox, task-manager.\n\n[Brain LEP Profiles]\nEnabled LEP profiles: runtime-ops.\nThese LEP profiles tighten hook enforcement and should be treated as mandatory operating constraints.\nRole defaults: runtime-ops."
     ],
     "env": {
-      "IS_SANDBOX": "1",
-      "BRAIN_TRANSPORT_MODE": "proxy",
-      "BRAIN_AGENT_NAME": "agent-brain_devops"
+      "BRAIN_AGENT_SCOPE": "group",
+      "ANTHROPIC_BASE_URL": "http://127.0.0.1:8210",
+      "ANTHROPIC_AUTH_TOKEN": "bgw-client-v1-e241c550d39723dd03248d405ce157d5",
+      "ANTHROPIC_MODEL": "minimax/minimax-m2.7",
+      "ANTHROPIC_SMALL_FAST_MODEL": "minimax/minimax-m2.7",
+      "ANTHROPIC_DEFAULT_SONNET_MODEL": "minimax/minimax-m2.7",
+      "ANTHROPIC_DEFAULT_OPUS_MODEL": "minimax/minimax-m2.7",
+      "ANTHROPIC_DEFAULT_HAIKU_MODEL": "minimax/minimax-m2.7",
+      "API_TIMEOUT_MS": "3000000",
+      "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+      "BRAIN_SKILL_BINDINGS_FILE": "/xkagent_infra/brain/infrastructure/config/agentctl/skill_bindings.yaml",
+      "BRAIN_ENABLED_SKILLS": "brain-publish,lep,agentctl,tmux,sandbox,task-manager",
+      "BRAIN_ROLE_DEFAULT_SKILLS": "brain-publish,lep,agentctl,tmux,sandbox,task-manager",
+      "BRAIN_LEP_BINDINGS_FILE": "/xkagent_infra/brain/infrastructure/config/agentctl/lep_bindings.yaml",
+      "BRAIN_ENABLED_LEP_PROFILES": "runtime-ops",
+      "BRAIN_ROLE_DEFAULT_LEP_PROFILES": "runtime-ops"
     },
-    "agent_type": "alibaba",
+    "agent_type": "minimax",
     "use_claude_cli": true
   }
 }

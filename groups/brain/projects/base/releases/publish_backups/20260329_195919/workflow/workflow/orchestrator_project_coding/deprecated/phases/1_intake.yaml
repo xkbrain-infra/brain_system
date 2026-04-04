@@ -1,0 +1,102 @@
+# Phase 1: INTAKE — 收集需求、收敛未知项
+# 来源: workflow_core.yaml → meta.phase_files.intake
+# steps: 1_1 (capture_requirement), 1_2 (classify_unknowns)
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PHASE 1: INTAKE — 收集需求、收敛未知项
+# ═══════════════════════════════════════════════════════════════════════════════
+
+steps:
+
+  # ── 1.1 ────────────────────────────────────────────────────────────────────
+  - step_id: "MWF-OPC:1_1:capture_requirement"
+    phase: intake
+    who:
+      executor: brain_pmo
+      profile: coordinator
+      context: "在 brain infra 内执行，sandbox 还不存在"
+    purpose: "把用户原始需求结构化成 intake_record"
+
+    do:
+      - action: "向用户提问，收集以下信息"
+        tool: "对话 / AskUserQuestion"
+        details: |
+          必须收集:
+            - goal: 项目要达成什么
+            - scope_in: 包含什么
+            - scope_out: 明确不做什么
+            - acceptance: 什么算"做完了"
+            - constraints: 技术约束、时间约束、资源约束
+            - priority: critical / high / normal / low
+            - requested_roles: 需要哪些 agent 角色 (至少: orchestrator)
+            - baseline_image: 用哪个 Docker 基础镜像 (默认: brain-sandbox-base:latest)
+          可选收集:
+            - target_stack: 语言/框架偏好
+            - reference_projects: 参考项目
+            - integration_targets: 需要对接的外部系统
+      - action: "写入 intake_record"
+        tool: "file_write"
+        target: "state/intake.yaml"
+
+    artifact: "state/intake.yaml"
+    artifact_schema:
+      project_id: string
+      group_id: string
+      goal: string
+      scope_in: [string]
+      scope_out: [string]
+      acceptance_criteria: [string]
+      constraints: [string]
+      priority: "critical | high | normal | low"
+      requested_roles: [{role_key: string, count: int, required: bool}]
+      baseline_image: "brain-sandbox-base:latest"
+      target_stack: "optional"
+      reference_projects: "optional"
+      integration_targets: "optional"
+      intake_decision: "ACCEPTED | HOLD | REJECTED"
+
+    check: "goal + scope_in + acceptance_criteria 都非空；intake_decision=ACCEPTED"
+    on_success: "MWF-OPC:1_2:classify_unknowns"
+    on_retry: "信息不足 → 继续 AskUserQuestion"
+    on_blocked: "用户无法提供关键信息 → HOLD"
+
+  # ── 1.2 ────────────────────────────────────────────────────────────────────
+  - step_id: "MWF-OPC:1_2:classify_unknowns"
+    phase: intake
+    who:
+      executor: brain_pmo
+      profile: coordinator
+    purpose: "把 intake 中的未知项分类，避免把模糊需求带入后续阶段"
+
+    do:
+      - action: "读 state/intake.yaml，识别所有不确定/模糊的点"
+        tool: "file_read + LLM reasoning"
+      - action: "对每个未知项分类"
+        tool: "file_write"
+        target: "state/decisions.yaml"
+        details: |
+          分类规则:
+            assumption: 可以先假设、后续验证
+            research:   需要技术调研才能确定
+            ask_user:   需要用户补充信息
+            blocker:    缺少这个就无法推进
+      - action: "如果有 ask_user 项，立即向用户提问"
+        tool: "AskUserQuestion"
+
+    artifact: "state/decisions.yaml"
+    artifact_schema:
+      project_id: string
+      items:
+        - id: "DEC-001"
+          question: string
+          type: "assumption | research | ask_user | blocker"
+          content: string
+          owner: string
+          status: "open | resolved | escalated"
+          resolution: "resolved 时填写"
+
+    check: "没有未分类的 TBD 项；没有 ask_user 等待回复"
+    on_success: "MWF-OPC:2_1:research_if_needed"
+    on_retry: "等用户回复 ask_user 项后重试"
+    on_blocked: "存在无法自行解决的 blocker → escalate"
+

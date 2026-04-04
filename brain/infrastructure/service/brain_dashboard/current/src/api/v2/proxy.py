@@ -100,7 +100,7 @@ async def get_proxy_routes() -> dict[str, Any]:
         # Fallback to static config based on gateway config
         routes_data = {
             "platforms": {"telegram": "agent-brain_frontdesk"},
-            "keywords": [{"pattern": "(?i)(deploy|release)", "target": "agent-system_devops"}],
+            "keywords": [],
             "default": "agent-brain_frontdesk",
         }
 

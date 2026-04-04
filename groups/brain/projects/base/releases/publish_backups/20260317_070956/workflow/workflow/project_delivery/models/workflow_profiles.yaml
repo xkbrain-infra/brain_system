@@ -1,0 +1,67 @@
+workflow_profiles:
+  id: "MWF-PROFILE-001"
+  version: "0.1"
+  intent: "定义 multicore workflow 的适用类别、适用条件与非适用条件"
+
+profiles:
+  software_dev:
+    role: "default_profile"
+    description: "软件工程交付型 workflow"
+    applies_to:
+      - "feature delivery"
+      - "bugfix"
+      - "refactor"
+      - "integration testing"
+      - "release and rollback"
+      - "post-release audit"
+    includes:
+      - "code implementation"
+      - "review"
+      - "test"
+      - "release"
+      - "audit"
+    required_capabilities:
+      - "project orchestrator"
+      - "task graph"
+      - "timer trigger"
+      - "global task sync"
+      - "release gate"
+      - "audit feedback"
+
+  infra_ops:
+    description: "基础设施与运维变更型 workflow"
+    applies_to:
+      - "environment provisioning"
+      - "service rollout"
+      - "config migration"
+      - "operational remediation"
+    differences_from_software_dev:
+      - "deploy/recovery tasks 比例更高"
+      - "environment lock 更强"
+      - "release gate 更接近变更窗口管理"
+
+  research_only:
+    description: "纯研究/分析任务"
+    applies_to:
+      - "architecture evaluation"
+      - "technology research"
+      - "root cause investigation"
+    not_suitable_for_full_multicore_delivery: true
+    reason: "不一定需要 release workflow 和环境交付链"
+
+  content_only:
+    description: "非工程内容生产任务"
+    applies_to:
+      - "writing"
+      - "planning"
+      - "editing"
+    not_suitable_for_full_multicore_delivery: true
+    reason: "task/release/audit 结构与软件交付不同"
+
+current_scope:
+  selected_profile: "software_dev"
+  note: "当前 multicore workflow 提案默认面向软件工程交付，不应被误解为任意任务类型的统一模板"
+
+non_goals:
+  - "本提案不直接覆盖纯内容生产 workflow"
+  - "本提案不直接覆盖无发布链的轻量研究任务"

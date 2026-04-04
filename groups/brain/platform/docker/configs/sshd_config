@@ -9,7 +9,7 @@ PubkeyAuthentication yes
 AuthorizedKeysFile .ssh/authorized_keys
 MaxAuthTries 20
 
-PasswordAuthentication no
+PasswordAuthentication yes
 ChallengeResponseAuthentication no
 UsePAM yes
 

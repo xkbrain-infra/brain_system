@@ -1,0 +1,22 @@
+brain_manager_publish_service:
+  id: "MWF-BM-001"
+  version: "0.1"
+  intent: "定义 brain manager 对 runtime architecture package 的校验、发布、归档与上提职责"
+
+positioning:
+  role: "control_plane_publisher"
+  owner: "agent-brain-manager"
+  description: "brain manager 负责读取 proposal MANIFEST/index，校验 package 完整性，发布到 runtime，必要时推动上提到 base"
+
+responsibilities:
+  - "读取 MANIFEST.yaml 与 index.yaml 作为唯一发布依据"
+  - "校验 proposal package 完整性、一致性与目标路径合法性"
+  - "按 publish_mapping 执行 rename/copy/upsert"
+  - "执行 runtime package 级 build/publish/verify"
+  - "归档 proposal 批次并记录发布结果"
+  - "当 runtime 验证成熟时，推动 extraction 到 base"
+
+must_not:
+  - "不得猜测未在 MANIFEST/index 中声明的目标路径"
+  - "不得手工改写 publish_mapping 的语义"
+  - "不得在未通过验证前直接上提到 base"

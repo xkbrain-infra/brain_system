@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Scope-safe wrapper for sandbox black-box operations.
+# Agents should call this entrypoint instead of referencing any implementation
+# path under /xkagent_infra/groups directly.
+exec /xkagent_infra/brain/infrastructure/service/brain_sandbox_service/bin/brain_sandbox_service "$@"

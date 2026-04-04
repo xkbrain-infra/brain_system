@@ -1,0 +1,241 @@
+# Sandbox 全局配置
+# 描述 sandbox 容器内有什么 —— 基础镜像内容、预装工具、内置服务、挂载规则、资源配置
+#
+# 文件位置: /xkagent_infra/groups/brain/projects/base/config/sandbox.global.yaml
+# 规范引用: /xkagent_infra/groups/brain/platform/sandbox/index.yaml
+
+---
+sandbox_global:
+  version: "2.1.0"
+  last_updated: "2026-03-17"
+  description: "Brain Sandbox 全局配置 - 定义 sandbox 容器内置环境"
+
+  # ============================================
+  # 基础镜像
+  # FROM ubuntu:24.04 → brain/docker-base → brain-sandbox-base
+  # ============================================
+  base_image:
+    name: brain-sandbox-base
+    version: "2.1.0"
+    dockerfile: "/xkagent_infra/groups/brain/projects/base/sandbox/templates/Dockerfile.base"
+    base_from: brain/docker-base:latest
+
+  # ============================================
+  # 预装环境（继承自 brain/docker-base）
+  # ============================================
+  preinstalled:
+    system_packages:
+      - python3          # 3.11+
+      - python3-venv
+      - nodejs           # 24.x
+      - git
+      - openssh-server
+      - supervisor
+      - tmux
+      - docker.io
+      - docker-compose-v2
+      - jq
+      - ripgrep
+      - fd-find
+      - vim
+      - zsh
+      - htop
+      - build-essential
+      - openjdk-21-jre-headless
+
+    python_env:
+      venv: /opt/venv
+      active_in_path: true
+      package_manager: uv
+      packages_locked_at: "groups/brain/platform/docker/configs/requirements.lock.txt"
+
+    ai_cli_tools:
+      - name: claude-code
+        package: "@anthropic-ai/claude-code"
+        install: npm global
+      - name: gemini-cli
+        package: "@google/gemini-cli"
+        install: npm global
+      - name: codex
+        package: "@openai/codex"
+        install: npm global
+      - name: copilot
+        package: "@github/copilot"
+        install: npm global
+
+    brain_cli_tools:
+      - name: agentctl
+        description: "Agent 控制工具"
+      - name: ipcsend
+        description: "IPC 消息发送"
+
+    mcp_servers:
+      - name: brain_ipc
+        description: "IPC 通信 MCP 服务"
+      - name: brain_memory
+        description: "持久化记忆 MCP 服务"
+
+  # ============================================
+  # 内置服务（Supervisor 管理）
+  # ============================================
+  services:
+    required:
+      - name: sshd
+        description: "SSH 服务"
+        container_port: 22
+        default_host_port: 9022
+        supervisor_program: sshd
+
+    optional:
+      - name: brain_ipc
+        description: "IPC 守护进程"
+        socket: /tmp/brain_ipc.sock
+        supervisor_program: brain_ipc
+
+  # ============================================
+  # 目录结构（容器内）
+  # ============================================
+  container_layout:
+    working_dir: /workspace/project
+    directories:
+      - /workspace/project    # 项目源码（bind mount）
+      - /workspace/data       # 实例隔离数据卷
+      - /workspace/logs       # 实例隔离日志卷
+      - /workspace/cache      # 实例隔离缓存卷
+      - /workspace/tmp        # 临时文件
+    symlinks:
+      /brain: /xkagent_infra/brain
+      /groups: /xkagent_infra/groups
+      /app: /xkagent_infra/app
+
+  # ============================================
+  # 挂载规则
+  # 只挂载项目所属 group，不挂载全局 groups
+  # ============================================
+  volumes:
+    bind_mounts:
+      - name: project_source
+        host_path: "${PROJECT_ROOT}"           # 项目源码目录
+        container_path: /workspace/project
+        mode: rw
+
+      - name: group_dir
+        host_path: "/xkagent_infra/groups/${GROUP_ID}"  # 仅挂载当前项目所属 group
+        container_path: "/groups/${GROUP_ID}"
+        mode: rw
+        note: "按项目归属 group 挂载，不共享全局 groups"
+
+    named_volumes:
+      - name: "sandbox_data_${INSTANCE_ID}"
+        container_path: /workspace/data
+        description: "实例隔离数据卷"
+
+      - name: "sandbox_logs_${INSTANCE_ID}"
+        container_path: /workspace/logs
+        description: "实例隔离日志卷"
+
+      - name: "sandbox_cache_${INSTANCE_ID}"
+        container_path: /workspace/cache
+        description: "实例隔离缓存卷"
+
+  # ============================================
+  # 环境变量（容器内注入）
+  # ============================================
+  environment:
+    required:
+      - SANDBOX_TYPE          # development | testing | staging | audit
+      - SANDBOX_INSTANCE_ID
+      - PROJECT_NAME
+      - GROUP_ID
+    optional:
+      - BRAIN_GATEWAY_URL     # 默认 http://host.docker.internal:8200
+      - BRAIN_IPC_SOCKET      # 默认 /tmp/brain_ipc.sock
+    preset:
+      PROJECT_ROOT: /workspace/project
+      PYTHONPATH: /workspace/project/src:/brain/infrastructure/service/utils/ipc/src
+
+  # ============================================
+  # 网络
+  # ============================================
+  network:
+    driver: bridge
+    naming: "{group}-{type}-{instance_id}"
+
+  # ============================================
+  # 端口
+  # ============================================
+  ports:
+    - name: ssh
+      container: 22
+      host_default: 9022
+    - name: app
+      container: 8080
+      host_var: HOST_PORT_APP
+    - name: debug
+      container: 5678
+      host_var: HOST_PORT_DEBUG
+
+  # ============================================
+  # 资源默认值
+  # ============================================
+  resources:
+    defaults:
+      cpu_limit: "2.0"
+      memory_limit: "2G"
+      cpu_reservation: "0.5"
+      memory_reservation: "512M"
+
+  # ============================================
+  # 部署类型
+  # ============================================
+  deployment_types:
+    development:
+      description: "开发调试"
+      features: [hot_reload, debug_tools, volume_rw]
+      restart_policy: "no"
+      max_duration: "8h"
+
+    testing:
+      description: "自动化测试 / 集成测试"
+      features: [test_runner, coverage_report]
+      restart_policy: "no"
+      clean_on_exit: true
+      max_duration: "2h"
+
+    staging:
+      description: "预发布验证"
+      features: [prod_like, smoke_test]
+      restart_policy: "on-failure"
+      max_duration: "24h"
+
+    audit:
+      description: "代码审查 / 安全检查"
+      features: [audit_tools, immutable, log_all]
+      restart_policy: "no"
+      max_duration: "72h"
+
+  # ============================================
+  # Brain 集成（可选连接）
+  # ============================================
+  brain_integration:
+    gateway:
+      url: "${BRAIN_GATEWAY_URL:-http://host.docker.internal:8200}"
+      description: "连接宿主机 Brain Gateway"
+    ipc:
+      socket: /tmp/brain_ipc.sock
+      description: "容器内 IPC 守护，供 MCP 工具使用"
+    service_dependencies:
+      optional:
+        - brain_gateway
+        - brain_task_manager
+      mockable:
+        - brain_telegram_api
+        - brain_google_api
+
+  # ============================================
+  # 命名规范
+  # ============================================
+  naming:
+    container: "{group}-{project}-{type}-{instance_id}"
+    network: "{group}-{type}-{instance_id}"
+    volume: "{group}_{project}_{type}_{instance_id}_{purpose}"

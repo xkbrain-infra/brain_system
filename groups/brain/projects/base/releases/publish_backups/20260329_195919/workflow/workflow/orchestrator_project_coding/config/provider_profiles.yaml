@@ -1,0 +1,299 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Provider Profiles — 顶层 provider/model 配置
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# 设计原则:
+#   1. Workflow 只引用 profile key（如 "coordinator" / "coder"），不写死 provider/model
+#   2. 实际 provider/model 由本文件决定，支持:
+#      - 多 provider 混合（anthropic + openai + copilot + ...）
+#      - 单 provider 全覆盖（全用 copilot / 全用 anthropic）
+#      - 按项目覆盖（intake.yaml 中 profile_overrides）
+#   3. 切换 provider 只改这一个文件，workflow 不动
+#
+# 用法:
+#   workflow 中的 who 块:
+#     who:
+#       executor: brain_pmo
+#       profile: coordinator          # ← 引用 profile key
+#
+#   运行时解析:
+#     profile "coordinator" → providers.profiles.coordinator → provider + model
+#
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 1. 可用 Provider 声明
+# ─────────────────────────────────────────────────────────────────────────────
+providers:
+
+  available:
+    anthropic:
+      display_name: "Anthropic Claude"
+      agent_type: claude
+      models:
+        - id: claude-opus-4-6
+          tier: flagship
+          strengths: ["复杂推理", "架构设计", "多步决策"]
+        - id: claude-sonnet-4-6
+          tier: standard
+          strengths: ["协调", "tool use", "审计", "治理"]
+
+    openai:
+      display_name: "OpenAI Codex / GPT"
+      agent_type: codex
+      models:
+        - id: gpt-5.3-codex
+          tier: standard
+          strengths: ["代码生成", "测试编写", "技术调研", "多来源信息整合"]
+
+    copilot:
+      display_name: "GitHub Copilot"
+      agent_type: copilot
+      models:
+        - id: copilot-agent
+          tier: standard
+          strengths: ["代码生成", "代码补全", "PR review", "仓库上下文理解"]
+
+    gemini:
+      display_name: "Google Gemini"
+      agent_type: gemini
+      models:
+        - id: gemini-2.5-pro
+          tier: standard
+          strengths: ["长上下文", "多模态", "代码生成", "信息整合"]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 2. Profile 定义 — 按职能分类，workflow 引用这些 key
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# 每个 profile 定义:
+#   - provider + model: 默认使用
+#   - fallback: 默认不可用时的备选
+#   - capabilities: 该 profile 需要什么能力（用于验证 provider 兼容性）
+#   - ipc_method: 该 provider 的 IPC 通信方式
+#
+# Profile 选型维度:
+#   ┌────────────────────┬─────────────────────────────────────────────────────┐
+#   │ 维度               │ 说明                                               │
+#   ├────────────────────┼─────────────────────────────────────────────────────┤
+#   │ tool_use_precision │ 需要精确的 MCP/function call                       │
+#   │ code_generation    │ 大段代码生成、文件编辑                             │
+#   │ reasoning          │ 多步推理、架构决策、路由判断                       │
+#   │ information_synthesis │ 多来源信息整合、调研对比                       │
+#   │ coordination       │ 多 agent 调度、状态管理                           │
+#   │ ui_ux              │ 前端/交互推理                                     │
+#   │ shell_infra        │ shell 操作、环境配置                              │
+#   └────────────────────┴─────────────────────────────────────────────────────┘
+
+  profiles:
+
+    # ── coordinator: 协调、routing、多 agent 调度 ──
+    coordinator:
+      description: "协调多 agent 工作流，step routing，状态管理"
+      provider: anthropic
+      model: claude-sonnet-4-6
+      fallback:
+        provider: copilot
+        model: copilot-agent
+      capabilities_required: [tool_use_precision, coordination, reasoning]
+      ipc_method: mcp
+
+    # ── coder: 代码生成、实现、测试编写 ──
+    coder:
+      description: "代码生成、文件编辑、实现功能"
+      provider: openai
+      model: gpt-5.3-codex
+      fallback:
+        provider: copilot
+        model: copilot-agent
+      capabilities_required: [code_generation]
+      ipc_method: cli
+
+    # ── researcher: 技术调研、方案对比 ──
+    researcher:
+      description: "技术调研、信息整合、方案对比"
+      provider: openai
+      model: gpt-5.3-codex
+      fallback:
+        provider: gemini
+        model: gemini-2.5-pro
+      capabilities_required: [information_synthesis, code_generation]
+      ipc_method: cli
+
+    # ── reviewer: 代码审查、架构评审 ──
+    reviewer:
+      description: "代码 review、架构评审、质量检查"
+      provider: anthropic
+      model: claude-sonnet-4-6
+      fallback:
+        provider: copilot
+        model: copilot-agent
+      capabilities_required: [reasoning, code_generation]
+      ipc_method: mcp
+
+    # ── infra: shell 操作、环境配置、部署 ──
+    infra:
+      description: "Docker 操作、环境配置、部署、回滚"
+      provider: anthropic
+      model: claude-sonnet-4-6
+      fallback:
+        provider: copilot
+        model: copilot-agent
+      capabilities_required: [shell_infra, tool_use_precision]
+      ipc_method: mcp
+
+    # ── ui_dev: 前端开发、UI/UX ──
+    ui_dev:
+      description: "前端开发、UI 组件、交互实现"
+      provider: anthropic
+      model: claude-sonnet-4-6
+      fallback:
+        provider: copilot
+        model: copilot-agent
+      capabilities_required: [ui_ux, code_generation]
+      ipc_method: mcp
+
+    # ── auditor: 审计、合规检查 ──
+    auditor:
+      description: "执行审计、证据核查、流程合规"
+      provider: anthropic
+      model: claude-sonnet-4-6
+      fallback:
+        provider: gemini
+        model: gemini-2.5-pro
+      capabilities_required: [reasoning]
+      ipc_method: mcp
+
+    # ── architect: 架构设计、复杂推理 ──
+    architect:
+      description: "架构设计、技术决策、模块划分、复杂度评估"
+      provider: openai
+      model: gpt-5.3-codex
+      fallback:
+        provider: anthropic
+        model: claude-opus-4-6
+      capabilities_required: [reasoning, code_generation, information_synthesis]
+      ipc_method: cli
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 3. Role → Profile 映射 — 每个 agent role 使用哪个 profile
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# 这是"角色分配表"。workflow step 中的 executor role 通过这个表
+# 找到对应的 profile，再通过 profile 找到 provider/model。
+#
+# 覆盖链:
+#   role_profile_map (本文件) → profile_overrides (intake.yaml) → 最终 provider/model
+#
+
+role_profile_map:
+
+  # brain 侧角色（sandbox 外执行）
+  brain_pmo:         coordinator
+  brain_researcher:  researcher
+  brain_devops:      infra
+
+  # project 侧角色（sandbox 内执行）
+  project_orchestrator: coordinator
+  architect:           architect
+  developer:           coder
+  dev_api:             coder
+  dev_ui:              ui_dev
+  qa:                  coder        # QA 写测试脚本也是 coder profile
+  devops:              infra
+  researcher:          researcher
+  project_auditor:     auditor
+  pmo:                 coordinator
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 4. IPC 方法映射 — provider 决定 IPC 通信方式
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# 每个 provider 的 agent 通过不同方式调用 IPC:
+#
+#   ┌──────────────┬────────────┬─────────────────────────────────────────────┐
+#   │ ipc_method   │ providers  │ 实现                                       │
+#   ├──────────────┼────────────┼─────────────────────────────────────────────┤
+#   │ mcp          │ anthropic  │ .mcp.json + MCP tool call                  │
+#   │              │ copilot    │ .mcp.json + MCP tool call (copilot 支持)   │
+#   │ cli          │ openai     │ ipc_cli.sh + shell command                 │
+#   │              │ gemini     │ ipc_cli.sh + shell command                 │
+#   └──────────────┴────────────┴─────────────────────────────────────────────┘
+
+ipc_method_by_provider:
+  anthropic: mcp
+  copilot:   mcp
+  openai:    cli
+  gemini:    cli
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 5. 项目级覆盖 — intake.yaml 中可选字段
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# 项目可以在 intake.yaml 中覆盖默认 profile 配置:
+#
+#   profile_overrides:
+#     coder:
+#       provider: copilot
+#       model: copilot-agent
+#       reason: "本项目只用 GitHub Copilot"
+#
+#     coordinator:
+#       provider: copilot
+#       model: copilot-agent
+#       reason: "全 copilot 方案"
+#
+# 预设方案 (preset):
+#
+#   all_anthropic:
+#     description: "所有角色使用 Anthropic Claude"
+#     overrides:
+#       coder:      {provider: anthropic, model: claude-sonnet-4-6}
+#       researcher: {provider: anthropic, model: claude-sonnet-4-6}
+#       architect:  {provider: anthropic, model: claude-opus-4-6}
+#
+#   all_copilot:
+#     description: "所有角色使用 GitHub Copilot"
+#     overrides:
+#       coordinator: {provider: copilot, model: copilot-agent}
+#       coder:       {provider: copilot, model: copilot-agent}
+#       researcher:  {provider: copilot, model: copilot-agent}
+#       reviewer:    {provider: copilot, model: copilot-agent}
+#       infra:       {provider: copilot, model: copilot-agent}
+#       ui_dev:      {provider: copilot, model: copilot-agent}
+#       auditor:     {provider: copilot, model: copilot-agent}
+#       architect:   {provider: copilot, model: copilot-agent}
+#
+#   mixed_default:
+#     description: "默认混合方案（本文件定义的 profiles）"
+#     overrides: {}  # 不覆盖，使用 profiles 默认值
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 6. 解析规则 — runtime 如何确定最终 provider/model
+# ─────────────────────────────────────────────────────────────────────────────
+
+resolution_order:
+  description: |
+    确定一个 step 执行者的 provider/model 的解析顺序:
+
+    1. step.who.profile_override  (step 级显式覆盖，极少用)
+       ↓ 不存在则
+    2. intake.yaml → profile_overrides.{profile_key}  (项目级覆盖)
+       ↓ 不存在则
+    3. provider_profiles.yaml → profiles.{profile_key}  (本文件默认值)
+       ↓ provider 不可用则
+    4. provider_profiles.yaml → profiles.{profile_key}.fallback  (备选)
+
+  example: |
+    step: MWF-OPC:1_1:capture_requirement
+    who.executor: brain_pmo
+    who.profile: coordinator
+
+    解析:
+      role_profile_map["brain_pmo"] → "coordinator"
+      intake.yaml 没有 profile_overrides.coordinator → 跳过
+      profiles.coordinator → provider: anthropic, model: claude-sonnet-4-6
+      最终: anthropic/claude-sonnet-4-6
+
+    如果用户选了 all_copilot preset:
+      intake.yaml.profile_overrides.coordinator → provider: copilot, model: copilot-agent
+      最终: copilot/copilot-agent

@@ -188,6 +188,29 @@ tmux list-sessions
 tmux attach -t agent_name
 ```
 
+### Sandbox 中 Claude 首次运行卡在 welcome/theme/trust
+
+如果 sandbox 内的 Claude Code 停在 welcome、theme 选择或 `Yes, I trust this folder`，不要只检查 runtime_home 下的 `.claude/` 目录。
+
+关键状态在 `/root/.claude.json`，而且 trust/onboarding 是按 workspace 路径保存的。例如：
+
+```json
+{
+  "projects": {
+    "/xkagent_infra/runtime/sandbox/<sandbox_id>/agents/<agent_id>": {
+      "hasTrustDialogAccepted": true,
+      "hasCompletedProjectOnboarding": true
+    }
+  }
+}
+```
+
+处理原则：
+- `numStartups` 只影响全局 onboarding，不足以跳过当前 workspace 的 trust prompt。
+- 仅复制 `/root/.claude/` 目录通常不够，必须同时处理 `/root/.claude.json`。
+- 对 Claude provider，sandbox bootstrap 应在启动 agent 前预写当前 runtime cwd 对应的 `projects[...]` 条目。
+- 如果 agent 启动后仍停在 trust/theme prompt，应视为 bootstrap 缺陷，而不是正常运行态。
+
 ## 开发
 
 ### 目录结构

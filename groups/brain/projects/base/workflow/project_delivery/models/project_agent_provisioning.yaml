@@ -1,3 +1,7 @@
+legacy_notice:
+  status: "deprecated_compatibility_copy"
+  canonical_model: "/brain/base/workflow/orchestrator_project_coding/models/project_agent_provisioning.yaml"
+
 project_agent_provisioning:
   id: "MWF-AGENT-PROVISION-001"
   version: "0.1"

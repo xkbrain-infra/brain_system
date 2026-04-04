@@ -1,0 +1,261 @@
+# /brain/base/workflow/operations/update_brain.yaml
+# update_brain 操作规范：pending -> review -> merge -> archive
+
+update_brain_workflow:
+  id: "WF-OPS-UPDATE-BRAIN-001"
+  version: "1.0"
+  owner: "agent-brain-manager"
+  intent: |
+    定义对 /brain/base/ 的变更提交、审核、合并、归档完整流程。
+    任何 agent 不得直接修改 /brain/base/，必须通过 pending 提交 + brain-manager 合并。
+
+# ============================================
+# 流程概览
+# ============================================
+#
+#   提交方 Agent                brain-manager              PMO
+#   ─────────────              ─────────────              ───
+#   0. 草稿先写到 proposals/<batch>/（可选）
+#   1. 分类完成后写文件到 pending/<batch>/base/
+#   2. 写 CHANGELOG.md / MANIFEST.yaml
+#   3. ipc_send 通知 ──────→  4. 校验 batch 结构
+#                              5. diff 预览 ──────────→  6. 审批
+#                              7. merge to /brain/base/ ←── approved
+#                              8. build & publish
+#                              9. archive pending/<batch>/
+#                             10. 通知提交方 + PMO
+
+# ============================================
+# Phase 1: Submit（提交方）
+# ============================================
+phase_submit:
+  actor: "any_agent"
+  steps:
+    - id: "S1-prepare"
+      action: "在 /xkagent_infra/runtime/update_brain/pending/{batch_id}/base/ 下按目标路径创建文件"
+      rule: |
+        目录结构必须镜像 /brain/base/ 的层级。
+        例：修改 workflow/lifecycle/project.yaml
+          → 放到 pending/{batch_id}/base/workflow/lifecycle/project.yaml
+        尚未分类完成的 DESIGN/REVIEW/patch.diff 等草稿，
+        先放到 /xkagent_infra/runtime/update_brain/proposals/{batch_id}/ 。
+
+    - id: "S2-manifest"
+      action: "在 batch 根目录创建 CHANGELOG.md；需要显式 source → target 映射时再写 MANIFEST.yaml"
+      rule: |
+        pending/{batch_id}/ 必须至少包含 CHANGELOG.md 与 base/ 或 fixes/。
+        MANIFEST.yaml 可选；存在时需满足 manifest_schema。
+
+    - id: "S3-notify"
+      action: 'ipc_send(to="agent-brain-manager", message="[DEPLOY_REQUEST] pending 已提交，batch_id: {batch_id}")'
+
+  constraints:
+    - "禁止直接修改 /brain/base/ 或 /brain/infrastructure/service/agent_abilities/src/base/"
+    - "pending/ 中不得包含可执行文件（.sh/.py/.c 的新增需 PMO 预批准）"
+    - "fixes/ 子目录用于紧急修补，独立于 base/ 映射"
+    - "pending/ 只放已完成分类的 batch；纯设计/研究草稿必须放 proposals/"
+
+# ============================================
+# Phase 2: Review（brain-manager + PMO）
+# ============================================
+phase_review:
+  actor: "agent-brain-manager"
+  steps:
+    - id: "R1-validate-manifest"
+      action: "校验 pending/{batch_id}/ 的目录结构，以及 MANIFEST.yaml（如存在）"
+      checks:
+        - "batch_id 非空且唯一"
+        - "pending/{batch_id}/ 存在"
+        - "batch 下至少包含 base/ 或 fixes/"
+        - "CHANGELOG.md 存在"
+        - "若 MANIFEST.yaml 存在，则 submitted_by 非空"
+        - "若 MANIFEST.yaml 存在，则 files[].source 文件存在"
+        - "若 MANIFEST.yaml 存在，则 files[].target 路径合法（在 /brain/base/ 层级内）"
+        - "若 MANIFEST.yaml 存在，则 files[].change 描述非空"
+
+    - id: "R2-diff"
+      action: "对每个 source→target 生成 diff 预览"
+      tool: "deploy_diff"
+
+    - id: "R3-approval"
+      action: 'ipc_send(to="PMO", message="[APPROVAL_REQUEST] update_brain batch: {batch_id}, diff 摘要: ...")'
+      rule: |
+        高风险变更（core/*.yaml, lep.yaml, hooks/）必须 PMO 显式批准。
+        低风险变更（knowledge/, guides/）brain-manager 可自行合并，但须通知 PMO。
+
+    - id: "R4-wait-approval"
+      action: "等待 PMO 回复 APPROVED / REJECTED"
+      timeout: "24h"
+      on_timeout: "通知提交方超时，pending 保留不清理"
+
+  risk_classification:
+    high_risk:
+      paths: ["spec/core/", "spec/policies/lep/", "workflow/", "hooks/"]
+      requires: "PMO explicit APPROVED"
+    low_risk:
+      paths: ["knowledge/", "spec/templates/", "evolution/"]
+      requires: "brain-manager 自行判断，事后通知 PMO"
+
+# ============================================
+# Phase 3: Merge（brain-manager）
+# ============================================
+phase_merge:
+  actor: "agent-brain-manager"
+  steps:
+    - id: "M1-merge"
+      action: "将 pending/{batch_id}/base/ 文件合并到 /brain/base/"
+      tool: "deploy_merge"
+      strategy: |
+        完整文件覆盖（不做 line-level merge）。
+        source 文件整体替换 target 文件。
+        新文件直接创建。
+
+    - id: "M2-build"
+      action: "执行 build.sh 构建发布包"
+      tool: "deploy_publish"
+
+    - id: "M3-verify"
+      action: "验证构建产物"
+      checks:
+        - "build.sh exit code == 0"
+        - "releases/ 目录生成新版本文件"
+        - "/brain/base/ 对应文件已更新"
+
+    - id: "M4-rollback-on-failure"
+      action: "构建失败时回滚"
+      tool: "deploy_rollback"
+      rule: "回滚到上一个成功版本，通知提交方和 PMO"
+
+  merge_rules:
+    strategy: "full_file_overwrite"
+    conflict_resolution: "pending 文件优先（提交方负责确保兼容性）"
+    new_file: "直接创建，目录自动建立"
+    delete: "MANIFEST.yaml 中标记 action: delete 的文件从 target 删除（须先备份）"
+
+# ============================================
+# Phase 4: Archive（brain-manager）
+# ============================================
+phase_archive:
+  actor: "agent-brain-manager"
+  steps:
+    - id: "A1-archive"
+      action: "将 pending/{batch_id}/ 目录移动到 archive/{timestamp}-{batch_id}/"
+      naming: "{YYYYMMDD}T{HHMMSS}-{batch_id_short}"
+      example: "20260222T221119-alignment-update"
+
+    - id: "A2-clean-pending"
+      action: "确认当前 batch 已从 pending/ 移除"
+      rule: "archive 后只清理当前 batch，不影响其他待审 batch"
+
+    - id: "A3-notify"
+      action: |
+        通知提交方：合并完成 + 版本号
+        通知 PMO：batch 已归档
+
+  archive_rules:
+    retention: "archive/ 保留最近 20 个批次"
+    cleanup: "超过 20 个时删除最旧的（须确认无引用）"
+
+# ============================================
+# Rollback 机制
+# ============================================
+rollback:
+  trigger:
+    - "构建失败"
+    - "发布后发现回归问题"
+    - "PMO 发起回滚指令"
+  procedure:
+    - step: "确认回滚目标版本"
+      tool: "deploy_versions"
+    - step: "执行回滚"
+      tool: "deploy_rollback"
+    - step: "验证回滚后 /brain/base/ 状态正确"
+    - step: "通知所有相关方"
+  constraint: "回滚不清理 archive/，保留完整审计轨迹"
+
+# ============================================
+# MANIFEST.yaml Schema
+# ============================================
+manifest_schema:
+  required_fields:
+    batch_id:
+      type: string
+      rule: "格式: {YYYY-MM-DD}T-{short-description}，全局唯一"
+      example: "2026-02-22T-alignment-update"
+    submitted_by:
+      type: string
+      rule: "提交者 agent 名 + 关联项目 ID"
+      example: "agent_system_dev (BS-025 post-mortem)"
+    description:
+      type: string
+      rule: "变更摘要，说明目的和影响范围"
+    files:
+      type: list
+      items:
+        source:
+          type: string
+          rule: "相对于 pending/{batch_id}/ 的路径"
+        target:
+          type: string
+          rule: "相对于 /brain/base/ 的目标路径"
+        change:
+          type: string
+          rule: "变更描述"
+        action:
+          type: string
+          default: "upsert"
+          enum: ["upsert", "delete"]
+          rule: "upsert=创建或覆盖，delete=删除目标文件"
+
+  optional_fields:
+    depends_on:
+      type: string
+      rule: "依赖的前置 batch_id（须先合并）"
+    priority:
+      type: string
+      enum: ["normal", "urgent"]
+      default: "normal"
+      rule: "urgent 跳过 PMO 等待，但须事后补批"
+
+# ============================================
+# Directory Convention
+# ============================================
+directory_convention:
+  root: "/xkagent_infra/runtime/update_brain/"
+  layout:
+    proposals/:
+      "{batch_id}/": "未完成分类的 design/research/review/patch 草稿"
+    pending/:
+      "{batch_id}/":
+        CHANGELOG.md: "批次摘要与审批说明"
+        MANIFEST.yaml: "可选；显式 source -> target 映射"
+        base/: "镜像 /brain/base/ 层级的变更文件"
+        fixes/: "紧急修补文件（不走 base/ 映射，brain-manager 单独处理）"
+    completed/:
+      "{batch_id}/": "已合并、待后续整理的批次快照"
+    archive/:
+      "{timestamp}-{batch_id}/": "已归档批次（完整快照）"
+  rules:
+    - "pending/ 可并存多个 batch，但每个 batch 必须自包含"
+    - "pending/ 根目录不得放 loose files 或 draft-only 目录"
+    - "草稿未分类完成前，必须放在 proposals/"
+    - "archive/ 目录由 brain-manager 独占管理"
+
+# ============================================
+# Validation Checklist
+# ============================================
+validation_checklist:
+  pre_merge:
+    - "pending/{batch_id}/ 存在且包含 base/ 或 fixes/"
+    - "CHANGELOG.md 存在"
+    - "MANIFEST.yaml 如存在则通过 schema 校验"
+    - "所有 source 文件存在且可读"
+    - "target 路径在 /brain/base/ 合法层级内"
+    - "高风险路径已获 PMO 批准"
+    - "diff 预览已生成并记录"
+  post_merge:
+    - "build.sh 成功执行"
+    - "/brain/base/ 目标文件内容与 source 一致"
+    - "releases/ 产物版本号递增"
+    - "pending/{batch_id}/ 已清理到 archive/"
+    - "提交方和 PMO 已收到通知"

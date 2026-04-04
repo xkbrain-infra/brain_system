@@ -1,0 +1,84 @@
+config_registry_service:
+  id: "MWF-CFG-001"
+  version: "0.1"
+  intent: "定义 brain infra 侧统一配置、资源注册、服务发现与 supervisor 注册服务"
+
+positioning:
+  role: "control_plane_service"
+  description: "config registry service 负责配置版本、端口申请、service 注册、endpoint 发现与 supervisor 注册，不负责业务编排"
+  placement: "brain infra"
+
+responsibilities:
+  - "维护 runtime config 的 versioned registry"
+  - "为 sandbox/service 分配和保留端口"
+  - "注册 service_name、endpoint、healthcheck、owner"
+  - "注册 supervisor program/group 配置"
+  - "提供 env baseline、workflow profile、service config 的读取接口"
+  - "记录配置变更审计日志与生效范围"
+
+managed_domains:
+  configuration:
+    items:
+      - "service configs"
+      - "workflow profile configs"
+      - "sandbox baseline configs"
+      - "dev/stage/prod environment configs"
+      - "runtime feature flags"
+  resource_registry:
+    items:
+      - "port allocation"
+      - "service name reservation"
+      - "endpoint registration"
+      - "IPC binding metadata"
+  supervisor_registry:
+    items:
+      - "program name"
+      - "command"
+      - "autostart/autorestart policy"
+      - "stdout/stderr log target"
+      - "healthcheck command"
+  discovery:
+    items:
+      - "service lookup by service_name"
+      - "active endpoint lookup by project_id/sandbox_id"
+      - "config resolution by environment/profile/version"
+
+must_not:
+  - "不直接启动业务 workflow"
+  - "不直接替代 orchestrator 做 task 决策"
+  - "不允许未审计的自由端口占用成为正式配置"
+
+api_surface:
+  commands:
+    - "ALLOCATE_PORT"
+    - "RESERVE_SERVICE_NAME"
+    - "REGISTER_SERVICE"
+    - "REGISTER_ENDPOINT"
+    - "REGISTER_SUPERVISOR"
+    - "GET_CONFIG"
+    - "PUT_CONFIG_VERSION"
+    - "RESOLVE_SERVICE"
+    - "GET_ENV_BASELINE"
+    - "GET_SUPERVISOR_SPEC"
+    - "DEPRECATE_CONFIG_VERSION"
+
+write_owners:
+  - "brain manager"
+  - "project orchestrator"
+  - "sandbox bootstrap pipeline"
+  - "release manager"
+
+readers:
+  - "project orchestrator"
+  - "worker agents"
+  - "timer service"
+  - "task manager"
+  - "release manager"
+  - "audit orchestrator"
+
+governance_rules:
+  - "所有正式 service 启动前必须先 REGISTER_SERVICE"
+  - "所有正式端口必须先 ALLOCATE_PORT，禁止自选"
+  - "所有 supervisor 程序必须先 REGISTER_SUPERVISOR"
+  - "配置变更必须持久化 version 和 changed_by"
+  - "每个 sandbox 必须记录当前使用的 config version set"

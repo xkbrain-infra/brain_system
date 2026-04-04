@@ -1,0 +1,81 @@
+# Phase 7: RELEASE — deploy + verify + rollback control
+# 来源: workflow_core.yaml → meta.phase_files.release
+# steps: 7_1 (drive_release)
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PHASE 7: RELEASE — deploy + verify + rollback control
+# ═══════════════════════════════════════════════════════════════════════════════
+
+  - step_id: "MWF-OPC:7_1:drive_release"
+    phase: release
+    who:
+      coordinator: project_orchestrator
+      profile: coordinator
+      participants:
+        - role: devops
+          profile: infra
+          responsibilities: ["部署操作", "环境配置", "回滚执行"]
+        - role: qa
+          profile: coder
+          responsibilities: ["staging 验证", "prod smoke test"]
+      approver: brain_pmo
+    purpose: "冻结候选版本 → staging → prod approval → deploy → smoke"
+
+    features:
+      human_approval_required: true    # 生产部署需人工审批
+      multi_agent_review: true
+      review_agents: [qa, devops]
+      timeout_minutes: 120
+
+    do:
+      - action: "冻结候选版本"
+        tool: "IPC → devops"
+        details: "冻结 artifact versions、git revision，写 release_candidate.yaml"
+
+      - action: "部署 staging"
+        tool: "IPC TASK_ASSIGN → devops"
+        task_packet:
+          instruction: "部署到 staging 环境"
+          completion_checks: ["staging 部署成功", "staging 服务可访问"]
+
+      - action: "staging 验证"
+        tool: "IPC TASK_ASSIGN → qa"
+        task_packet:
+          instruction: "执行 staging 验证: 核心路径测试 + 回归测试"
+          completion_checks: ["所有 staging test 通过"]
+
+      - action: "请求 prod 审批"
+        tool: "IPC → brain_pmo"
+        details: "PMO 审批生产发布"
+
+      - action: "部署 production"
+        tool: "IPC TASK_ASSIGN → devops"
+        task_packet:
+          instruction: "部署到 production"
+          completion_checks: ["production 部署成功"]
+          rollback_plan: "如果失败，执行回滚到上一版本"
+
+      - action: "prod smoke test"
+        tool: "IPC TASK_ASSIGN → qa"
+        task_packet:
+          instruction: "执行 production smoke test"
+          completion_checks: ["smoke test 全部通过"]
+
+      - action: "写 release 决策"
+        tool: "file_write"
+        target: "state/release_record.yaml"
+
+    artifact: "state/release_record.yaml"
+    artifact_schema:
+      release_candidate_version: string
+      staging_result: "pass | fail"
+      prod_approval: "approved | rejected"
+      prod_deploy_result: "success | failed | rolled_back"
+      smoke_result: "pass | fail"
+      release_decision: "RELEASED | ROLLED_BACK | HOLD"
+
+    check: "release_decision = RELEASED"
+    on_success: "MWF-OPC:8_1:run_audit"
+    on_retry: "staging 或 smoke 失败 → fix → 重新部署"
+    on_blocked: "prod 审批被拒或回滚也失败 → CRITICAL escalate"
+

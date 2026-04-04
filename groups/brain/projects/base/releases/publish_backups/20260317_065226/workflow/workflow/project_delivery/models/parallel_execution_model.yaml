@@ -1,0 +1,83 @@
+parallel_execution_model:
+  id: "MWF-PAR-001"
+  version: "0.1"
+  intent: "定义 multicore workflow 中任务如何并行执行"
+
+principle:
+  - "并行的基本单位是 task，不是 agent session"
+  - "只有依赖满足且资源可用的 task 才进入 READY 并可并发派发"
+  - "并行执行由 orchestrator 基于 task graph 和 resource window 决定"
+
+task_graph:
+  required_fields:
+    - task_id
+    - depends_on
+    - blocks
+    - owner_role
+    - participants
+    - resource_tags
+    - conflict_keys
+  purpose: "显式表达哪些任务可并发、哪些任务互斥、哪些任务需要串行"
+
+parallelism_rules:
+  ready_set:
+    definition: "所有依赖满足、输入完整、无互斥冲突的 tasks"
+    action: "orchestrator 可一次分配给多个 agents 并行执行"
+  serial_tasks:
+    when:
+      - "shared conflict_key"
+      - "same mutable target without merge strategy"
+      - "release gate tasks"
+    action: "必须串行执行"
+  review_overlap:
+    rule: "review task 可以与无依赖的其他 implementation/test task 并行"
+  test_overlap:
+    rule: "不同模块、不同环境、不同 suite 可并发测试，但共享环境锁时需排队"
+
+resource_windows:
+  per_orchestrator:
+    fields:
+      - max_active_tasks
+      - max_parallel_reviews
+      - max_parallel_tests
+      - max_agents_per_role
+    purpose: "限制并发窗口，避免过载和噪声"
+
+conflict_control:
+  conflict_keys:
+    examples:
+      - "repo:main-branch"
+      - "env:staging"
+      - "db:schema-migration"
+      - "doc:spec-root"
+    rule: "共享相同 conflict_key 的 task 默认不可同时进入 ACTIVE，除非声明兼容策略"
+  compatibility_strategies:
+    - isolated_workspace
+    - feature_branch
+    - read_only_parallel
+    - environment_slotting
+
+dispatch_algorithm:
+  outline:
+    - "计算 READY set"
+    - "按 priority、critical_path、deadline 排序"
+    - "剔除 conflict_key 冲突项"
+    - "按 resource window 派发给可用 agents"
+    - "为已派发 task 注册 timer/check trigger"
+    - "状态变化后重新计算 READY set"
+
+observable_parallelism:
+  metrics:
+    - active_tasks
+    - ready_tasks
+    - blocked_tasks
+    - parallelism_width
+    - role_utilization
+    - queue_delay
+  requirement: "这些指标必须可由 task manager 或 project snapshot 派生"
+
+acceptance_examples:
+  - "两个互不依赖的 implementation tasks 可同时分配给两个 developer"
+  - "implementation 与独立文档 task 可并行"
+  - "同一 staging 环境上的两个部署验证 task 若共享 env lock，则必须串行"
+  - "reviewer 可同时审多个小 review，但受 max_parallel_reviews 限制"

@@ -1,0 +1,247 @@
+sandbox_scope_guard:
+  id: "MWF-HOOK-SCOPE-001"
+  version: "0.1"
+  intent: "Sandbox 范围保护 Hooks，限制工具使用范围"
+
+description: |
+  根据 sandbox 级别，通过 PreToolUse hooks 限制工具使用范围：
+  - Level 3 (read_only): 完全禁止写入
+  - Level 2 (worktree_sandbox): 限制写入 project_root 内
+  - Level 1 (full_sandbox): 无限制（容器内）
+
+hooks:
+  # ========== Level 3: Read Only ==========
+  read_only_guard:
+    description: "完全禁止写入操作"
+    trigger: "PreToolUse"
+    applies_to_sandbox_mode: "read_only"
+    blocked_tools:
+      - Write
+      - Edit
+      - NotebookEdit
+    blocked_bash_patterns:
+      - "^rm "
+      - "^mv "
+      - "^cp .*\s+\S+"  # cp 有目标路径
+      - "^mkdir "
+      - "^touch "
+      - "^>"
+      - ">>"
+      - "git.*commit"
+      - "git.*push"
+      - "git.*merge"
+      - "git.*rebase"
+      - "git.*checkout"
+      - "git.*reset"
+    allowed_bash_patterns:
+      - "^ls "
+      - "^cat "
+      - "^head "
+      - "^tail "
+      - "^grep "
+      - "^find .*-print"
+      - "^echo "  # echo 输出到终端，不写文件
+      - "^pwd$"
+      - "^cd "
+      - "git.*status"
+      - "git.*log"
+      - "git.*show"
+      - "git.*diff"
+
+    on_violation:
+      action: "block"
+      message: |
+        [SANDBOX VIOLATION] 当前项目运行在 **read_only** 模式。
+
+        操作 "{tool_name}" 被阻止，因为会执行写入。
+
+        如果您需要修改文件，有以下选项：
+        1. 重新启动项目，选择 worktree_sandbox 模式
+        2. 请求 sandbox_upgrade 到更高级别
+        3. 将修改需求记录下来，在 write-permitted 模式下执行
+
+      suggest_upgrade: true
+      log_level: "warning"
+      notify_pmo: true
+
+  # ========== Level 2: Worktree Sandbox ==========
+  worktree_scope_guard:
+    description: "限制写入范围在 project_root 内"
+    trigger: "PreToolUse"
+    applies_to_sandbox_mode: "worktree_sandbox"
+    allowed_write_roots:
+      - "${PROJECT_ROOT}"
+      - "${PROJECT_ROOT}/../.worktrees/${PROJECT_ID}"
+      - "/tmp"
+      - "/var/tmp"
+    blocked_paths:
+      - "${BRAIN_BASE}/**"
+      - "/brain/**"
+      - "/etc/**"
+      - "/usr/**"
+      - "/bin/**"
+      - "/sbin/**"
+      - "/lib/**"
+      - "/lib64/**"
+      - "${GROUP_ROOT}/projects/*"  # 其他项目
+      - "${HOME}/.claude/projects/*"  # 其他项目
+
+    tools_config:
+      Write:
+        check: "path.startswith(allowed_roots) and not path.match(blocked_patterns)"
+        on_violation:
+          action: "block"
+          message: |
+            [SCOPE VIOLATION] 当前项目运行在 **worktree_sandbox** 模式。
+
+            文件路径 "{path}" 在允许的 project_root 范围之外。
+
+            允许的写入范围：
+            - {PROJECT_ROOT}/**
+
+            如果您需要写入其他位置，请请求 sandbox_upgrade 到 full_sandbox。
+          suggest_upgrade: true
+
+      Edit:
+        check: "file_path.startswith(allowed_roots) and not file_path.match(blocked_patterns)"
+        on_violation:
+          action: "block"
+          message: |
+            [SCOPE VIOLATION] 文件 "{file_path}" 在 project_root 之外。
+            在 worktree_sandbox 模式下只能修改 project_root 内的文件。
+          suggest_upgrade: true
+
+      Bash:
+        check_commands:
+          # 危险命令白名单检查
+          blocked:
+            - pattern: "^rm\s+-rf\s+/"
+              severity: "critical"
+            - pattern: "^sudo "
+              severity: "high"
+            - pattern: ">\s+/etc/"
+              severity: "critical"
+            - pattern: ">\s+/usr/"
+              severity: "high"
+          # 需要扫描目标路径的命令
+          path_sensitive:
+            - command: "^cp "
+              extract_target: "last_argument"
+            - command: "^mv "
+              extract_target: "last_argument"
+            - command: "^mkdir "
+              extract_target: "last_argument"
+            - command: ">"
+              extract_target: "after_redirect"
+            - command: ">>"
+              extract_target: "after_redirect"
+
+        on_violation:
+          action: "block"
+          message: |
+            [COMMAND VIOLATION] 命令可能写入 project_root 之外：
+
+            {command}
+
+            在 worktree_sandbox 模式下：
+            - 禁止写入 /etc, /usr, /bin 等系统目录
+            - 禁止写入其他项目目录
+            - 禁止写入 brain base 目录
+
+          suggest_upgrade: true
+
+  # ========== Upgrade Suggestion ==========
+  upgrade_suggestion:
+    description: "当检测到需要升级时，生成升级建议"
+    trigger: "on_scope_violation"
+    message_template: |
+      ## Sandbox Upgrade 建议
+
+      当前模式：{current_mode}
+      建议模式：{suggested_mode}
+
+      ### 触发原因
+      {violation_reason}
+
+      ### 升级影响
+      - 需要暂停当前任务
+      - 迁移已完成工作
+      - 重新初始化环境（如升级到 full_sandbox）
+      - 预计耗时：{estimated_time}
+
+      ### 可选操作
+      1. **立即升级**: 触发 escalation workflow，请求 PMO 批准
+      2. **记录并继续**: 记录需求，在 read-only 范围内继续
+      3. **重新评估**: 重新分析任务，可能拆分读写操作
+
+      ### Audit 记录
+      此建议将被记录到 project audit trail。
+
+    escalation_workflow: "sandbox_upgrade_escalation"
+
+  # ========== Audit Logging ==========
+  audit_logging:
+    description: "记录所有范围限制事件"
+    log_entries:
+      - event_type: "scope_violation_blocked"
+        fields:
+          - timestamp
+          - project_id
+          - sandbox_mode
+          - tool_name
+          - attempted_path
+          - violation_type
+          - action_taken
+          - upgrade_suggested
+
+      - event_type: "sandbox_upgraded"
+        fields:
+          - timestamp
+          - project_id
+          - from_mode
+          - to_mode
+          - upgrade_reason
+          - pmo_approval
+          - migration_success
+
+      - event_type: "evaluation_gap"
+        fields:
+          - timestamp
+          - project_id
+          - original_evaluation_id
+          - missed_factor
+          - recommendation
+
+# ========== Hook Installation ==========
+installation:
+  level_2_worktree:
+    hooks_to_install:
+      - pre_tool_use: "worktree_scope_guard"
+      - pre_tool_use: "audit_logging"
+    skill_constraints:
+      - skill: preset
+        constraint: "project_root_only"
+      - skill: lep
+        constraint: "path_discipline"
+
+  level_3_readonly:
+    hooks_to_install:
+      - pre_tool_use: "read_only_guard"
+      - pre_tool_use: "audit_logging"
+    skill_constraints:
+      - skill: preset
+        constraint: "no_workspace_creation"
+
+# ========== Configuration ==========
+configuration:
+  strict_mode:
+    description: "严格模式：任何可疑路径都 block"
+    default: true
+
+  audit_all_attempts:
+    description: "记录所有尝试，不只是 violations"
+    default: false
+
+  auto_suggest_upgrade:
+    description: "自动建议升级，无需手动触发"
+    default: true

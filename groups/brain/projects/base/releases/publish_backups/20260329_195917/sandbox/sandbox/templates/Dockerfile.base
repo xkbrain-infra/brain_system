@@ -1,0 +1,24 @@
+# Brain Sandbox Base Image
+# 基于 brain/docker-base 构建，确保与生产环境版本一致
+# 版本: 2.1.0
+# 路径: /xkagent_infra/groups/brain/projects/base/sandbox/templates/Dockerfile.base
+
+FROM brain/docker-base:latest
+
+# ============================================================================
+# Sandbox 特定配置
+# ============================================================================
+
+# Sandbox 工作目录
+WORKDIR /workspace
+
+# 创建标准目录结构
+RUN mkdir -p \
+    /workspace/project \
+    /workspace/data \
+    /workspace/logs \
+    /workspace/tmp \
+    /workspace/cache
+
+# 默认 entrypoint：保持容器运行
+CMD ["sleep", "infinity"]

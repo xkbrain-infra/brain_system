@@ -5,11 +5,13 @@
     "source": "/xkagent_infra/brain/infrastructure/config/agentctl/skill_bindings.yaml",
     "resolved_skills": [
       "lep",
-      "ipc"
+      "ipc",
+      "task-manager"
     ],
     "role_skills": [
       "lep",
-      "ipc"
+      "ipc",
+      "task-manager"
     ],
     "agent_skills": [],
     "workflow_skills": []
@@ -28,17 +30,25 @@
   "runtime": {
     "command": "claude",
     "args": [
-      "--model",
-      "copilot/gpt-5-mini",
-      "[Brain Skill Bindings]\nEnabled skills: lep, ipc.\nWhen a task matches these skills or the bound workflow, load and follow the corresponding skill before execution.\nRole defaults: lep, ipc.\n\n[Brain LEP Profiles]\nEnabled LEP profiles: frontdesk-safe.\nThese LEP profiles tighten hook enforcement and should be treated as mandatory operating constraints.\nRole defaults: frontdesk-safe."
+      "--dangerously-skip-permissions",
+      "[Brain Skill Bindings]\nEnabled skills: lep, ipc, task-manager.\nWhen a task matches these skills or the bound workflow, load and follow the corresponding skill before execution.\nRole defaults: lep, ipc, task-manager.\n\n[Brain LEP Profiles]\nEnabled LEP profiles: frontdesk-safe.\nThese LEP profiles tighten hook enforcement and should be treated as mandatory operating constraints.\nRole defaults: frontdesk-safe."
     ],
     "env": {
       "IS_SANDBOX": "1",
       "BRAIN_TRANSPORT_MODE": "proxy",
       "BRAIN_AGENT_NAME": "agent-brain_frontdesk",
+      "ANTHROPIC_BASE_URL": "http://127.0.0.1:8210",
+      "ANTHROPIC_AUTH_TOKEN": "bgw-client-v1-fee4665eb5f723a9a80dd97cbbb3ad27",
+      "ANTHROPIC_MODEL": "copilot/gpt-5-mini",
+      "ANTHROPIC_SMALL_FAST_MODEL": "copilot/gpt-5-mini",
+      "ANTHROPIC_DEFAULT_SONNET_MODEL": "copilot/gpt-5-mini",
+      "ANTHROPIC_DEFAULT_OPUS_MODEL": "copilot/gpt-5-mini",
+      "ANTHROPIC_DEFAULT_HAIKU_MODEL": "copilot/gpt-5-mini",
+      "API_TIMEOUT_MS": "3000000",
+      "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
       "BRAIN_SKILL_BINDINGS_FILE": "/xkagent_infra/brain/infrastructure/config/agentctl/skill_bindings.yaml",
-      "BRAIN_ENABLED_SKILLS": "lep,ipc",
-      "BRAIN_ROLE_DEFAULT_SKILLS": "lep,ipc",
+      "BRAIN_ENABLED_SKILLS": "lep,ipc,task-manager",
+      "BRAIN_ROLE_DEFAULT_SKILLS": "lep,ipc,task-manager",
       "BRAIN_LEP_BINDINGS_FILE": "/xkagent_infra/brain/infrastructure/config/agentctl/lep_bindings.yaml",
       "BRAIN_ENABLED_LEP_PROFILES": "frontdesk-safe",
       "BRAIN_ROLE_DEFAULT_LEP_PROFILES": "frontdesk-safe"

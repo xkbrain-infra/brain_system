@@ -6,44 +6,52 @@
 #include <vector>
 #include <mutex>
 
-struct SpecQueryFilter {
-  std::string spec_id;
+struct ProjectQueryFilter {
+  std::string project_id;
   std::string group;
   std::string stage;
 };
 
-class SpecStore {
+// ProjectStore: 管理 ProjectRecord 的持久化
+// 存储路径: {data_dir}/{group}/{project_id}/project.json
+// 启动时扫描 data_dir 下所有 project.json 文件加载入内存
+class ProjectStore {
 public:
-  explicit SpecStore(const std::string& data_dir);
+  explicit ProjectStore(const std::string& data_dir);
 
-  // Load specs from JSON file. Returns number loaded.
+  // 扫描 data_dir 加载所有 project.json。返回加载数量。
   int Load();
 
-  // Save specs to JSON file (atomic write). Returns true on success.
-  bool Save();
+  // 将所有 project 写回各自的 project.json。返回成功数量。
+  int Save();
 
-  // Create a new spec. Returns intake task_id on success, empty string on failure.
-  // Sets out_error if creation fails.
-  std::string Create(const SpecRecord& spec, std::string& out_error);
+  // 创建新 project。返回首个 intake task_id；失败时 out_error 非空。
+  std::string Create(const ProjectRecord& proj, std::string& out_error);
 
-  // Progress spec to target stage. Must be sequential (S1→S2→...→S8→archived).
-  // Returns empty string on success, error message on failure.
-  std::string Progress(const std::string& spec_id, const std::string& target_stage);
+  // 将 project 推进到下一阶段（必须顺序推进）。
+  std::string Progress(const std::string& project_id, const std::string& target_stage);
 
-  // Query specs by filters.
-  std::vector<SpecRecord> Query(const SpecQueryFilter& filter) const;
+  // 查询 project 列表。
+  std::vector<ProjectRecord> Query(const ProjectQueryFilter& filter) const;
 
-  // Get single spec by ID. Returns nullptr if not found.
-  const SpecRecord* Get(const std::string& spec_id) const;
+  // 获取单个 project（不存在返回 nullptr）。
+  const ProjectRecord* Get(const std::string& project_id) const;
 
-  // Total active spec count.
+  // 获取所有活跃 project 的 (group, project_id) 列表，供 TaskStore 扫描用。
+  std::vector<std::pair<std::string, std::string>> ListProjectKeys() const;
+
   int Count() const;
 
 private:
-  bool MatchesFilter(const SpecRecord& s, const SpecQueryFilter& f) const;
+  bool SaveOne(const ProjectRecord& proj);
+  bool MatchesFilter(const ProjectRecord& p, const ProjectQueryFilter& f) const;
+  void ScanDir(const std::string& dir, int depth);
 
   std::string data_dir_;
-  std::string file_path_;
   mutable std::mutex mu_;
-  std::unordered_map<std::string, SpecRecord> specs_;
+  std::unordered_map<std::string, ProjectRecord> projects_;  // project_id → record
 };
+
+// 向后兼容别名
+using SpecStore       = ProjectStore;
+using SpecQueryFilter = ProjectQueryFilter;

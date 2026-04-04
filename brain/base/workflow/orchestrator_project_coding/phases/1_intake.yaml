@@ -1,0 +1,248 @@
+# Phase 1: INTAKE — 通过 IPC 收集需求、收敛未知项
+# 来源: workflow_core.yaml → meta.phase_files.intake
+# steps: 1_1 (capture_requirement), 1_2 (classify_unknowns)
+#
+# 与旧版本的关键区别:
+#   旧: brain_pmo 在宿主机直接和用户对话
+#   新: orchestrator 在 sandbox 内，通过 IPC 请求 brain_pmo 收集需求
+#        brain_pmo 和用户的对话在宿主机发生，sandbox 不感知细节
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PHASE 1: INTAKE — 收集需求、收敛未知项
+# ═══════════════════════════════════════════════════════════════════════════════
+
+steps:
+
+  # ── 1.1 ────────────────────────────────────────────────────────────────────
+  - step_id: "MWF-OPC:1_1:capture_requirement"
+    phase: intake
+    who:
+      executor: project_orchestrator
+      profile: coordinator
+      context: "sandbox 内，通过 IPC 与 brain PMO 通信"
+    purpose: "通过 IPC 请求 brain PMO 收集用户需求，获取结构化 intake_record"
+
+    do:
+      - action: "TASK_UPDATE: in_progress"
+        action_id: "MWF-OPC:1_1:capture_requirement:A01"
+        tool: "task_manager API"
+        call: |
+          event_type: TASK_UPDATE
+          task_id:    "MWF-OPC:1_1:capture_requirement"
+          status:     in_progress
+
+      - action: "检查是否已有 intake seed（init 阶段可能已注入）"
+        action_id: "MWF-OPC:1_1:capture_requirement:A02"
+        tool: "file_read"
+        target: "state/intake.yaml"
+        skip_if: "文件已存在且 intake_decision=ACCEPTED → 直接 success"
+
+      - action: "向 brain PMO 发送 INTAKE_REQUEST"
+        action_id: "MWF-OPC:1_1:capture_requirement:A03"
+        tool: "ipc_send"
+        target: "brain_pmo"
+        message: |
+          {
+            "message_type": "INTAKE_REQUEST",
+            "project_id": "{project_id}",
+            "orchestrator_id": "{orchestrator_agent_id}",
+            "required_fields": {
+              "goal": "项目要达成什么",
+              "scope_in": "包含什么",
+              "scope_out": "明确不做什么",
+              "acceptance_criteria": "什么算做完了",
+              "constraints": "技术/时间/资源约束",
+              "priority": "critical | high | normal | low",
+              "requested_roles": "需要哪些 agent 角色",
+              "baseline_image": "Docker 基础镜像 (默认 brain-sandbox-base:latest)"
+            },
+            "optional_fields": ["target_stack", "reference_projects", "integration_targets", "profile_overrides"]
+          }
+        details: |
+          brain PMO 收到后会:
+            1. 和用户对话收集信息（宿主机发生，sandbox 不感知）
+            2. 将结构化结果通过 IPC 返回 INTAKE_RESPONSE
+
+      - action: "等待 brain PMO 返回 INTAKE_RESPONSE"
+        action_id: "MWF-OPC:1_1:capture_requirement:A04"
+        tool: "ipc_recv (等待 INTAKE_RESPONSE)"
+        timeout: "无硬超时 — 用户可能需要时间思考"
+        details: |
+          收到 INTAKE_RESPONSE 后:
+            验证 required_fields 是否都有值
+            如果缺失 → 通过 IPC 请求 PMO 补充
+
+      - action: "写入 intake_record"
+        action_id: "MWF-OPC:1_1:capture_requirement:A05"
+        tool: "file_write"
+        target: "state/intake.yaml"
+
+      - action: "cross_model_validation: 验证 state/intake.yaml"
+        action_id: "MWF-OPC:1_1:capture_requirement:A06"
+        type: "cross_model_validation"
+        strategy_ref: "workflow_core.yaml → audit_strategy.cross_model_validation"
+        execution_flow:
+          "1_write_request":
+            path: "{project_root}/state/step_results/MWF-OPC_1_1_capture_requirement/validation_request.yaml"
+            content:
+              step_id: "MWF-OPC:1_1:capture_requirement"
+              validator_model_rule: "不同于 orchestrator 当前模型"
+              artifact: "state/intake.yaml"
+              check_items:
+                - {id: "CHK-01", type: "file_exists",  target: "state/intake.yaml"}
+                - {id: "CHK-02", type: "field_assert", field: "goal",                 assert: "非空字符串"}
+                - {id: "CHK-03", type: "field_assert", field: "scope_in",             assert: "非空数组"}
+                - {id: "CHK-04", type: "field_assert", field: "acceptance_criteria",  assert: "非空数组"}
+                - {id: "CHK-05", type: "field_assert", field: "intake_decision",      assert: "== ACCEPTED"}
+                - {id: "CHK-06", type: "field_assert", field: "requested_roles",      assert: "非空数组"}
+                - {id: "CHK-07", type: "field_assert", field: "priority",             assert: "in [critical, high, normal, low]"}
+          "2_spawn_validator":
+            command: "agentctl start --role step_validator --model {validator_model} --ephemeral"
+            note: "validator_model 由 model_selection 规则确定，与 orchestrator 不同"
+          "3_wait_result":
+            wait_for: "IPC: VALIDATE_COMPLETE"
+            timeout: "120s"
+            on_timeout: "fallback → same_model_isolated (见 workflow_core.yaml)"
+          "4_write_completion_check":
+            path: "{project_root}/state/step_results/MWF-OPC_1_1_capture_requirement/completion_check.yaml"
+        on_fail:
+          action: "TASK_UPDATE(blocked) + IPC notify brain_pmo"
+          payload: "completion_check.yaml path + failed check_items"
+
+      - action: "TASK_UPDATE: completed"
+        action_id: "MWF-OPC:1_1:capture_requirement:A07"
+        tool: "task_manager API"
+        call: |
+          event_type: TASK_UPDATE
+          task_id:    "MWF-OPC:1_1:capture_requirement"
+          status:     completed
+
+    artifact: "state/intake.yaml"
+    artifact_schema:
+      project_id: string
+      group_id: string
+      goal: string
+      scope_in: [string]
+      scope_out: [string]
+      acceptance_criteria: [string]
+      constraints: [string]
+      priority: "critical | high | normal | low"
+      requested_roles: [{role_key: string, count: int, required: bool}]
+      baseline_image: "brain-sandbox-base:latest"
+      target_stack: "optional"
+      reference_projects: "optional"
+      integration_targets: "optional"
+      profile_overrides: "optional — 覆盖 provider_profiles.yaml 的默认配置"
+      intake_decision: "ACCEPTED | HOLD | REJECTED"
+
+    check: "goal + scope_in + acceptance_criteria 都非空；intake_decision=ACCEPTED"
+    on_success: "MWF-OPC:1_2:classify_unknowns"
+    on_retry: "信息不足 → 通过 IPC 请求 PMO 补充"
+    on_blocked: "PMO 返回 REJECTED → 项目取消"
+
+  # ── 1.2 ────────────────────────────────────────────────────────────────────
+  - step_id: "MWF-OPC:1_2:classify_unknowns"
+    phase: intake
+    who:
+      executor: project_orchestrator
+      profile: coordinator
+    purpose: "把 intake 中的未知项分类，避免把模糊需求带入后续阶段"
+
+    do:
+      - action: "TASK_UPDATE: in_progress"
+        action_id: "MWF-OPC:1_2:classify_unknowns:A01"
+        tool: "task_manager API"
+        call: |
+          event_type: TASK_UPDATE
+          task_id:    "MWF-OPC:1_2:classify_unknowns"
+          status:     in_progress
+
+      - action: "读 state/intake.yaml，识别所有不确定/模糊的点"
+        action_id: "MWF-OPC:1_2:classify_unknowns:A02"
+        tool: "file_read + LLM reasoning"
+
+      - action: "对每个未知项分类"
+        action_id: "MWF-OPC:1_2:classify_unknowns:A03"
+        tool: "file_write"
+        target: "state/decisions.yaml"
+        details: |
+          分类规则:
+            assumption: 可以先假设、后续验证
+            research:   需要技术调研才能确定（→ Phase 2 处理）
+            ask_user:   需要用户补充信息（→ 通过 IPC 请求 PMO 转问用户）
+            blocker:    缺少这个就无法推进
+
+      - action: "如果有 ask_user 项，通过 IPC 请求 PMO 转问用户"
+        action_id: "MWF-OPC:1_2:classify_unknowns:A04"
+        tool: "ipc_send → brain_pmo"
+        details: |
+          {
+            "message_type": "CLARIFICATION_REQUEST",
+            "questions": [每个 ask_user 项的 question]
+          }
+          等待 CLARIFICATION_RESPONSE，更新 decisions.yaml
+
+      - action: "cross_model_validation: 验证 state/decisions.yaml"
+        action_id: "MWF-OPC:1_2:classify_unknowns:A05"
+        type: "cross_model_validation"
+        strategy_ref: "workflow_core.yaml → audit_strategy.cross_model_validation"
+        execution_flow:
+          "1_write_request":
+            path: "{project_root}/state/step_results/MWF-OPC_1_2_classify_unknowns/validation_request.yaml"
+            content:
+              step_id: "MWF-OPC:1_2:classify_unknowns"
+              validator_model_rule: "不同于 orchestrator 当前模型"
+              artifact: "state/decisions.yaml"
+              check_items:
+                - {id: "CHK-01", type: "file_exists",  target: "state/decisions.yaml"}
+                - {id: "CHK-02", type: "field_assert", field: "items",   assert: "非空数组"}
+                - {id: "CHK-03", type: "items_check",  target: "items[*].type",
+                   assert: "in [assumption, research, ask_user, blocker]"}
+                - {id: "CHK-04", type: "items_check",  target: "items[*].status",
+                   assert: "in [open, resolved, escalated]"}
+                - {id: "CHK-05", type: "no_match",     target: "items",
+                   filter: "type=ask_user AND status=open",
+                   assert: "为空（所有 ask_user 项均已回复）"}
+          "2_spawn_validator":
+            command: "agentctl start --role step_validator --model {validator_model} --ephemeral"
+            note: "validator_model 由 model_selection 规则确定，与 orchestrator 不同"
+          "3_wait_result":
+            wait_for: "IPC: VALIDATE_COMPLETE"
+            timeout: "120s"
+            on_timeout: "fallback → same_model_isolated (见 workflow_core.yaml)"
+          "4_write_completion_check":
+            path: "{project_root}/state/step_results/MWF-OPC_1_2_classify_unknowns/completion_check.yaml"
+        on_fail:
+          action: "TASK_UPDATE(blocked) + IPC notify brain_pmo"
+          payload: "completion_check.yaml path + failed check_items"
+
+      - action: "TASK_UPDATE: completed + SPEC_PROGRESS（phase 1 完成）"
+        action_id: "MWF-OPC:1_2:classify_unknowns:A06"
+        tool: "task_manager API"
+        call: |
+          # 标记最后一个 step task 完成
+          event_type: TASK_UPDATE
+          task_id:    "MWF-OPC:1_2:classify_unknowns"
+          status:     completed
+
+          # Phase 1 (intake) 完成 → 推进 spec stage 到 S2_requirements
+          event_type:    SPEC_PROGRESS
+          spec_id:       "{project_id}"
+          target_stage:  S2_requirements
+
+    artifact: "state/decisions.yaml"
+    artifact_schema:
+      project_id: string
+      items:
+        - id: "DEC-001"
+          question: string
+          type: "assumption | research | ask_user | blocker"
+          content: string
+          owner: string
+          status: "open | resolved | escalated"
+          resolution: "resolved 时填写"
+
+    check: "没有未分类的 TBD 项；没有 ask_user 等待回复"
+    on_success: "MWF-OPC:2_1:research_if_needed"
+    on_retry: "等 PMO 返回 CLARIFICATION_RESPONSE 后重试"
+    on_blocked: "存在无法自行解决的 blocker → 通过 IPC 上报 PMO"

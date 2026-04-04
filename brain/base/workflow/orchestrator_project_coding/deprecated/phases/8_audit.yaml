@@ -1,0 +1,74 @@
+# Phase 8: AUDIT — 审计 + 反馈 + 关闭
+# 来源: workflow_core.yaml → meta.phase_files.audit
+# steps: 8_1 (run_audit), 9_1 (workflow_complete)
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PHASE 8: AUDIT — 审计 + 反馈 + 关闭
+# ═══════════════════════════════════════════════════════════════════════════════
+
+  - step_id: "MWF-OPC:8_1:run_audit"
+    phase: audit
+    who:
+      executor: project_auditor
+      profile: auditor
+      reviewer: brain_pmo
+    purpose: "审计整个项目执行过程，产出改进建议"
+
+    do:
+      - action: "收集所有执行证据"
+        tool: "file_read"
+        inputs:
+          - "state/intake.yaml"
+          - "state/research.yaml"
+          - "state/project_plan.yaml"
+          - "state/task_graph.yaml"
+          - "state/dispatch_log.yaml"
+          - "state/release_record.yaml"
+          - "state/spec_checklist.yaml"
+
+      - action: "分析执行质量"
+        tool: "LLM reasoning"
+        checks:
+          - "workflow 每个阶段是否被执行"
+          - "spec_checklist 覆盖率和缺失项"
+          - "是否有 gate 被跳过"
+          - "重复失败模式"
+          - "瓶颈分析"
+
+      - action: "产出审计报告"
+        tool: "file_write"
+        target: "state/audit_report.yaml"
+
+      - action: "将改进建议路由到对应领域"
+        tool: "IPC → brain_pmo"
+        details: |
+          knowledge_patches: 技术经验 → brain knowledge base
+          workflow_patches: 流程改进 → workflow 定义
+          evolution_proposals: 能力升级 → brain evolution backlog
+
+    artifact: "state/audit_report.yaml"
+    artifact_schema:
+      findings: [{finding: string, severity: string, root_cause: string}]
+      checklist_coverage: {total: int, done: int, missing: [string]}
+      improvement_actions: [{action: string, target: "knowledge|workflow|evolution", priority: string}]
+      closure_decision: "CLOSED | ACTIONS_PENDING"
+
+    check: "findings 不为空; improvement_actions 已路由; closure_decision=CLOSED"
+    on_success: "MWF-OPC:9_1:workflow_complete"
+    on_retry: "部分 findings 未分类 → 补充"
+    on_blocked: "关键 findings 需要管理层决策 → escalate"
+
+  # ── 终态 ───────────────────────────────────────────────────────────────────
+  - step_id: "MWF-OPC:9_1:workflow_complete"
+    phase: closure
+    purpose: "项目完成，归档 sandbox"
+    do:
+      - action: "归档 sandbox 内所有 artifacts/logs"
+        tool: "docker exec → tar/copy to host"
+      - action: "销毁 sandbox"
+        tool: "docker compose down"
+        prerequisite: "归档完成"
+      - action: "更新项目状态为 CLOSED"
+        tool: "task_manager API"
+
+

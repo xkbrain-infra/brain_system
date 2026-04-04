@@ -1,0 +1,28 @@
+---
+# Template Resolution Map
+# Maps role_key → provider/model and template source
+
+template_resolution_map:
+  orchestrator:
+    provider:
+      agent_type: claude
+      model: claude-sonnet-4-6
+    template_source: /workspace/brain/base/spec/templates/agent
+
+  dev_api:
+    provider:
+      agent_type: claude
+      model: claude-sonnet-4-6
+    template_source: /workspace/brain/base/spec/templates/agent
+
+  dev_ui:
+    provider:
+      agent_type: claude
+      model: claude-sonnet-4-6
+    template_source: /workspace/brain/base/spec/templates/agent
+
+  qa:
+    provider:
+      agent_type: claude
+      model: claude-sonnet-4-6
+    template_source: /workspace/brain/base/spec/templates/agent

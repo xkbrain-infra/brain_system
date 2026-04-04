@@ -1,0 +1,60 @@
+---
+# Project Agent Roster
+# Feature: brain-dashboard-oauth-config-2026-03-17
+
+project_agent_roster:
+  - agent_id: agent_brain_brain_dashboard_orchestrator_01
+    role_key: orchestrator
+    slot: "01"
+    agent_scope: project
+    agent_type: claude
+    model: claude-sonnet-4-6
+    template_source_ref: /workspace/brain/base/spec/templates/agent
+    template_bundle_ref: /workspace/runtime/template_bundles/agents/agent_brain_brain_dashboard_orchestrator_01
+    runtime_home: /workspace/runtime/agents/agent_brain_brain_dashboard_orchestrator_01
+    runtime_created_in_sandbox: true
+    log_path: /workspace/logs/orchestrator_01.log
+    orchestrator_id: agent_brain_brain_dashboard_orchestrator_01
+    status: pending
+
+  - agent_id: agent_brain_brain_dashboard_dev_api_01
+    role_key: dev_api
+    slot: "01"
+    agent_scope: project
+    agent_type: claude
+    model: claude-sonnet-4-6
+    template_source_ref: /workspace/brain/base/spec/templates/agent
+    template_bundle_ref: /workspace/runtime/template_bundles/agents/agent_brain_brain_dashboard_dev_api_01
+    runtime_home: /workspace/runtime/agents/agent_brain_brain_dashboard_dev_api_01
+    runtime_created_in_sandbox: true
+    log_path: /workspace/logs/dev_api_01.log
+    orchestrator_id: agent_brain_brain_dashboard_orchestrator_01
+    status: pending
+
+  - agent_id: agent_brain_brain_dashboard_dev_ui_01
+    role_key: dev_ui
+    slot: "01"
+    agent_scope: project
+    agent_type: claude
+    model: claude-sonnet-4-6
+    template_source_ref: /workspace/brain/base/spec/templates/agent
+    template_bundle_ref: /workspace/runtime/template_bundles/agents/agent_brain_brain_dashboard_dev_ui_01
+    runtime_home: /workspace/runtime/agents/agent_brain_brain_dashboard_dev_ui_01
+    runtime_created_in_sandbox: true
+    log_path: /workspace/logs/dev_ui_01.log
+    orchestrator_id: agent_brain_brain_dashboard_orchestrator_01
+    status: pending
+
+  - agent_id: agent_brain_brain_dashboard_qa_01
+    role_key: qa
+    slot: "01"
+    agent_scope: project
+    agent_type: claude
+    model: claude-sonnet-4-6
+    template_source_ref: /workspace/brain/base/spec/templates/agent
+    template_bundle_ref: /workspace/runtime/template_bundles/agents/agent_brain_brain_dashboard_qa_01
+    runtime_home: /workspace/runtime/agents/agent_brain_brain_dashboard_qa_01
+    runtime_created_in_sandbox: true
+    log_path: /workspace/logs/qa_01.log
+    orchestrator_id: agent_brain_brain_dashboard_orchestrator_01
+    status: pending

@@ -1,0 +1,62 @@
+# Phase 2: RESEARCH — 调研影响架构/范围/交付的关键未知项
+# 来源: workflow_core.yaml → meta.phase_files.research
+# steps: 2_1 (research_if_needed)
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PHASE 2: RESEARCH — 调研影响架构/范围/交付的关键未知项
+# ═══════════════════════════════════════════════════════════════════════════════
+
+  # ── 2.1 ────────────────────────────────────────────────────────────────────
+  - step_id: "MWF-OPC:2_1:research_if_needed"
+    phase: research
+    who:
+      executor: brain_researcher
+      profile: researcher
+      fallback_profile: coordinator
+      reviewer: brain_pmo
+    purpose: "关闭所有影响 planning 的技术未知项"
+
+    do:
+      - action: "检查 state/decisions.yaml 中 type=research 的项"
+        tool: "file_read"
+        skip_if: "没有 research 项 → 直接 success"
+      - action: "对每个 research item 执行调研"
+        tool: "WebSearch + WebFetch + 代码搜索"
+        details: |
+          对每个 research item:
+            1. 搜索内部参考（已有项目经验、brain knowledge base）
+            2. 搜索外部参考（官方文档、技术博客、benchmark）
+            3. 对比候选方案（至少 2 个）
+            4. 写出推荐路径 + 拒绝理由
+      - action: "写调研报告"
+        tool: "file_write"
+        target: "state/research.yaml"
+      - action: "PMO review 调研结论"
+        tool: "发送给 brain_pmo review"
+        details: "PMO 确认推荐路径合理，或要求补充调研"
+      - action: "更新 decisions.yaml 对应项为 resolved"
+        tool: "file_write"
+
+    artifact: "state/research.yaml"
+    artifact_schema:
+      project_id: string
+      items:
+        - question: string
+          references: [string]
+          options_compared:
+            - name: string
+              pros: [string]
+              cons: [string]
+          conclusion: string
+          rejected_approaches: [string]
+          impact_on_plan: string
+      recommended_approach: string
+      known_risks: [{risk: string, severity: "high|medium|low", mitigation: string}]
+      research_decision: "PASS | HOLD"
+
+    check: "decisions.yaml 中没有 type=research 且 status=open 的项"
+    on_success: "MWF-OPC:3_1:plan_sandbox"
+    on_retry: "部分调研未完成 → 补充后重试"
+    on_blocked: "调研发现根本性风险 → escalate 给用户"
+
+

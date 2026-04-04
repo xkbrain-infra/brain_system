@@ -7,13 +7,15 @@
       "doc-search",
       "lep",
       "tmux",
-      "sandbox"
+      "sandbox",
+      "task-manager"
     ],
     "role_skills": [
       "lep",
       "doc-search",
       "tmux",
-      "sandbox"
+      "sandbox",
+      "task-manager"
     ],
     "agent_skills": [
       "doc-search"
@@ -34,17 +36,25 @@
   "runtime": {
     "command": "claude",
     "args": [
-      "--model",
-      "openai/gpt-5.4",
-      "[Brain Skill Bindings]\nEnabled skills: doc-search, lep, tmux, sandbox.\nWhen a task matches these skills or the bound workflow, load and follow the corresponding skill before execution.\nAgent-specific additions: doc-search.\nRole defaults: lep, doc-search, tmux, sandbox.\n\n[Brain LEP Profiles]\nEnabled LEP profiles: workspace-dev.\nThese LEP profiles tighten hook enforcement and should be treated as mandatory operating constraints.\nRole defaults: workspace-dev."
+      "--dangerously-skip-permissions",
+      "[Brain Skill Bindings]\nEnabled skills: doc-search, lep, tmux, sandbox, task-manager.\nWhen a task matches these skills or the bound workflow, load and follow the corresponding skill before execution.\nAgent-specific additions: doc-search.\nRole defaults: lep, doc-search, tmux, sandbox, task-manager.\n\n[Brain LEP Profiles]\nEnabled LEP profiles: workspace-dev.\nThese LEP profiles tighten hook enforcement and should be treated as mandatory operating constraints.\nRole defaults: workspace-dev."
     ],
     "env": {
       "IS_SANDBOX": "1",
       "BRAIN_TRANSPORT_MODE": "proxy",
       "BRAIN_AGENT_NAME": "agent-brain_codex_foos",
+      "ANTHROPIC_BASE_URL": "http://127.0.0.1:8210",
+      "ANTHROPIC_AUTH_TOKEN": "bgw-client-v1-6eabce592a2d0c76fd809e69222e7d2e",
+      "ANTHROPIC_MODEL": "openai/gpt-5.4",
+      "ANTHROPIC_SMALL_FAST_MODEL": "openai/gpt-5.4",
+      "ANTHROPIC_DEFAULT_SONNET_MODEL": "openai/gpt-5.4",
+      "ANTHROPIC_DEFAULT_OPUS_MODEL": "openai/gpt-5.4",
+      "ANTHROPIC_DEFAULT_HAIKU_MODEL": "openai/gpt-5.4",
+      "API_TIMEOUT_MS": "3000000",
+      "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
       "BRAIN_SKILL_BINDINGS_FILE": "/xkagent_infra/brain/infrastructure/config/agentctl/skill_bindings.yaml",
-      "BRAIN_ENABLED_SKILLS": "doc-search,lep,tmux,sandbox",
-      "BRAIN_ROLE_DEFAULT_SKILLS": "lep,doc-search,tmux,sandbox",
+      "BRAIN_ENABLED_SKILLS": "doc-search,lep,tmux,sandbox,task-manager",
+      "BRAIN_ROLE_DEFAULT_SKILLS": "lep,doc-search,tmux,sandbox,task-manager",
       "BRAIN_AGENT_EXTRA_SKILLS": "doc-search",
       "BRAIN_LEP_BINDINGS_FILE": "/xkagent_infra/brain/infrastructure/config/agentctl/lep_bindings.yaml",
       "BRAIN_ENABLED_LEP_PROFILES": "workspace-dev",

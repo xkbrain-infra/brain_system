@@ -3,28 +3,41 @@
 
 name: ${SANDBOX_NAME:-sandbox}
 
+# 默认环境变量
+x-default-env: &default-env
+  HOST_IP: ${HOST_IP:-}
+
 services:
   sandbox:
     build:
-      context: .
-      dockerfile: Dockerfile.base
-    image: brain-sandbox-base:${SANDBOX_VERSION:-2.1.0}
+      context: /xkagent_infra
+      dockerfile: groups/brain/projects/base/sandbox/templates/Dockerfile.base
+    image: brain-sandbox-base:${SANDBOX_VERSION}
     container_name: ${CONTAINER_NAME}
     hostname: ${HOSTNAME}
 
-    # 工作目录
-    working_dir: /workspace/project
+    # 工作目录 - 直接在 groups 下的项目目录
+    working_dir: /groups/brain/projects/${PROJECT_NAME}
+    tty: true
+    stdin_open: true
 
-    # 卷挂载
+    # 容器保持运行，直接 sleep（不使用独立的 brain_ipc）
+    command: ["/bin/bash", "-lc", "sleep infinity"]
+
+    # 卷挂载（只暴露必要路径）
     volumes:
-      # 项目源码（读写）
-      - ${PROJECT_ROOT}:/workspace/project:rw
-      # 数据目录（隔离）
-      - sandbox_data_${INSTANCE_ID}:/workspace/data
-      # 日志目录
-      - sandbox_logs_${INSTANCE_ID}:/workspace/logs
-      # 缓存目录
-      - sandbox_cache_${INSTANCE_ID}:/workspace/cache
+      # Brain 核心只读共享
+      - /xkagent_infra/brain:/brain:ro,z
+      # Groups 可写共享（项目代码）
+      - /xkagent_infra/groups:/groups:rw,z
+      # Sandbox runtime 实例目录（仅实例数据，_services 来自镜像）
+      - /xkagent_infra/runtime/sandbox/${INSTANCE_ID}:/xkagent_infra/runtime/sandbox/${INSTANCE_ID}
+      # Brain IPC socket（host /tmp 包含 socket）
+      - /tmp:/tmp:rw
+      # Brain IPC redirect target（host wrapper binds here）
+      - /xkagent_infra/brain/tmp_ipc:/brain/tmp_ipc:rw
+      # Brain IPC socket 链接目录
+      - /xkagent_infra/runtime/tmp:/xkagent_infra/runtime/tmp:rw
 
     # 环境变量
     environment:
@@ -34,24 +47,35 @@ services:
       - SANDBOX_INSTANCE_ID=${INSTANCE_ID}
       - SANDBOX_PROJECT=${PROJECT_NAME}
       - SANDBOX_GROUP=${GROUP_NAME}
+      - TERM=${TERM:-xterm-256color}
+      - LANG=${LANG:-C.utf8}
+      - LC_ALL=${LC_ALL:-C.utf8}
 
-      # 项目配置
-      - PROJECT_ROOT=/workspace/project
+      # 项目配置 - 使用 groups 下的实际路径
+      - PROJECT_ROOT=/groups/brain/projects/${PROJECT_NAME}
       - PROJECT_NAME=${PROJECT_NAME}
+      - PROJECT_ID=${PROJECT_NAME}
       - PROJECT_VERSION=${PROJECT_VERSION}
+      - GROUP_ID=${GROUP_NAME}
+      - AGENTCTL_CONFIG_DIR=/xkagent_infra/runtime/sandbox/${INSTANCE_ID}/config/agentctl
 
-      # Brain 集成（可选）
+      # Brain 集成
+      # host 模式下使用 host.docker.internal 访问 host 服务
       - BRAIN_GATEWAY_URL=${BRAIN_GATEWAY_URL:-http://host.docker.internal:8200}
+      - BRAIN_PROXY_BASE_URL=${BRAIN_PROXY_BASE_URL:-http://host.docker.internal:8210}
+      - BRAIN_PATH=/brain
       - BRAIN_IPC_SOCKET=/tmp/brain_ipc.sock
 
+      # Host IP（供 host.docker.internal 使用）
+      - HOST_IP=${HOST_IP}
+
       # Python 路径
-      - PYTHONPATH=/workspace/project/src:/brain/infrastructure/service/utils/ipc/src
+      - PYTHONPATH=/groups/brain/projects/${PROJECT_NAME}/src:/brain/infrastructure/service/utils/ipc/src
 
-    # 网络
-    networks:
-      - ${NETWORK_NAME}
+    # 网络配置 - 使用 host 模式直接访问 host 网络
+    network_mode: ${NETWORK_MODE:-host}
 
-    # 端口映射（动态分配）
+    # 端口映射
     ports:
       - "${HOST_PORT_APP}:${CONTAINER_PORT_APP:-8080}"
       - "${HOST_PORT_DEBUG}:${CONTAINER_PORT_DEBUG:-5678}"
@@ -86,16 +110,7 @@ services:
       - "brain.instance=${INSTANCE_ID}"
       - "brain.created=${CREATED_AT}"
 
-# 数据卷（按实例隔离）
-volumes:
-  sandbox_data_${INSTANCE_ID}:
-    driver: local
-  sandbox_logs_${INSTANCE_ID}:
-    driver: local
-  sandbox_cache_${INSTANCE_ID}:
-    driver: local
-
-# 网络（按类型隔离）
+# 网络（仅在非 host 模式下使用）
 networks:
   ${NETWORK_NAME}:
     driver: bridge

@@ -1,0 +1,85 @@
+# Brain Sandbox - Development Environment Compose
+# 用途: 开发调试（热重载、源码挂载、调试端口）
+# 路径: /xkagent_infra/groups/brain/platform/sandbox/dev/compose.yaml
+
+name: ${SANDBOX_NAME:-sandbox-dev}
+
+services:
+  sandbox:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: brain-sandbox-dev:${SANDBOX_VERSION:-2.1.0}
+    container_name: ${CONTAINER_NAME}
+    hostname: ${HOSTNAME}
+
+    working_dir: /workspace/project
+    tty: true
+    stdin_open: true
+
+    volumes:
+      # 项目源码（读写 - 热重载）
+      - ${PROJECT_ROOT}:/workspace/project:rw
+      # 数据目录（隔离）
+      - sandbox_data_${INSTANCE_ID}:/workspace/data
+      # 日志目录
+      - sandbox_logs_${INSTANCE_ID}:/workspace/logs
+      # 缓存目录
+      - sandbox_cache_${INSTANCE_ID}:/workspace/cache
+      # Docker socket（用于容器内操作 docker）
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+    environment:
+      - SANDBOX_MODE=full
+      - SANDBOX_TYPE=development
+      - SANDBOX_INSTANCE_ID=${INSTANCE_ID}
+      - SANDBOX_PROJECT=${PROJECT_NAME}
+      - SANDBOX_GROUP=${GROUP_NAME}
+      - TERM=${TERM:-xterm-256color}
+      - LANG=${LANG:-C.utf8}
+      - LC_ALL=${LC_ALL:-C.utf8}
+      - DEBUG=true
+      - HOT_RELOAD=true
+      - PROJECT_ROOT=/workspace/project
+      - BRAIN_PATH=/brain
+      - BRAIN_IPC_SOCKET=/tmp/brain_ipc.sock
+
+    networks:
+      - ${NETWORK_NAME}
+
+    ports:
+      - "${HOST_PORT_APP:-18080}:8080"
+      - "${HOST_PORT_DEBUG:-15678}:5678"
+
+    deploy:
+      resources:
+        limits:
+          cpus: '${CPU_LIMIT:-2.0}'
+          memory: ${MEMORY_LIMIT:-2G}
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+    restart: no
+
+    labels:
+      - "brain.sandbox=true"
+      - "brain.sandbox.type=development"
+      - "brain.group=${GROUP_NAME}"
+      - "brain.project=${PROJECT_NAME}"
+      - "brain.instance=${INSTANCE_ID}"
+
+volumes:
+  sandbox_data_${INSTANCE_ID}:
+    driver: local
+  sandbox_logs_${INSTANCE_ID}:
+    driver: local
+  sandbox_cache_${INSTANCE_ID}:
+    driver: local
+
+networks:
+  ${NETWORK_NAME}:
+    driver: bridge
+    labels:
+      - "brain.sandbox.network=true"
+      - "brain.sandbox.type=development"

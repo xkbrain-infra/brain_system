@@ -1,6 +1,5 @@
 # Brain Sandbox Base Image
-# 基于 brain/docker-base 构建，确保与生产环境版本一致
-# 版本: 2.1.0
+# 版本: 2.3.8
 # 路径: /xkagent_infra/groups/brain/projects/base/sandbox/templates/Dockerfile.base
 
 FROM brain/docker-base:latest
@@ -9,16 +8,42 @@ FROM brain/docker-base:latest
 # Sandbox 特定配置
 # ============================================================================
 
-# Sandbox 工作目录
-WORKDIR /workspace
+# 删除 base image 中的 symlink（会干扰本地目录）
+RUN rm -f /brain && mkdir -p /brain
 
-# 创建标准目录结构
-RUN mkdir -p \
-    /workspace/project \
-    /workspace/data \
-    /workspace/logs \
-    /workspace/tmp \
-    /workspace/cache
+# 复制 Brain 核心内容（base, infrastructure）- 这些在运行时不会频繁变更
+COPY brain/base /brain/base
+COPY brain/infrastructure /brain/infrastructure
+COPY brain/agents /brain/agents
+COPY brain/bin /brain/bin
 
-# 默认 entrypoint：保持容器运行
-CMD ["sleep", "infinity"]
+# 创建运行时目录
+RUN mkdir -p /xkagent_infra/runtime/sandbox/_services/service \
+             /xkagent_infra/runtime/sandbox/_services/bin/mcp
+
+# 复制基础设施服务到 _services
+COPY brain/infrastructure/service/agentctl /xkagent_infra/runtime/sandbox/_services/service/agentctl
+COPY brain/infrastructure/service/brain_ipc /xkagent_infra/runtime/sandbox/_services/service/brain_ipc
+
+# 复制 MCP 服务器到 _services/bin/mcp
+COPY brain/bin/brain_ipc_c_mcp_server /xkagent_infra/runtime/sandbox/_services/bin/mcp/mcp-brain_ipc_c
+COPY brain/infrastructure/service/brain_task_manager/bin/mcp-brain_task_manager /xkagent_infra/runtime/sandbox/_services/bin/mcp/
+COPY brain/infrastructure/service/brain_google_api/bin/mcp-brain-google-api /xkagent_infra/runtime/sandbox/_services/bin/mcp/
+COPY brain/infrastructure/service/agent_vectordb/bin/mcp-server /xkagent_infra/runtime/sandbox/_services/bin/mcp/
+
+# 创建 /brain/bin/mcp 软链接到 _services/bin/mcp
+RUN mkdir -p /brain/bin && \
+    ln -sf /xkagent_infra/runtime/sandbox/_services/bin/mcp /brain/bin/mcp && \
+    chmod +x /xkagent_infra/runtime/sandbox/_services/bin/mcp/*
+
+# 创建 entrypoint 脚本
+COPY groups/brain/projects/base/sandbox/templates/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+# Agent 代码通过 volume mount 在运行时提供，不在镜像中 COPY
+# agents 应放在 /xkagent_infra/runtime/sandbox/{instance_id}/agents/
+# 运行时由 docker-compose 的 volumes 配置挂载到容器内对应路径
+
+ENTRYPOINT ["/entrypoint.sh"]
+
+CMD ["/bin/bash", "-lc", "sleep infinity"]

@@ -1,0 +1,415 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Orchestrator Project Coding — Sandbox 配置模板
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# 核心原则:
+#   Sandbox 容器挂载与 brain 容器完全一致——整个 /xkagent_infra 作为一个卷。
+#   容器内路径 = 宿主机路径，无任何重映射。
+#
+#   项目路径规则:
+#     已有项目: /xkagent_infra/groups/{group_id}/projects/{project_id}
+#     草稿项目: /xkagent_infra/groups/draft/{project_id}
+#
+# 渲染时替换: {project_id}, {group_id}, {instance_id}, {pending_id},
+#              {project_root}  (上述项目路径规则决定)
+#              {host_xkagent_infra}  (宿主机 /xkagent_infra 的实际路径)
+#              {workflow_root}        (本模板所在目录，即 orchestrator_project_coding/)
+#              使用黑盒入口: /xkagent_infra/brain/bin/sandboxctl
+#
+# 产出（写入项目目录，无需额外挂载）:
+#   {project_root}/payload/project_init.yaml   ← 启动 payload
+#   {project_root}/state/                      ← orchestrator 运行时写入
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 1. 基本信息
+# ─────────────────────────────────────────────────────────────────────────────
+
+project:
+  project_id: "{project_id}"
+  group_id: "{group_id}"
+  instance_id: "{instance_id}"            # 6位随机字母数字，如: a7f3k2
+  pending_id: "{pending_id}"
+
+  # 项目目录（容器内路径 = 宿主机路径）
+  project_root: "{project_root}"
+  # 示例（已有项目）: /xkagent_infra/groups/brain/projects/infrastructure/brain_dashboard
+  # 示例（草稿项目）: /xkagent_infra/groups/draft/my_new_project
+
+# 命名规范（G-SANDBOX-NAME Gate）: {group}-{project}-{type}-{instance_id}
+sandbox_id: "brain-{project_id}-development-{instance_id}"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 2. Docker Compose（extend 平台 dev compose）
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# 基础: groups/brain/platform/sandbox/dev/compose.yaml
+# 覆盖: 只需修改 image 和 volumes，路径与 brain 容器保持一致
+
+compose_override:
+  services:
+    sandbox:
+      image: "brain-sandbox-dev:2.1.0"
+      container_name: "brain-{project_id}-development-{instance_id}"
+
+      # 挂载策略:
+      #   1. 整个 /xkagent_infra 以 :ro 挂载 — OS 层面全局只读
+      #   2. {project_root} 单独覆盖挂载为可写 — 只有本项目目录可写，其他全部只读
+      #      (brain/、其他 groups/、draft/ 等全部只读，无需单独声明)
+      volumes:
+        - "{host_xkagent_infra}:/xkagent_infra:ro"
+        - "{host_project_root}:{project_root}"
+        - "sandbox-root-{instance_id}:/root"
+
+      working_dir: "/xkagent_infra/brain"
+
+      environment:
+        # 与 brain 容器一致的环境变量
+        BRAIN_PATH: "/xkagent_infra/brain"
+        BRAIN_IPC_SOCKET: "/tmp/brain_ipc.sock"
+
+        # 项目标识
+        PROJECT_ID: "{project_id}"
+        GROUP_ID: "{group_id}"
+        PROJECT_ROOT: "{project_root}"
+        PENDING_ID: "{pending_id}"
+
+        # orchestrator agent 身份
+        BRAIN_AGENT_NAME: "agent_{group_id}_{project_id}_orchestrator_01"
+        BRAIN_AGENT_ROLE: "project_orchestrator"
+
+        # brain 网络服务
+        BRAIN_IPC_HOST: "brain-ipc"
+        BRAIN_IPC_PORT: "9800"
+        BRAIN_AGENTCTL_HOST: "brain-agentctl"
+        BRAIN_AGENTCTL_PORT: "9810"
+        BRAIN_TASK_MANAGER_HOST: "brain-task-manager"
+        BRAIN_TASK_MANAGER_PORT: "9820"
+
+      networks:
+        - xk-brain-network
+
+      deploy:
+        resources:
+          limits:
+            cpus: "2.0"
+            memory: "2G"
+          reservations:
+            cpus: "0.5"
+            memory: "512M"
+
+      healthcheck:
+        test: ["CMD-SHELL", "test -d /xkagent_infra/brain/base/spec"]
+        interval: 30s
+        timeout: 5s
+        retries: 3
+
+  volumes:
+    "sandbox-root-{instance_id}":
+      driver: local
+
+  networks:
+    xk-brain-network:
+      external: true
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 3. 实例注册元数据
+# ─────────────────────────────────────────────────────────────────────────────
+
+instance_metadata:
+  instance_id: "{instance_id}"
+  group: "{group_id}"
+  project: "{project_id}"
+  project_root: "{project_root}"
+  type: development
+  pending_id: "{pending_id}"
+  container_name: "brain-{project_id}-development-{instance_id}"
+  status: running
+  created_at: "{ISO8601}"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 4. 启动 Payload（写入项目目录，orchestrator 启动时读取）
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# brain devops 在启动容器前写入: {project_root}/payload/project_init.yaml
+# orchestrator 从同一路径读取（容器内路径相同，无需额外挂载）
+
+payload_template:
+  project_id: "{project_id}"
+  group_id: "{group_id}"
+  sandbox_id: "brain-{project_id}-development-{instance_id}"
+  instance_id: "{instance_id}"
+  pending_id: "{pending_id}"
+  project_root: "{project_root}"
+  requested_by: "{pmo_agent_id}"
+  created_at: "{ISO8601}"
+
+  git_branch: "feature/{pending_id}"
+
+  # 可选: PMO 已有的初步需求（跳过部分 intake 步骤）
+  intake_seed: null
+
+  # 可选: 覆盖默认 provider/model 选型
+  profile_overrides:
+    orchestrator_model: null
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 5. 容器内目录结构
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# 无任何路径重映射，容器内路径 = 宿主机路径
+
+container_layout:
+  note: "路径与宿主机完全一致，无重映射。读写权限由 Docker 挂载层面强制，非约定。"
+
+  mount_enforced_permissions:
+    "/xkagent_infra/ (整体)":
+      mount: "{host_xkagent_infra}:/xkagent_infra:ro"
+      writable: false   # OS 强制只读
+    "{project_root}/ (覆盖挂载)":
+      mount: "{host_project_root}:{project_root}"
+      writable: true    # 唯一可写区域，覆盖上面的 :ro
+
+  readable_paths:
+    "/xkagent_infra/brain/":
+      description: "brain 全量（workflow、spec、knowledge、infrastructure）"
+      writable: false   # OS 强制，写操作报 Read-only file system
+
+    "/xkagent_infra/groups/":
+      description: "所有 group 和 project 目录（本项目除外）"
+      writable: false   # OS 强制
+
+  project_dirs:
+    "{project_root}/":
+      description: |
+        目标项目目录。
+        已有项目: /xkagent_infra/groups/{group_id}/projects/{project_id}
+        草稿项目: /xkagent_infra/groups/draft/{project_id}
+
+    "{project_root}/payload/":
+      description: "启动参数（brain devops 写入，orchestrator 读取）"
+      files:
+        "project_init.yaml": "启动 payload（project_id/pending_id/requested_by/...）"
+
+    "{project_root}/.git/":
+      description: "git 仓库（已切到 feature/{pending_id} 分支）"
+
+    "{project_root}/state/":
+      description: "orchestrator 状态文件根目录（Phase 0 创建）"
+      subdirs:
+        "step_results/":  "每个 step 的完整结果（append-only）"
+        "checkpoints/":   "context checkpoint 文件"
+        ".base_commit":   "git HEAD，用于 diff 和 rollback"
+        "global_config.yaml":    "命名约定、路径、IPC 配置（所有 phase/worker 共用）"
+        "project_snapshot.yaml": "项目全局状态本地缓存"
+
+    "{project_root}/artifacts/tasks/":
+      description: "task 产出物（worker 写入 tasks/{task_id}/ 子目录）"
+
+    "{project_root}/runtime/agents/":
+      description: "worker agent 运行时目录（orchestrator spawn 时创建子目录）"
+      example: "agent_brain_dashboard_developer_01/"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 6. 外部服务依赖（通过 xk-brain-network 访问）
+# ─────────────────────────────────────────────────────────────────────────────
+
+external_services:
+  ipc_daemon:
+    host: "${BRAIN_IPC_HOST}"
+    port: "${BRAIN_IPC_PORT}"
+    healthcheck: "nc -z ${BRAIN_IPC_HOST} ${BRAIN_IPC_PORT}"
+
+  agentctl:
+    host: "${BRAIN_AGENTCTL_HOST}"
+    port: "${BRAIN_AGENTCTL_PORT}"
+    healthcheck: "curl -sf http://${BRAIN_AGENTCTL_HOST}:${BRAIN_AGENTCTL_PORT}/health"
+    operations: ["start", "stop", "restart", "status", "list"]
+
+  task_manager:
+    host: "${BRAIN_TASK_MANAGER_HOST}"
+    port: "${BRAIN_TASK_MANAGER_PORT}"
+    healthcheck: "curl -sf http://${BRAIN_TASK_MANAGER_HOST}:${BRAIN_TASK_MANAGER_PORT}/health"
+    operations: ["SPEC_CREATE", "SPEC_PROGRESS", "SPEC_QUERY", "TASK_CREATE", "TASK_UPDATE", "TASK_QUERY", "TASK_STATS", "TASK_PIPELINE_CHECK"]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 7. 启动流程
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# 三方角色:
+#   brain PMO    — 立项、注册、派发
+#   brain devops — 基础设施 bootstrap（受 PMO 派发，在 task_manager 追踪）
+#   orchestrator — sandbox 中枢，冷启动后接管 workflow，间接承担 PMO 角色
+#
+# 完整链路: PMO 立项 → PMO 注册 task_manager → PMO 派发 devops →
+#           devops bootstrap → devops 解锁 workflow → orchestrator 接管
+
+startup_sequence:
+
+  # ── PMO 阶段 ──────────────────────────────────────────────────────────────
+
+  pmo_steps:
+
+    P1:
+      action: "创建项目空间"
+      caller: "brain PMO"
+      details: |
+        已有项目: /xkagent_infra/groups/{group_id}/projects/{project_id}  （沿用已有目录）
+        新项目:   /xkagent_infra/groups/draft/{project_id}                （mkdir + git init）
+        project_root 由此确定，后续所有步骤沿用。
+
+    P2:
+      action: "通知 task_manager 初始化项目空间"
+      caller: "brain PMO"
+      tool: "task_manager (IPC/MCP/skill): SPEC_CREATE"
+      call: |
+        event_type: SPEC_CREATE
+        spec_id:    "{project_id}"
+        title:      "{project_id} project delivery"
+        group:      "{group_id}"
+        owner:      "{pmo_agent_id}"
+      returns: |
+        SPEC_CREATED + intake_task_id（task_manager 自动创建 intake task）
+        PMO 记录 spec_id + intake_task_id，后续派发 devops 时随 IPC 一起传递。
+
+        注意: task_manager 没有 phases 概念。
+          - spec_id = project_id，spec stage 追踪整体进度（S1_alignment → ... → S8_complete）
+          - SPEC_CREATE 自动将 stage 设为 S1_alignment，并自动创建 intake task（返回 intake_task_id）
+          - 所有 workflow step 均作为独立 Task 创建（通过 TASK_CREATE，每个 step 一个 task）
+          - workflow step tasks 在 SPEC_CREATE 之后由 PMO 批量创建（全部 status=pending）
+
+    P3:
+      action: "在 task_manager 创建 BOOTSTRAP_TASK，IPC 派发给 brain devops"
+      caller: "brain PMO"
+      tool: "task_manager: TASK_CREATE  +  IPC → brain_devops"
+      details: |
+        # 1. 在 task_manager 创建 bootstrap task（devops 的工作在此追踪）
+        event_type:   TASK_CREATE
+        task_id:      "{project_id}_BOOTSTRAP"
+        spec_id:      "{project_id}"
+        title:        "Infrastructure bootstrap for {project_id}"
+        owner:        brain_devops
+        priority:     high
+        group:        "{group_id}"
+        description:  "Bootstrap sandbox infrastructure: D1 准备目录, D2 写 payload, D3 创建 orchestrator runtime, D4 启动容器, D5 健康检查, D6 启动 orchestrator, D7 等待上线"
+        depends_on:   []
+        tags:         ["bootstrap", "infrastructure"]
+
+        # 2. IPC 派发给 brain devops
+        ipc_send(to="brain_devops", message={
+          "message_type": "BOOTSTRAP_DISPATCH",
+          "project_id":   "{project_id}",
+          "task_id":      "{project_id}_BOOTSTRAP",
+          "project_root": "{project_root}",
+          "config_ref":   "config/sandbox_config.template.yaml",
+          "workflow_ref": "workflow_core.yaml"
+        })
+
+  # ── Devops 阶段（受 PMO 派发，每步更新 task_manager）─────────────────────
+
+  devops_steps:
+
+    D0:
+      action: "TASK_UPDATE: in_progress"
+      caller: "brain devops"
+      tool: "task_manager: TASK_UPDATE({project_id}_BOOTSTRAP, in_progress)"
+
+    D1:
+      action: "准备项目目录"
+      caller: "brain devops"
+      details: |
+        mkdir -p {project_root}/payload
+        mkdir -p {project_root}/state
+        mkdir -p {project_root}/artifacts
+        cd {project_root}
+        git checkout -b feature/{pending_id} || git checkout feature/{pending_id}
+
+    D2:
+      action: "写入启动 payload"
+      caller: "brain devops"
+      output: "{project_root}/payload/project_init.yaml"
+      details: "渲染 payload_template section（见本文件 section 4），写入项目目录"
+
+    D3:
+      action: "调用 sandboxctl，原子完成 sandbox + orchestrator bootstrap"
+      caller: "brain devops"
+      command: |
+        /xkagent_infra/brain/bin/sandboxctl create {project_id} \
+          --type development \
+          --with-agent orchestrator \
+          --pending-id {pending_id}
+      optional_model_flag:
+        - "若 payload_template.profile_overrides.orchestrator_model 非空，追加 --model {profile_overrides.orchestrator_model}"
+      outputs:
+        runtime_root: "/xkagent_infra/runtime/sandbox/{instance_id}"
+        orchestrator_id: "agent_{group_id}_{project_id}_orchestrator_01"
+        orchestrator_dir: "/xkagent_infra/runtime/sandbox/{instance_id}/agents/agent_{group_id}_{project_id}_orchestrator_01"
+        proxy_base_url: "http://host.docker.internal:8210"
+      note: |
+        create 成功的定义不再只是容器存在。
+        该步骤必须同时完成：
+          - 容器启动
+          - 容器 healthy
+          - sandbox-local agents_registry bridge 生成
+          - host/container 双侧 IPC bridge 已就绪（/tmp/brain_ipc.sock、/tmp/brain_ipc_notify.sock）
+          - orchestrator .brain/agent_runtime.json 生成
+          - tmux session 已启动
+          - sandbox 内 provider 配置已指向 brain proxy（例如 http://host.docker.internal:8210）
+          - 若 provider 为 Claude Code CLI，/root/.claude/ 与 /root/.claude.json 已同步，且当前 runtime cwd 的 trust/onboarding 已预写
+
+    D4:
+      action: "验证 bootstrap 产物"
+      caller: "brain devops"
+      checks:
+        - "docker inspect --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' brain-{project_id}-development-{instance_id} == healthy|running"
+        - "test -f /xkagent_infra/runtime/sandbox/{instance_id}/config/agentctl/agents_registry.yaml"
+        - "test -f /xkagent_infra/runtime/sandbox/{instance_id}/agents/agent_{group_id}_{project_id}_orchestrator_01/.brain/agent_runtime.json"
+        - "grep -q 'host.docker.internal:8210' /xkagent_infra/runtime/sandbox/{instance_id}/agents/agent_{group_id}_{project_id}_orchestrator_01/.claude/settings.local.json"
+        - "docker exec brain-{project_id}-development-{instance_id} tmux has-session -t agent_{group_id}_{project_id}_orchestrator_01"
+        - "docker exec brain-{project_id}-development-{instance_id} python3 -c \"import socket; s=socket.socket(socket.AF_UNIX, socket.SOCK_STREAM); s.connect('/tmp/brain_ipc.sock'); s.sendall(b'{\\\"action\\\":\\\"ping\\\",\\\"data\\\":{}}\\\\n'); print(s.recv(4096).decode())\" | grep -q '\"status\":\"ok\"'"
+      timeout: 60s
+
+    D5:
+      action: "收尾：更新 task_manager + 解锁 workflow step + 通知 PMO"
+      caller: "brain devops"
+      details: |
+        # 1. 标记 bootstrap task 完成
+        event_type: TASK_UPDATE
+        task_id:    "{project_id}_BOOTSTRAP"
+        status:     completed
+
+        # 2. 解锁 workflow：将 0_init step task 设为 ready，orchestrator 可以开始执行
+        event_type: TASK_UPDATE
+        task_id:    "MWF-OPC:0_1:environment_init"
+        status:     ready
+        # 注意: PHASE_READY / PHASE_BLOCKED 事件不存在。
+        # 使用 TASK_QUERY(spec_id=project_id) 或 SPEC_QUERY(spec_id=project_id) 查询当前状态。
+
+        # 3. 通知 PMO
+        ipc_send(to="{pmo_agent_id}", message={
+          "message_type":    "BOOTSTRAP_COMPLETE",
+          "project_id":      "{project_id}",
+          "sandbox_id":      "brain-{project_id}-development-{instance_id}",
+          "orchestrator_id": "agent_{group_id}_{project_id}_orchestrator_01"
+        })
+
+  # ── Handoff ───────────────────────────────────────────────────────────────
+
+  handoff:
+    trigger: "devops D5 完成，orchestrator 已在线，task MWF-OPC:0_1:environment_init = ready"
+    next: "orchestrator 冷启动后执行 MWF-OPC:0_1:environment_init（见 phases/0_init.yaml）"
+    note: |
+      orchestrator 间接承担 PMO 角色，在 sandbox 内通过 IPC 与 brain PMO 双向通信。
+      后续所有 workflow 步骤（Phase 1-7）均由 orchestrator 严格按 workflow 编排执行。
+      task_manager 数据存储于 /xkagent_infra/runtime/data/brain_task_manager/
+      （配置文件: brain/infrastructure/config/brain_task_manager/brain_task_manager.json）
+
+  # ── 失败处理 ──────────────────────────────────────────────────────────────
+
+  on_failure:
+    P2: "task_manager SPEC_CREATE 失败 → 不继续，检查 task_manager 服务"
+    P3: "BOOTSTRAP_DISPATCH IPC 失败 → 重试或人工介入，不启动 sandbox"
+    D1_D4:
+      - "task_manager TASK_UPDATE('{project_id}_BOOTSTRAP', blocked, reason='{失败步骤及原因}')"
+      - "docker logs brain-{project_id}-development-{instance_id}  （如容器已启动）"
+      - "sandbox_service.py stop --instance {instance_id}          （如需清理）"
+      - "ipc_send(to='{pmo_agent_id}', type='BOOTSTRAP_FAILED', task_id='{project_id}_BOOTSTRAP', reason='...')"

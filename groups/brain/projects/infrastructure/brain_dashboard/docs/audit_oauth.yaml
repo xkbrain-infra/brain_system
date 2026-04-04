@@ -1,0 +1,97 @@
+---
+# Audit Record
+# Feature: brain-dashboard-oauth-config-2026-03-17
+
+audit:
+  feature_id: brain-dashboard-oauth-config-2026-03-17
+  audit_date: "2026-03-17"
+  auditor: xk-agent-orchestrator
+  status: PASSED
+
+  workflow_phases:
+    - phase: INTAKE
+      status: PASS
+      artifact: docs/intake_record_oauth.yaml
+      notes: Feature scoped, sandbox_request set to reuse_existing full_sandbox
+
+    - phase: RESEARCH
+      status: PASS
+      artifact: docs/research_report_oauth.yaml
+      notes: All 4 OAuth flow types documented, provider compatibility matrix produced
+
+    - phase: BOOTSTRAP
+      status: PASS
+      notes: >
+        Docker container brain_dashboard_sandbox created (network_mode: host, port 18082).
+        Agent roster + agentctl registry configured for 4 agents.
+        Resolved: /xkagent_infra bind mount limitation (docker cp workaround).
+        Resolved: Port 18080 conflict (moved to 18082).
+        Resolved: Proxy connectivity (container uses 10.200.11.2:8210).
+
+    - phase: PLANNING
+      status: PASS
+      artifact: docs/planning_oauth.yaml
+      notes: Architecture documented, 4 OAuth flow designs specified
+
+    - phase: TASK_MODELING
+      status: PASS
+      notes: Tasks distributed to dev_api (backend), dev_ui (frontend), qa (tests)
+
+    - phase: EXECUTION
+      status: PASS
+      notes: >
+        All deliverables implemented on host filesystem (bind mount workaround).
+        25/25 unit tests passing in sandbox container.
+        Live API smoke test passing (7 providers, masking verified).
+        Orchestrator agent (orchestrator_01) ran via claude-sonnet-4-6 through brain_agent_proxy.
+        Root cause of earlier API routing failure identified and fixed: claude-code SDK injects
+        "user" and "context_management" fields that Copilot /v1/messages rejects; stripped in proxy.
+        ACCEPTANCE.md and STATUS=DONE written by orchestrator_01 autonomously.
+
+    - phase: RELEASE
+      status: PASS
+      artifact: docs/release_oauth.yaml
+      notes: v2.3.0 released
+
+    - phase: AUDIT
+      status: PASS
+      artifact: docs/audit_oauth.yaml (this file)
+
+  issues_encountered:
+    - id: issue-001
+      description: /xkagent_infra bind mount not propagating new files to container
+      resolution: Used docker cp to copy files into container
+      impact: low
+
+    - id: issue-002
+      description: Port 18080 conflict with lml-rag-service
+      resolution: Changed to port 18082 in compose.dev.yaml
+      impact: low
+
+    - id: issue-003
+      description: Container network isolation from brain_agent_proxy
+      resolution: Changed to network_mode host; proxy at 10.200.11.2:8210
+      impact: medium - required compose.dev.yaml redesign
+
+    - id: issue-004
+      description: claude CLI fails with brain_agent_proxy due to unsupported fields
+      resolution: >
+        GitHub Copilot /v1/messages rejects "user" (SDK session ID) and
+        "context_management" (Anthropic extension) fields. Fixed in proxy
+        _sanitize_anthropic_messages_payload (strip both fields before forwarding).
+        Also removed metadata.user_id → out["user"] translation in
+        _translate_anthropic_to_openai to prevent re-injection on chat_completions fallback.
+        After fix, orchestrator_01 ran successfully via claude-sonnet-4-6.
+      impact: medium - required proxy fix; resolved fully
+
+  security_review:
+    - check: Secret masking in GET /api/v2/providers
+      result: PASS — tokens show first 8 chars + *** only
+    - check: No credentials logged
+      result: PASS — providers.py writes only to YAML, no logging of secrets
+    - check: YAML injection prevention
+      result: PASS — yaml.dump used for writes, not string concatenation
+    - check: OAuth state parameter
+      result: PASS — state=secrets.token_urlsafe(16) in authorization code flow
+
+  final_verdict: APPROVED

@@ -1,0 +1,58 @@
+minimum_runtime_topology:
+  id: "MWF-ROLLOUT-002"
+  version: "0.1"
+  intent: "定义完整交付目标下的推荐运行拓扑，并保留当前 provider 基线"
+  compatibility_note: "文件名保留用于兼容，但本文件不再表达 MVP / demo / earliest-stage 目标"
+
+brain_infra_delivery_baseline:
+  required_services:
+    - "brain manager publish service"
+    - "config registry service"
+    - "global task manager"
+    - "global logging service"
+    - "release manager"
+    - "audit orchestrator"
+    - "watchdog"
+
+project_sandbox_delivery_baseline:
+  required_services:
+    - "project orchestrator"
+    - "timer service client/registration context"
+    - "local task runtime"
+    - "sandbox logging service"
+    - "worker agents"
+    - "project test runner"
+    - "artifact packaging path"
+
+sandbox_provider_baseline:
+  current_default_provider: "docker_container"
+  providers:
+    docker_container:
+      template_assets:
+        - "/brain/platform/docker/Dockerfile"
+        - "/brain/platform/docker/compose.yaml"
+        - "/brain/platform/docker/scripts/container_bootstrap.sh"
+        - "/brain/platform/docker/scripts/healthcheck.sh"
+      adaptation_required:
+        - "project-specific compose/env"
+        - "project-specific supervisor profile"
+        - "project-specific agent roster"
+        - "project-specific dependency/toolchain extension"
+
+deployment_rules:
+  - "project_delivery 的目标是完整交付，不是最小演示"
+  - "watchdog、release manager、audit orchestrator 都属于完整交付基线"
+  - "timer service 可以中心服务 + sandbox registration client 的组合形态存在"
+  - "local task runtime 不上卷为独立 brain service"
+  - "sandbox logging service 必须先本地落盘，再做上卷摘要"
+  - "sandbox destroy 前必须完成 runtime/log/trace dump"
+  - "docker_container 作为当前默认 provider 必须通过内置模板实例化"
+
+delivery_scope:
+  target: "面向完整项目交付"
+  must_show:
+    - "full project planning"
+    - "task assignment and execution governance"
+    - "task/log/snapshot sync"
+    - "release candidate and formal release path"
+    - "audit record creation and feedback closure"

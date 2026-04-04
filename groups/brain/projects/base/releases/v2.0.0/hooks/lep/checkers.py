@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional
 import os
 import re
+import shlex
 import subprocess
 import sys
 import fnmatch
@@ -63,11 +64,25 @@ class InlineChecker(BaseChecker):
                         'suggestion': item.get('suggestion', ''),
                         'priority': item.get('priority'),
                         'action': item.get('action'),
+                        'exclude_prefix': item.get('exclude_prefix'),
                     })
                 except re.error as e:
                     print(f"Warning: Invalid regex pattern '{pattern_str}': {e}", file=sys.stderr)
 
         return compiled
+
+    @staticmethod
+    def _command_has_prefix(command: str, prefix: str) -> bool:
+        if not command or not prefix:
+            return False
+        stripped = command.lstrip()
+        if stripped.startswith(prefix):
+            return True
+        try:
+            first = shlex.split(command, posix=True)[0]
+        except Exception:
+            return False
+        return first == prefix or Path(first).name == prefix
 
     def check(self, context: CheckContext) -> CheckResult:
         """Check patterns against command/path"""
@@ -78,6 +93,9 @@ class InlineChecker(BaseChecker):
         if command:
             for pattern_group in self._compiled.values():
                 for pattern_info in pattern_group:
+                    exclude_prefix = pattern_info.get('exclude_prefix')
+                    if exclude_prefix and self._command_has_prefix(command, str(exclude_prefix)):
+                        continue
                     if pattern_info['regex'].search(command):
                         # Build message from template
                         msg_template = context.enforcement.get('warn_message') or context.enforcement.get('block_message', '')

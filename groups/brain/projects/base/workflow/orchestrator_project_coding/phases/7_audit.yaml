@@ -1,0 +1,148 @@
+# Phase 7: AUDIT — 审计 + 反馈 + 关闭
+# 来源: workflow_core.yaml → meta.phase_files.audit
+# steps: 7_1 (run_audit), 7_2 (workflow_complete)
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PHASE 7: AUDIT — 审计 + 反馈 + 关闭
+# ═══════════════════════════════════════════════════════════════════════════════
+
+  - step_id: "MWF-OPC:7_1:run_audit"
+    phase: audit
+    who:
+      executor: project_auditor
+      profile: auditor
+      reviewer: brain_pmo
+    purpose: "审计整个项目执行过程，产出改进建议"
+
+    do:
+      - action: "TASK_UPDATE: in_progress"
+        action_id: "MWF-OPC:7_1:run_audit:A01"
+        tool: "task_manager API"
+        call: |
+          event_type: TASK_UPDATE
+          task_id:    "MWF-OPC:7_1:run_audit"
+          status:     in_progress
+
+      - action: "收集所有执行证据"
+        action_id: "MWF-OPC:7_1:run_audit:A02"
+        tool: "file_read"
+        inputs:
+          - "state/intake.yaml"
+          - "state/research.yaml"
+          - "state/project_plan.yaml"
+          - "state/task_graph.yaml"
+          - "state/dispatch_log.yaml"
+          - "state/release_record.yaml"
+          - "state/spec_checklist.yaml"
+
+      - action: "分析执行质量"
+        action_id: "MWF-OPC:7_1:run_audit:A03"
+        tool: "LLM reasoning"
+        checks:
+          - "workflow 每个阶段是否被执行"
+          - "spec_checklist 覆盖率和缺失项"
+          - "是否有 gate 被跳过"
+          - "重复失败模式"
+          - "瓶颈分析"
+
+      - action: "产出审计报告"
+        action_id: "MWF-OPC:7_1:run_audit:A04"
+        tool: "file_write"
+        target: "state/audit_report.yaml"
+
+      - action: "将改进建议路由到对应领域"
+        action_id: "MWF-OPC:7_1:run_audit:A05"
+        tool: "IPC → brain_pmo"
+        details: |
+          knowledge_patches: 技术经验 → brain knowledge base
+          workflow_patches: 流程改进 → workflow 定义
+          evolution_proposals: 能力升级 → brain evolution backlog
+
+      - action: "cross_model_validation: 验证 state/audit_report.yaml"
+        action_id: "MWF-OPC:7_1:run_audit:A06"
+        type: "cross_model_validation"
+        strategy_ref: "workflow_core.yaml → audit_strategy.cross_model_validation"
+        execution_flow:
+          "1_write_request":
+            path: "{project_root}/state/step_results/MWF-OPC_7_1_run_audit/validation_request.yaml"
+            content:
+              step_id: "MWF-OPC:7_1:run_audit"
+              validator_model_rule: "不同于 orchestrator 当前模型"
+              artifact: "state/audit_report.yaml"
+              check_items:
+                - {id: "CHK-01", type: "file_exists",  target: "state/audit_report.yaml"}
+                - {id: "CHK-02", type: "field_assert", field: "findings",              assert: "非空数组（至少 1 个 finding）"}
+                - {id: "CHK-03", type: "items_check",  target: "findings[*].root_cause",   assert: "非空字符串"}
+                - {id: "CHK-04", type: "field_assert", field: "improvement_actions",   assert: "非空数组"}
+                - {id: "CHK-05", type: "items_check",  target: "improvement_actions[*].target",
+                   assert: "in [knowledge, workflow, evolution]（每个 action 已路由）"}
+                - {id: "CHK-06", type: "field_assert", field: "checklist_coverage",    assert: "非空（含 total 和 done）"}
+                - {id: "CHK-07", type: "field_assert", field: "closure_decision",      assert: "== CLOSED"}
+          "2_spawn_validator":
+            command: "agentctl start --role step_validator --model {validator_model} --ephemeral"
+            note: "validator_model 由 model_selection 规则确定，与 orchestrator 不同"
+          "3_wait_result":
+            wait_for: "IPC: VALIDATE_COMPLETE"
+            timeout: "120s"
+            on_timeout: "fallback → same_model_isolated (见 workflow_core.yaml)"
+          "4_write_completion_check":
+            path: "{project_root}/state/step_results/MWF-OPC_7_1_run_audit/completion_check.yaml"
+        on_fail:
+          action: "TASK_UPDATE(blocked) + IPC notify brain_pmo"
+          payload: "completion_check.yaml path + failed check_items"
+
+      - action: "TASK_UPDATE: completed"
+        action_id: "MWF-OPC:7_1:run_audit:A07"
+        tool: "task_manager API"
+        call: |
+          event_type: TASK_UPDATE
+          task_id:    "MWF-OPC:7_1:run_audit"
+          status:     completed
+
+    artifact: "state/audit_report.yaml"
+    artifact_schema:
+      findings: [{finding: string, severity: string, root_cause: string}]
+      checklist_coverage: {total: int, done: int, missing: [string]}
+      improvement_actions: [{action: string, target: "knowledge|workflow|evolution", priority: string}]
+      closure_decision: "CLOSED | ACTIONS_PENDING"
+
+    check: "findings 不为空; improvement_actions 已路由; closure_decision=CLOSED"
+    on_success: "MWF-OPC:7_2:workflow_complete"
+    on_retry: "部分 findings 未分类 → 补充"
+    on_blocked: "关键 findings 需要管理层决策 → escalate"
+
+  # ── 终态 ───────────────────────────────────────────────────────────────────
+  - step_id: "MWF-OPC:7_2:workflow_complete"
+    phase: closure
+    purpose: "项目完成，归档 sandbox"
+    do:
+      - action: "TASK_UPDATE: in_progress"
+        action_id: "MWF-OPC:7_2:workflow_complete:A01"
+        tool: "task_manager API"
+        call: |
+          event_type: TASK_UPDATE
+          task_id:    "MWF-OPC:7_2:workflow_complete"
+          status:     in_progress
+
+      - action: "归档 sandbox 内所有 artifacts/logs"
+        action_id: "MWF-OPC:7_2:workflow_complete:A02"
+        tool: "docker exec → tar/copy to host"
+      - action: "销毁 sandbox"
+        action_id: "MWF-OPC:7_2:workflow_complete:A03"
+        tool: "docker compose down"
+        prerequisite: "归档完成"
+      - action: "TASK_UPDATE: completed + SPEC_PROGRESS（phase 7 完成，项目关闭）"
+        action_id: "MWF-OPC:7_2:workflow_complete:A04"
+        tool: "task_manager API"
+        call: |
+          # 标记最后一个 step task 完成
+          event_type: TASK_UPDATE
+          task_id:    "MWF-OPC:7_2:workflow_complete"
+          status:     completed
+
+          # Phase 7 (audit) 完成 → 推进 spec stage 到 S8_complete（项目关闭）
+          event_type:    SPEC_PROGRESS
+          spec_id:       "{project_id}"
+          target_stage:  S8_complete
+
+

@@ -1,0 +1,206 @@
+brain_shared_schema:
+  id: "STD-DB-SCHEMA-001"
+  version: "0.1"
+  intent: "定义 brain 全局 SQLite DB 的表结构、命名规则与各服务写入边界"
+
+db:
+  path: "/xkagent_infra/runtime/data/brain_shared.db"
+  scope: "brain 全局唯一 DB，所有 brain 服务共用，不按 group/project 拆文件"
+  engine: "SQLite"
+
+# ─────────────────────────────────────────────────────────
+# 命名规则
+# ─────────────────────────────────────────────────────────
+naming_convention:
+  rule: "表名前缀编码归属层级，前缀决定 owner 和数据作用域"
+  tiers:
+    brain_prefix:
+      pattern: "brain_{domain}_{entity}"
+      scope: "brain 基础设施表，跨 group 可见，由 brain 核心服务写"
+      domain_codes: {hb: heartbeat, ipc: ipc通信, cr: config_registry, ll: llm_quota}
+    groups_prefix:
+      pattern: "groups_{domain}_{entity}"
+      scope: "group/project 粒度运行态，必须含 group_id + project_id 列，支持按 group 过滤"
+      domain_codes: {tm: task_manager, rl: release, au: audit}
+  legacy_note: |
+    brain_shared.db 中已有 agents / ipc_messages / config / session_mapping 为历史遗留表，
+    命名不符合新规范，维持现状不迁移，新表一律遵守前缀规则。
+
+# ─────────────────────────────────────────────────────────
+# 遗留表（已存在，不变更）
+# ─────────────────────────────────────────────────────────
+legacy_tables:
+  agents:
+    description: "agent 在线状态与心跳，brain_hb_agents 的前身"
+    columns: [instance_id, agent_name, agent_type, online, first_seen, last_seen, last_heartbeat, tmux_session, tmux_pane, metadata]
+  ipc_messages:
+    description: "IPC 消息记录，brain_ipc_messages 的前身"
+    columns: [id, msg_id, from_agent, to_agent, message_type, content, created_at, delivered_at, acked_at]
+  config:
+    description: "全局 key-value 配置，brain_cr_config 的前身"
+    columns: [key, value, updated_at]
+  session_mapping:
+    description: "agent session 映射"
+    columns: [session_id, agent_name, instance_id, created_at, updated_at]
+
+# ─────────────────────────────────────────────────────────
+# Task Manager 域 — groups_tm_*
+# 归属服务: global_task_manager
+# 写入方:   project_orchestrator（主），brain_pmo（CREATE_PROJECT）
+# ─────────────────────────────────────────────────────────
+task_manager_tables:
+
+  groups_tm_projects:
+    description: "全局项目注册表，每个项目一行"
+    columns:
+      project_id:       {type: TEXT,    pk: true}
+      group_id:         {type: TEXT,    nullable: false, indexed: true}
+      sandbox_id:       {type: TEXT}
+      orchestrator_id:  {type: TEXT}
+      project_state:    {type: TEXT,    nullable: false, default: "INTAKE"}
+      spec_stage:       {type: TEXT,    nullable: false, default: "S1_alignment"}
+      created_at:       {type: INTEGER, nullable: false}
+      updated_at:       {type: INTEGER, nullable: false}
+      version:          {type: INTEGER, nullable: false, default: 1}
+    indexes: [[group_id], [project_state]]
+    cas: "UPDATE ... WHERE version = expected_version"
+
+  groups_tm_tasks:
+    description: "任务列表，含 workflow_task（编排步骤追踪）和 execution_task（worker 执行单元）"
+    columns:
+      task_id:            {type: TEXT,    pk: true}
+      project_id:         {type: TEXT,    nullable: false, indexed: true, fk: "groups_tm_projects.project_id"}
+      group_id:           {type: TEXT,    nullable: false, indexed: true}
+      task_type:          {type: TEXT,    nullable: false, default: "execution_task"}
+      title:              {type: TEXT,    nullable: false}
+      stage:              {type: TEXT}
+      kind:               {type: TEXT}
+      priority:           {type: INTEGER, default: 2}
+      status:             {type: TEXT,    nullable: false, default: "backlog", indexed: true}
+      owner_agent_id:     {type: TEXT,    indexed: true}
+      active_dispatch_id: {type: TEXT}
+      depends_on:         {type: TEXT,    note: "JSON array of task_ids"}
+      todo_list:          {type: TEXT,    note: "JSON array"}
+      review_by:          {type: TEXT}
+      deadline:           {type: INTEGER}
+      next_check_at:      {type: INTEGER}
+      escalation_policy:  {type: TEXT}
+      artifact_refs:      {type: TEXT,    note: "JSON array"}
+      created_at:         {type: INTEGER, nullable: false}
+      updated_at:         {type: INTEGER, nullable: false}
+      version:            {type: INTEGER, nullable: false, default: 1}
+    indexes: [[project_id], [group_id], [status], [owner_agent_id]]
+    cas: "UPDATE ... WHERE version = expected_version"
+
+  groups_tm_assignments:
+    description: "分配历史，append-only，每次 assign/reassign/unassign 各一行"
+    columns:
+      assignment_id:  {type: TEXT,    pk: true}
+      task_id:        {type: TEXT,    nullable: false, indexed: true, fk: "groups_tm_tasks.task_id"}
+      project_id:     {type: TEXT,    nullable: false}
+      group_id:       {type: TEXT,    nullable: false}
+      agent_id:       {type: TEXT,    nullable: false, indexed: true}
+      dispatch_id:    {type: TEXT}
+      assigned_at:    {type: INTEGER, nullable: false}
+      unassigned_at:  {type: INTEGER}
+      reason:         {type: TEXT,    note: "initial_assign | reassign | timeout | agent_offline"}
+    append_only: true
+
+  groups_tm_dispatches:
+    description: "dispatch delivery 全链路追踪，从 IPC 发出到 execution 确认"
+    columns:
+      dispatch_id:           {type: TEXT,    pk: true}
+      task_id:               {type: TEXT,    nullable: false, indexed: true, fk: "groups_tm_tasks.task_id"}
+      project_id:            {type: TEXT,    nullable: false}
+      group_id:              {type: TEXT,    nullable: false}
+      target_agent_id:       {type: TEXT,    nullable: false}
+      delivery_state:        {type: TEXT,    nullable: false, default: "pending_send", indexed: true}
+      ipc_sent_at:           {type: INTEGER}
+      receipt_ack_at:        {type: INTEGER}
+      execution_accepted_at: {type: INTEGER}
+      execution_started_at:  {type: INTEGER}
+      first_heartbeat_at:    {type: INTEGER}
+      last_heartbeat_at:     {type: INTEGER}
+      timeout_at:            {type: INTEGER}
+      retry_count:           {type: INTEGER, nullable: false, default: 0}
+      created_at:            {type: INTEGER, nullable: false}
+      updated_at:            {type: INTEGER, nullable: false}
+
+  groups_tm_snapshots:
+    description: "project snapshot 历史，append-only，watchdog 通过 created_at 判断新鲜度"
+    columns:
+      snapshot_id:          {type: TEXT,    pk: true}
+      project_id:           {type: TEXT,    nullable: false, indexed: true}
+      group_id:             {type: TEXT,    nullable: false}
+      snapshot_version:     {type: INTEGER, nullable: false}
+      project_state:        {type: TEXT}
+      active_task_count:    {type: INTEGER, default: 0}
+      blocked_task_count:   {type: INTEGER, default: 0}
+      completed_task_count: {type: INTEGER, default: 0}
+      total_task_count:     {type: INTEGER, default: 0}
+      payload:              {type: TEXT,    note: "JSON 扩展字段"}
+      created_at:           {type: INTEGER, nullable: false}
+    append_only: true
+
+  groups_tm_events:
+    description: "任务生命周期事件，append-only，同步写入 JSONL 作审计证据"
+    columns:
+      event_id:        {type: TEXT,    pk: true}
+      task_id:         {type: TEXT,    nullable: false, indexed: true}
+      project_id:      {type: TEXT,    nullable: false, indexed: true}
+      group_id:        {type: TEXT,    nullable: false}
+      event_type:      {type: TEXT,    nullable: false, indexed: true}
+      source_agent_id: {type: TEXT}
+      payload:         {type: TEXT,    note: "JSON"}
+      created_at:      {type: INTEGER, nullable: false}
+    append_only: true
+    event_types:
+      - task.created
+      - task.assigned
+      - task.accepted
+      - task.active
+      - task.blocked
+      - task.review_requested
+      - task.verified
+      - task.done
+      - task.failed
+      - task.cancelled
+      - task.timeout
+      - task.reassigned
+
+# ─────────────────────────────────────────────────────────
+# 未来扩展（预留命名，尚未建表）
+# ─────────────────────────────────────────────────────────
+future_tables:
+  release_domain:
+    tables: [groups_rl_releases, groups_rl_gate_results]
+    owner_service: release_manager
+  audit_domain:
+    tables: [groups_au_reports, groups_au_actions]
+    owner_service: audit_orchestrator
+  llm_quota_domain:
+    current_db: "/xkagent_infra/runtime/data/llm_quota.db"
+    tables: [balance_snapshots, alerts]
+    migration_note: "待评估是否合并到 brain_shared.db，现保持独立"
+
+# ─────────────────────────────────────────────────────────
+# JSONL 补充层（与 DB 配合，不替代 DB）
+# ─────────────────────────────────────────────────────────
+jsonl_layer:
+  purpose: "append-only 过程证据，DB 存可查询状态，JSONL 存完整 trace"
+  paths:
+    project_events: "groups/{group_id}/{project_id}/events.jsonl"
+    dispatch_trace: "groups/{group_id}/{project_id}/dispatch.jsonl"
+    brain_audit:    "brain/logs/audit.jsonl"
+  sync_rule: "groups_tm_events 写 DB 的同时 append 到对应 JSONL，两者不互为权威"
+
+# ─────────────────────────────────────────────────────────
+# 写入边界
+# ─────────────────────────────────────────────────────────
+write_ownership:
+  groups_tm_projects:    [project_orchestrator, brain_pmo]
+  groups_tm_tasks:       [project_orchestrator]
+  groups_tm_assignments: [project_orchestrator]
+  groups_tm_dispatches:  [project_orchestrator]
+  groups_tm_snapshots:   [project_orchestrator, watchdog]
+  groups_tm_events:      [project_orchestrator]

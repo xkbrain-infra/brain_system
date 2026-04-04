@@ -1,0 +1,26 @@
+release:
+  name: brain-system
+  version: 0.0.1-pre
+  build_date: 2026-03-16T08:01:20Z
+  commit: b8aa4e7
+  branch: develop
+  image: brain/system:0.0.1-pre
+
+components:
+  - name: base
+    path: brain/base
+    description: "Core specifications and standards"
+  - name: infrastructure
+    path: brain/infrastructure
+    description: "Infrastructure components"
+  - name: platform
+    path: brain/platform/bin
+    description: "Platform utilities"
+  - name: runtime
+    path: brain/runtime
+    description: "Runtime configuration"
+
+artifacts:
+  image: brain/system:0.0.1-pre
+  tarball: packages/brain-system-0.0.1-pre.tar.gz
+  manifest: packages/manifest-0.0.1-pre.yaml

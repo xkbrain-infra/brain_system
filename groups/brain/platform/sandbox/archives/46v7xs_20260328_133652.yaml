@@ -1,0 +1,12 @@
+archived_at: '2026-03-28T13:36:52.593236'
+compose_file: /xkagent_infra/groups/brain/platform/sandbox/instances/dev-46v7xs/46v7xs.yaml
+container_name: brain-base-development-46v7xs
+created_at: '2026-03-25T16:05:50.596024'
+group: brain
+host_ports:
+  app: 18444
+  debug: 18445
+instance_id: 46v7xs
+project: base
+status: running
+type: development

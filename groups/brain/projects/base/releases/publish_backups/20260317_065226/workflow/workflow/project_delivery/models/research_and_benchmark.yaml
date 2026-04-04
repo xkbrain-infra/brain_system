@@ -1,0 +1,42 @@
+research_and_benchmark:
+  id: "MWF-RES-001"
+  version: "0.1"
+  intent: "定义 multicore workflow 中 research/benchmark 阶段的目标、来源与产物"
+
+positioning:
+  role: "pre_planning_phase"
+  purpose:
+    - "避免没有 research 就直接 planning"
+    - "给 planning 提供外部方案与经验依据"
+    - "减少重复踩坑"
+
+sources:
+  internal:
+    - "prior project audit reports"
+    - "knowledge base"
+    - "existing workflow/spec/runtime docs"
+  external:
+    - "official documentation of relevant platforms"
+    - "industry best practices"
+    - "comparable architecture patterns"
+
+outputs:
+  benchmark_matrix:
+    required_columns:
+      - option
+      - strengths
+      - weaknesses
+      - fit_to_constraints
+      - operational_cost
+      - recommendation
+  recommendation:
+    required_fields:
+      - chosen_approach
+      - reasons
+      - rejected_alternatives
+      - residual_risks
+
+rules:
+  - "research 不是随意阅读，而是必须产出 planning 可用结论"
+  - "涉及架构、workflow、release、audit 的重大变更时必须做 benchmark"
+  - "仅有主观偏好、没有参考依据的方案不得直接进入 BOOTSTRAPPING 或 planning"

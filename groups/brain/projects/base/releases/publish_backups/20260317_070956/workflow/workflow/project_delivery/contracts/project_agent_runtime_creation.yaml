@@ -1,0 +1,138 @@
+project_agent_runtime_creation:
+  id: "MWF-AGENT-RUNTIME-001"
+  version: "0.1"
+  intent: "定义 Docker sandbox 内 project-scoped agent 的 runtime materialization、registry bridge 与启动校验契约"
+
+positioning:
+  note:
+    - "project-scoped agent 的 runtime home 必须在 sandbox 内创建"
+    - "Agent 生命周期仍必须遵守 G-GATE-AGENT-LIFECYCLE，由 agentctl 接管 start/stop/restart"
+    - "现有 agentctl add 缺少 path/cwd override，无法直接创建 /workspace/runtime/agents/{agent_id} 的 project runtime"
+
+source_references:
+  - "/brain/base/spec/policies/lep/agent_lifecycle.yaml"
+  - "/brain/base/spec/policies/agents/agents_registry_spec.yaml"
+  - "/brain/base/spec/policies/agents/agent_protocol.yaml"
+  - "/brain/base/spec/templates/agent/index.yaml"
+  - "/brain/base/spec/templates/agent/mcp_template.json"
+  - "/brain/base/spec/templates/agent/codex_template.toml"
+
+capability_gap:
+  current_agentctl_gap:
+    observed_limit:
+      - "agentctl add 仅支持 name/group/role/agent_type/model 等参数"
+      - "agentctl add 当前不支持 --path 或 --cwd"
+    consequence:
+      - "不能直接把 project-scoped agent 创建到 /workspace/runtime/agents/{agent_id}"
+    required_resolution:
+      - "bootstrap 必须提供 project_agent_runtime_provisioner"
+      - "先 materialize sandbox-local registry，再通过 agentctl start 接管生命周期"
+
+required_inputs:
+  - "project_agent_provision_plan"
+  - "project_agent_roster"
+  - "project_agent_template_bundle_ref"
+  - "brain_workspace_root"
+  - "project_workspace_root"
+  - "sandbox_runtime_root"
+  - "orchestrator_id"
+
+runtime_paths:
+  runtime_root: "/workspace/runtime"
+  agent_runtime_root: "/workspace/runtime/agents"
+  template_bundle_root: "/workspace/runtime/template_bundles/agents"
+  registry_bridge_root: "/workspace/runtime/config/agentctl"
+  registry_bridge_file: "/workspace/runtime/config/agentctl/agents_registry.yaml"
+
+creation_phases:
+  - id: "phase_1_materialize_runtime_home"
+    actions:
+      - "mkdir runtime_home for every project agent"
+      - "copy/import template bundle into sandbox-local template bundle root"
+      - "render provider-specific config into runtime_home"
+      - "write runtime_meta.yaml"
+  - id: "phase_2_build_registry_bridge"
+    actions:
+      - "write sandbox-local agents_registry.yaml with cwd/path pointing to /workspace/runtime/agents/{agent_id}"
+      - "set scope=project and project={project_id}"
+      - "set AGENTCTL_CONFIG_DIR to registry_bridge_root"
+  - id: "phase_3_lifecycle_start"
+    actions:
+      - "invoke agentctl start --apply {agent_id}"
+      - "repeat for bootstrap roster in deterministic order"
+  - id: "phase_4_online_verification"
+    actions:
+      - "verify agent appears in agentctl online or ipc_list_agents"
+      - "verify tmux/process registration exists"
+      - "record failure if registration does not appear within timeout"
+
+provider_rendering:
+  claude:
+    required_files:
+      - ".claude/settings.local.json"
+      - ".mcp.json"
+      - "AGENTS.md"
+    required_env:
+      - "BRAIN_AGENT_NAME"
+      - "BRAIN_AGENT_ROLE"
+      - "BRAIN_AGENT_GROUP"
+      - "BRAIN_PROJECT_ID"
+      - "BRAIN_SANDBOX_ID"
+      - "BRAIN_SCOPE_PATH"
+    launch_contract:
+      - "由 agentctl start 接管"
+      - "runtime cwd 必须是 /workspace/runtime/agents/{agent_id}"
+  codex:
+    required_files:
+      - ".codex/config.toml"
+      - ".mcp.json"
+      - "AGENTS.md"
+    required_env:
+      - "BRAIN_AGENT_NAME"
+      - "BRAIN_TMUX_SESSION"
+      - "BRAIN_PROJECT_ID"
+      - "BRAIN_SANDBOX_ID"
+    launch_contract:
+      - "由 agentctl start 接管"
+      - "runtime cwd 必须是 /workspace/runtime/agents/{agent_id}"
+
+registry_bridge_contract:
+  required_agent_fields:
+    - "name"
+    - "scope"
+    - "group"
+    - "project"
+    - "path"
+    - "cwd"
+    - "agent_type"
+    - "model"
+    - "tmux_session"
+    - "desired_state"
+    - "status"
+  required_values:
+    scope: "project"
+  rules:
+    - "registry bridge 只存在于 sandbox 内，不得回写宿主机全局 registry"
+    - "registry bridge 中的 cwd/path 必须指向 /workspace/runtime/agents/{agent_id}"
+
+verification_contract:
+  required_checks:
+    - "runtime_home exists"
+    - "provider-specific config exists"
+    - "registry bridge contains agent entry"
+    - "agentctl start succeeded"
+    - "ipc registration visible"
+  timeout_policy:
+    startup_timeout_seconds: 60
+    online_timeout_seconds: 30
+
+forbidden_patterns:
+  - "call tmux new-session directly from project bootstrap script"
+  - "skip agentctl and treat process spawn as compliant lifecycle management"
+  - "write project-scoped runtime entries into host global agents_registry"
+  - "point sandbox registry bridge back to host /xkagent_infra/groups/*/agents"
+
+rules:
+  - "runtime materialization 与 lifecycle start 是两步，不得混淆"
+  - "agentctl 负责生命周期；project_agent_runtime_provisioner 负责 runtime home 与 sandbox-local registry bridge"
+  - "没有 registry bridge 与 online verification 的 sandbox，不得通过 BOOTSTRAP_PASS"

@@ -1,0 +1,152 @@
+spec_checklist_contract:
+  id: "MWF-SPEC-LIST-001"
+  version: "0.1"
+  intent: "区分 workflow 标准 checklist 与项目执行 checklist，提供固定 list、实例化规则、完成度和 audit 可核查性"
+
+positioning:
+  role: "workflow_checklist_and_project_instance"
+  description: "SPEC_CHECKLIST.yaml 是标准 list；project_root/spec/spec_checklist.yaml 是项目执行实例"
+  required_workflow_record:
+    canonical_path: "/brain/base/workflow/project_delivery/SPEC_CHECKLIST.yaml"
+    note: "定义单次执行 project_delivery workflow 至少要完成的 base items"
+  required_project_record:
+    canonical_path: "project_root/spec/spec_checklist.yaml"
+    note: "项目立项后由标准 checklist 实例化，并在 planning/task_modeling/execution/release/audit 各阶段持续更新"
+
+generation_sources:
+  required_inputs:
+    - "workflow SPEC_CHECKLIST.yaml"
+    - "workflow stage steps"
+    - "workflow pass_gate required_checks"
+    - "workflow profile requirements"
+    - "project_plan deliverables/milestones/validation_path"
+    - "task_design_report coverage mapping"
+  rules:
+    - "项目 checklist 必须先继承 workflow base items，再追加 project-specific extension items"
+    - "base item 数量应以 workflow SPEC_CHECKLIST.yaml 为准，不允许执行时临时改口径"
+    - "每个必做 workflow requirement 必须映射为至少一个 checklist item"
+    - "每个 deliverable、milestone、validation gate 必须映射到 checklist item 或 checklist item group"
+    - "需要 QA/release/audit 的要求不得只写在 notes 中，必须进入 checklist"
+    - "scope 压缩、waive、defer 必须留痕，不允许静默删除 checklist item"
+
+item_model:
+  required_fields:
+    - item_id
+    - title
+    - workflow_stage
+    - requirement_type
+    - severity
+    - source_ref
+    - completion_rule
+    - status
+    - evidence_policy
+    - required_evidence
+    - owner
+    - updated_at
+  optional_fields:
+    - deliverable_ref
+    - task_refs
+    - milestone_ref
+    - dependency_refs
+    - blocker_ref
+    - evidence_refs
+    - verified_by
+    - waived_by
+    - waive_reason
+    - notes
+
+status_model:
+  allowed:
+    - todo
+    - in_progress
+    - blocked
+    - done
+    - waived
+  rules:
+    - "done 必须满足 completion_rule，且 evidence_policy=require 时必须存在 evidence_refs"
+    - "waived 必须记录 waived_by 和 waive_reason"
+    - "blocked 必须记录 blocker_ref 或 next_action"
+    - "不得直接删除 item 来伪造完成率"
+
+requirement_types:
+  - deliverable
+  - workflow_gate
+  - validation
+  - qa
+  - release
+  - audit
+  - governance
+  - documentation
+
+severity_model:
+  allowed:
+    - critical
+    - high
+    - medium
+  rules:
+    - "critical item 默认不得省略 evidence"
+    - "critical item 未关闭时，不得声称对应阶段通过"
+
+stage_buckets:
+  intake:
+    close_gate: "before_research"
+  research:
+    close_gate: "before_planning"
+  bootstrap:
+    close_gate: "before_execution"
+  planning:
+    close_gate: "before_task_modeling"
+  task_modeling:
+    close_gate: "before_execution"
+  execution:
+    close_gate: "before_release"
+  release:
+    close_gate: "before_audit"
+  audit:
+    close_gate: "before_close"
+
+metrics:
+  required_summary_fields:
+    - base_items
+    - extension_items
+    - total_items
+    - done_items
+    - in_progress_items
+    - blocked_items
+    - waived_items
+    - open_items
+    - completion_pct
+    - evidence_coverage_pct
+    - stage_completion
+  formulas:
+    completion_pct: "((done_items + waived_items) / total_items) * 100"
+    evidence_coverage_pct: "(done_items_with_required_evidence / done_items) * 100"
+  rules:
+    - "总点数应明确区分 base_items 与 extension_items"
+    - "completion_pct 必须按 checklist 实际状态自动汇总，不接受口头估计"
+    - "stage_completion 必须能下钻到 workflow_stage"
+
+traceability:
+  required_links:
+    - "checklist item -> source workflow requirement"
+    - "checklist item -> project deliverable/milestone"
+    - "checklist item -> task/review/test/release/audit evidence"
+  rule:
+    - "没有 traceability 的 checklist item 不得计入高可信完成度"
+    - "required_evidence 中声明的证据类型必须能映射到实际 evidence_refs"
+
+gate_requirements:
+  pre_task_modeling:
+    - "planning stage items closed or explicitly waived"
+  pre_release:
+    - "所有 execution/release 前置 item 已 done 或 waived"
+    - "所有 release-critical item evidence 完整"
+  pre_close:
+    - "audit stage items closed"
+    - "没有未解释的 open/blocked required item"
+
+audit_usage:
+  required_checks:
+    - "audit 必须复核 checklist 是否完整覆盖 workflow 要求点"
+    - "audit 必须识别伪完成、缺证据完成和静默漏项"
+    - "audit report 必须给出未覆盖项和 coverage 可信度结论"

@@ -1,0 +1,43 @@
+# Software Development Industry Template
+
+industry: software_dev
+version: "1.1"
+
+goals:
+  - "需求 → 设计 → 实现 → 测试 → 发布 的完整工程闭环"
+  - "接口、代码、验证、上线门禁可追踪"
+
+primary_roles:
+  - architect
+  - developer
+  - qa
+  - devops
+  - researcher
+
+common_deliverables:
+  - architecture_docs
+  - api_contracts
+  - source_code
+  - test_reports
+  - deployment_plans
+
+workflow:
+  canonical: /brain/base/workflow/project_delivery
+  profile: software_dev
+  entrypoints:
+    intake: /brain/base/workflow/project_delivery/intake.yaml
+    research: /brain/base/workflow/project_delivery/research.yaml
+    planning: /brain/base/workflow/project_delivery/planning.yaml
+    execution: /brain/base/workflow/project_delivery/execution.yaml
+    release: /brain/base/workflow/project_delivery/release.yaml
+    audit: /brain/base/workflow/project_delivery/audit.yaml
+  state_machines: /brain/base/workflow/project_delivery/contracts/state_machines.yaml
+  contracts:
+    execution: /brain/base/workflow/project_delivery/contracts/execution_contract.yaml
+    release: /brain/base/workflow/project_delivery/contracts/release_contract.yaml
+    audit: /brain/base/workflow/project_delivery/contracts/audit_contract.yaml
+
+overlays:
+  architect: /brain/base/spec/templates/industries/software_dev/architect.overlay.md
+  developer: /brain/base/spec/templates/industries/software_dev/developer.overlay.md
+  qa: /brain/base/spec/templates/industries/software_dev/qa.overlay.md

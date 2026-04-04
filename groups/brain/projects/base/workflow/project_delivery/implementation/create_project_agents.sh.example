@@ -31,6 +31,63 @@ import yaml
 
 project_id, group_id, sandbox_id, orchestrator_id, roster_path, template_map_path, agent_runtime_root, template_bundle_root, agentctl_config_dir, project_root = sys.argv[1:]
 
+# ── CLAUDE.md 渲染辅助函数 ───────────────────────────────────────────────────
+
+def _parse_role_sections(content: str) -> dict:
+    """解析 role template 中的 ## section_name 块"""
+    sections: dict = {}
+    current: str | None = None
+    lines: list = []
+    for line in content.split("\n"):
+        if line.startswith("## "):
+            if current is not None:
+                sections[current] = "\n".join(lines).strip()
+            current = line[3:].strip()
+            lines = []
+        elif current is not None:
+            lines.append(line)
+    if current is not None:
+        sections[current] = "\n".join(lines).strip()
+    return sections
+
+def render_claude_md(agent_id: str, role_key: str) -> str:
+    """
+    将 base_template.md + roles/{role_key}.md 渲染为完整 CLAUDE.md。
+    模板路径基于 sandbox 内的 /brain 路径。
+    """
+    tmpl_dir = Path("/brain/base/spec/templates/agent")
+    base_path = tmpl_dir / "base_template.md"
+    role_path = tmpl_dir / f"roles/{role_key}.md"
+
+    if not base_path.exists():
+        return f"# {agent_id}\nrole: {role_key}\n# (base_template not found at {base_path})\n"
+
+    base = base_path.read_text(encoding="utf-8")
+    role_sections = (
+        _parse_role_sections(role_path.read_text(encoding="utf-8"))
+        if role_path.exists() else {}
+    )
+
+    scope_path = f"/groups/{group_id}/projects/{project_id}"
+    variables = {
+        "name":                  agent_id,
+        "description":           f"{group_id}/{project_id} {role_key} agent",
+        "path":                  str(Path(agent_runtime_root) / agent_id),
+        "scope_path":            scope_path,
+        "agent_name":            agent_id,
+        "group":                 f"{group_id}_{project_id}",
+        "role":                  role_key,
+        "role_identity":         role_sections.get("role_identity", ""),
+        "init_extra_refs":       role_sections.get("init_extra_refs", ""),
+        "core_responsibilities": role_sections.get("core_responsibilities", ""),
+        "collaboration_extra":   role_sections.get("collaboration_extra", ""),
+        "health_check_extra":    role_sections.get("health_check_extra", ""),
+    }
+    result = base
+    for k, v in variables.items():
+        result = result.replace("{{" + k + "}}", v)
+    return result
+
 roster_doc = yaml.safe_load(Path(roster_path).read_text(encoding="utf-8"))
 template_doc = yaml.safe_load(Path(template_map_path).read_text(encoding="utf-8"))
 
@@ -109,6 +166,12 @@ for agent in roster:
         ]
     )
     (runtime_home / "AGENTS.md").write_text(ag_md + "\n", encoding="utf-8")
+
+    # 渲染 CLAUDE.md（所有 claude 类型 agent 通用）
+    # codex agent 使用 AGENTS.md，不需要 CLAUDE.md
+    if agent_type == "claude":
+        claude_md = render_claude_md(agent_id, role_key)
+        (runtime_home / "CLAUDE.md").write_text(claude_md, encoding="utf-8")
 
     if agent_type == "claude":
         cfg = {

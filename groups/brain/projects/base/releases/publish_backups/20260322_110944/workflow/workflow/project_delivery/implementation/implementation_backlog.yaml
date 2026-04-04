@@ -1,0 +1,658 @@
+implementation_backlog:
+  id: "MWF-IMPL-001"
+  version: "0.1"
+  intent: "定义 multicore workflow 的第一批落地任务"
+
+epics:
+  - epic_id: "MWF-E1"
+    title: "Runtime Package Publication"
+    goal: "将 proposal package 收敛为正式 runtime architecture package"
+    tasks:
+      - task_id: "MWF-E1-T1"
+        title: "create runtime/architecture/multicore directory skeleton"
+        owner: "brain_manager"
+        priority: "high"
+        depends_on: []
+        acceptance:
+          - "存在 runtime architecture package 根目录"
+          - "存在 index/workflow/protocols 基础结构"
+      - task_id: "MWF-E1-T2"
+        title: "publish proposal files into runtime package stable names"
+        owner: "brain_manager"
+        priority: "high"
+        depends_on: ["MWF-E1-T1"]
+        acceptance:
+          - "编号文件已映射为稳定文件名"
+          - "index.yaml 可索引整包"
+
+  - epic_id: "MWF-E2"
+    title: "State Model Alignment"
+    goal: "统一 runtime、workflow、task manager 的状态语义"
+    tasks:
+      - task_id: "MWF-E2-T1"
+        title: "write compatibility mapping between legacy task states and multicore task states"
+        owner: "architect"
+        priority: "critical"
+        depends_on: []
+        acceptance:
+          - "明确 Pending/InProgress/Completed 等旧状态如何映射"
+          - "明确 project/agent/release 新状态的 SSOT"
+          - "compatibility mapping 文档落盘"
+      - task_id: "MWF-E2-T2"
+        title: "define project/agent/release state contracts for runtime services"
+        owner: "architect"
+        priority: "high"
+        depends_on: ["MWF-E2-T1"]
+        acceptance:
+          - "状态字段契约文档完成"
+          - "字段名与消息协议一致"
+
+  - epic_id: "MWF-E3"
+    title: "Project Orchestrator Skeleton"
+    goal: "引入真正的项目级 orchestrator"
+    tasks:
+      - task_id: "MWF-E3-T1"
+        title: "reserve unique service name for project orchestrator"
+        owner: "architect"
+        priority: "high"
+        depends_on: []
+        acceptance:
+          - "不与现有 agentctl orchestrator 混名"
+      - task_id: "MWF-E3-T2"
+        title: "create project orchestrator service skeleton"
+        owner: "developer"
+        priority: "critical"
+        depends_on: ["MWF-E3-T1", "MWF-E2-T2"]
+        acceptance:
+          - "可接收 project bootstrap input"
+          - "可写 project runtime root"
+          - "可发送 initial project snapshot"
+      - task_id: "MWF-E3-T3"
+        title: "support task assignment and task result ingestion"
+        owner: "developer"
+        priority: "high"
+        depends_on: ["MWF-E3-T2"]
+        acceptance:
+          - "支持 TASK_ASSIGN/TASK_DONE 基本链路"
+      - task_id: "MWF-E3-T4"
+        title: "support task graph, ready set computation, and parallel dispatch"
+        owner: "developer"
+        priority: "high"
+        depends_on: ["MWF-E3-T3"]
+        acceptance:
+          - "可计算 READY set"
+          - "可并行分配非冲突 tasks"
+          - "可在状态变化后重新计算"
+
+  - epic_id: "MWF-E4"
+    title: "Global Sync and Watchdog"
+    goal: "建立全局可见性与卡死检测"
+    tasks:
+      - task_id: "MWF-E4-T1"
+        title: "add project snapshot registry to global task manager"
+        owner: "developer"
+        priority: "critical"
+        depends_on: ["MWF-E3-T2"]
+        acceptance:
+          - "可持久化 project snapshot"
+          - "可按 project_id 查询最新快照"
+      - task_id: "MWF-E4-T2"
+        title: "add orchestrator and agent heartbeat registry"
+        owner: "developer"
+        priority: "high"
+        depends_on: ["MWF-E4-T1"]
+        acceptance:
+          - "可记录 heartbeat"
+          - "可标记 stale/offline"
+      - task_id: "MWF-E4-T3"
+        title: "add watchdog rules for stale snapshot and offline agent"
+        owner: "developer"
+        priority: "high"
+        depends_on: ["MWF-E4-T2"]
+        acceptance:
+          - "可检测 stale snapshot"
+          - "可检测 offline agent"
+          - "可产出 escalation event"
+      - task_id: "MWF-E4-T4"
+        title: "support orchestrator-registered timer triggers and timer IPC callbacks"
+        owner: "developer"
+        priority: "high"
+        depends_on: ["MWF-E3-T2", "MWF-E4-T1"]
+        acceptance:
+          - "orchestrator 可注册 task/project trigger"
+          - "timer service 可按计划主动发 IPC"
+          - "timer 不直接修改 task 状态"
+
+  - epic_id: "MWF-E5"
+    title: "Release Skeleton"
+    goal: "建立候选发布与 gate 状态流"
+    tasks:
+      - task_id: "MWF-E5-T1"
+        title: "create release candidate record schema"
+        owner: "architect"
+        priority: "medium"
+        depends_on: ["MWF-E2-T2"]
+        acceptance:
+          - "candidate 字段齐全"
+          - "与 release state machine 一致"
+      - task_id: "MWF-E5-T2"
+        title: "store release state transitions in runtime"
+        owner: "developer"
+        priority: "medium"
+        depends_on: ["MWF-E5-T1", "MWF-E4-T1"]
+        acceptance:
+          - "可记录 BUILD_READY 到 RELEASED/ROLLED_BACK"
+
+  - epic_id: "MWF-E6"
+    title: "Audit Skeleton"
+    goal: "建立审计入口与反馈路由"
+    tasks:
+      - task_id: "MWF-E6-T1"
+        title: "create audit report schema and registry"
+        owner: "architect"
+        priority: "medium"
+        depends_on: ["MWF-E5-T2"]
+        acceptance:
+          - "audit report 字段覆盖 findings/root_causes/actions"
+      - task_id: "MWF-E6-T2"
+        title: "route audit actions into knowledge/workflow/spec/evolution buckets"
+        owner: "developer"
+        priority: "medium"
+        depends_on: ["MWF-E6-T1"]
+        acceptance:
+          - "每条 action 都有 target_domain"
+          - "不可静默丢弃 findings"
+      - task_id: "MWF-E6-T3"
+        title: "materialize high severity findings into follow-up backlog items"
+        owner: "developer"
+        priority: "high"
+        depends_on: ["MWF-E6-T1"]
+        acceptance:
+          - "高优先级 findings 必须创建 follow-up task 或 project"
+          - "follow-up item 可在 manager board 可见"
+          - "project close gate 会检查 materialization"
+
+  - epic_id: "MWF-E7"
+    title: "Planning Contract"
+    goal: "将 planning 从骨架扩展为可执行项目规划契约"
+    tasks:
+      - task_id: "MWF-E7-T1"
+        title: "define technical baseline contract for planning"
+        owner: "architect"
+        priority: "high"
+        depends_on: []
+        acceptance:
+          - "implementation language/runtime/standards 字段固定"
+      - task_id: "MWF-E7-T2"
+        title: "define architecture, module, and interface estimation contract"
+        owner: "architect"
+        priority: "high"
+        depends_on: ["MWF-E7-T1"]
+        acceptance:
+          - "模块/接口/复杂度估算结构固定"
+      - task_id: "MWF-E7-T3"
+        title: "define integration, testing, task design, and tracking contracts"
+        owner: "architect"
+        priority: "high"
+        depends_on: ["MWF-E7-T2"]
+        acceptance:
+          - "联调/测试/task 设计/跟踪输出结构固定"
+
+  - epic_id: "MWF-E8"
+    title: "Task Modeling Contract"
+    goal: "将 planning 产物稳定映射为可执行 task graph"
+    tasks:
+      - task_id: "MWF-E8-T1"
+        title: "define task vs todo boundary and granularity rules"
+        owner: "architect"
+        priority: "high"
+        depends_on: ["MWF-E7-T3"]
+        acceptance:
+          - "task 与 todo 边界规则固定"
+          - "粒度规则固定"
+      - task_id: "MWF-E8-T2"
+        title: "define owner/participant/reviewer/dependency/trigger mapping rules"
+        owner: "architect"
+        priority: "high"
+        depends_on: ["MWF-E8-T1"]
+        acceptance:
+          - "角色、依赖、trigger、conflict 映射规则固定"
+      - task_id: "MWF-E8-T3"
+        title: "define ready set seed generation and execution handoff contract"
+        owner: "architect"
+        priority: "high"
+        depends_on: ["MWF-E8-T2"]
+        acceptance:
+          - "初始 READY set 生成规则固定"
+          - "task modeling 到 execution 的交接契约固定"
+
+  - epic_id: "MWF-E9"
+    title: "Execution Contract"
+    goal: "将 task graph 稳定推进为可交付结果"
+    tasks:
+      - task_id: "MWF-E9-T1"
+        title: "define dispatch cycle and assignment persistence rules"
+        owner: "architect"
+        priority: "high"
+        depends_on: ["MWF-E8-T3"]
+        acceptance:
+          - "dispatch cycle 固定"
+          - "assignment persistence 规则固定"
+      - task_id: "MWF-E9-T2"
+        title: "define state transition, handoff, review, and test rules"
+        owner: "architect"
+        priority: "high"
+        depends_on: ["MWF-E9-T1"]
+        acceptance:
+          - "状态流转路径固定"
+          - "handoff/review/test 契约固定"
+      - task_id: "MWF-E9-T3"
+        title: "define rework and execution-to-release gate"
+        owner: "architect"
+        priority: "high"
+        depends_on: ["MWF-E9-T2"]
+        acceptance:
+          - "rework 规则固定"
+          - "execution 进入 release 的通过门固定"
+
+  - epic_id: "MWF-E10"
+    title: "Release Contract"
+    goal: "将发布链路固定为可审计、可回滚的 gate 流程"
+    tasks:
+      - task_id: "MWF-E10-T1"
+        title: "define approval chain and stage/prod gate rules"
+        owner: "architect"
+        priority: "high"
+        depends_on: ["MWF-E9-T3"]
+        acceptance:
+          - "审批链固定"
+          - "stage/prod gate 通过条件固定"
+      - task_id: "MWF-E10-T2"
+        title: "define deployment, smoke, and rollback evidence rules"
+        owner: "architect"
+        priority: "high"
+        depends_on: ["MWF-E10-T1"]
+        acceptance:
+          - "deploy/smoke/rollback 证据规则固定"
+      - task_id: "MWF-E10-T3"
+        title: "align release report schema with release gates"
+        owner: "architect"
+        priority: "high"
+        depends_on: ["MWF-E10-T2"]
+        acceptance:
+          - "release_report 字段与 gate/approval/evidence 对齐"
+
+  - epic_id: "MWF-E11"
+    title: "Audit Contract"
+    goal: "将 audit 固定为可复查、可追责、可 materialize 的闭环"
+    tasks:
+      - task_id: "MWF-E11-T1"
+        title: "define audit input bundle and review dimensions"
+        owner: "architect"
+        priority: "high"
+        depends_on: ["MWF-E10-T3"]
+        acceptance:
+          - "audit 输入包固定"
+          - "audit 维度固定"
+      - task_id: "MWF-E11-T2"
+        title: "define root cause and finding classification rules"
+        owner: "architect"
+        priority: "high"
+        depends_on: ["MWF-E11-T1"]
+        acceptance:
+          - "finding 分类固定"
+          - "root cause 输出规则固定"
+      - task_id: "MWF-E11-T3"
+        title: "define materialization gate and audit report schema alignment"
+        owner: "architect"
+        priority: "high"
+        depends_on: ["MWF-E11-T2"]
+        acceptance:
+          - "AUDIT_MATERIALIZED 规则固定"
+          - "audit_report 字段与 gate 对齐"
+
+  - epic_id: "MWF-E12"
+    title: "Logging Service and Traceability"
+    goal: "建立结构化日志服务、分类持久化和跨层同步能力"
+    tasks:
+      - task_id: "MWF-E12-T1"
+        title: "define structured logging service contract and taxonomy"
+        owner: "architect"
+        priority: "high"
+        depends_on: ["MWF-E11-T3"]
+        acceptance:
+          - "timeline/workflow/task_progress/service_runtime/release/audit 分类固定"
+          - "level/dimension/source 规则固定"
+      - task_id: "MWF-E12-T2"
+        title: "define local and global log storage layout and retention rules"
+        owner: "architect"
+        priority: "high"
+        depends_on: ["MWF-E12-T1"]
+        acceptance:
+          - "按项目组|项目分类的目录布局固定"
+          - "local/global retention 和 rollup 规则固定"
+      - task_id: "MWF-E12-T3"
+        title: "align logging schema with reports, global sync, and task manager references"
+        owner: "architect"
+        priority: "high"
+        depends_on: ["MWF-E12-T2"]
+        acceptance:
+          - "report schema 包含 log refs"
+          - "global sync 包含上行日志规则"
+          - "task summary/task record 可追踪到 last_log_ref"
+
+milestones:
+  - milestone_id: "MWF-M1"
+    title: "Runtime package published"
+    includes: ["MWF-E1-T1", "MWF-E1-T2"]
+  - milestone_id: "MWF-M2"
+    title: "State alignment complete"
+    includes: ["MWF-E2-T1", "MWF-E2-T2"]
+  - milestone_id: "MWF-M3"
+    title: "Project orchestrator can bootstrap and sync"
+    includes: ["MWF-E3-T2", "MWF-E3-T4", "MWF-E4-T1", "MWF-E4-T2", "MWF-E4-T4"]
+  - milestone_id: "MWF-M4"
+    title: "Minimum release and audit loop exists"
+    includes: ["MWF-E5-T2", "MWF-E6-T1", "MWF-E6-T2", "MWF-E6-T3"]
+  - milestone_id: "MWF-M5"
+    title: "Planning contract complete"
+    includes: ["MWF-E7-T1", "MWF-E7-T2", "MWF-E7-T3"]
+  - milestone_id: "MWF-M6"
+    title: "Task modeling contract complete"
+    includes: ["MWF-E8-T1", "MWF-E8-T2", "MWF-E8-T3"]
+  - milestone_id: "MWF-M7"
+    title: "Execution contract complete"
+    includes: ["MWF-E9-T1", "MWF-E9-T2", "MWF-E9-T3"]
+  - milestone_id: "MWF-M8"
+    title: "Release contract complete"
+    includes: ["MWF-E10-T1", "MWF-E10-T2", "MWF-E10-T3"]
+  - milestone_id: "MWF-M9"
+    title: "Audit contract complete"
+    includes: ["MWF-E11-T1", "MWF-E11-T2", "MWF-E11-T3"]
+  - milestone_id: "MWF-M10"
+    title: "Logging contract complete"
+    includes: ["MWF-E12-T1", "MWF-E12-T2", "MWF-E12-T3"]
+
+  - epic_id: "MWF-E13"
+    title: "Config Registry and Service Registration"
+    goal: "建立中心化配置、端口、service 注册和 supervisor 注册能力"
+    tasks:
+      - task_id: "MWF-E13-T1"
+        title: "define config registry service contract and API surface"
+        owner: "architect"
+        priority: "high"
+        depends_on: ["MWF-E12-T3"]
+        acceptance:
+          - "GET_CONFIG/PUT_CONFIG_VERSION/ALLOCATE_PORT/REGISTER_SERVICE/REGISTER_SUPERVISOR 规则固定"
+      - task_id: "MWF-E13-T2"
+        title: "define runtime config, service registration, and supervisor schemas"
+        owner: "architect"
+        priority: "high"
+        depends_on: ["MWF-E13-T1"]
+        acceptance:
+          - "config/service/port/supervisor schema 固定"
+          - "group_id/project_id/sandbox_id 引用一致"
+      - task_id: "MWF-E13-T3"
+        title: "define prompt rules for orchestrator and agents using config registry"
+        owner: "architect"
+        priority: "high"
+        depends_on: ["MWF-E13-T2"]
+        acceptance:
+          - "不得自选端口/绕过 supervisor 注册/绕过 service 注册 的约束固定"
+      - task_id: "MWF-E13-T4"
+        title: "define config registration sequences and control IPC alignment"
+        owner: "architect"
+        priority: "high"
+        depends_on: ["MWF-E13-T3"]
+        acceptance:
+          - "bootstrap/runtime/release 三条注册顺序流固定"
+          - "control IPC 中 RESERVE_SERVICE_NAME/ALLOCATE_PORT/REGISTER_SUPERVISOR 等消息对齐"
+
+  - milestone_id: "MWF-M11"
+    title: "Config registry contract complete"
+    includes: ["MWF-E13-T1", "MWF-E13-T2", "MWF-E13-T3", "MWF-E13-T4"]
+
+  - epic_id: "MWF-E14"
+    title: "Brain Manager Runtime Package Publication"
+    goal: "定义 brain manager 对 runtime architecture package 的校验、发布、归档与 promotion 机制"
+    tasks:
+      - task_id: "MWF-E14-T1"
+        title: "define brain manager publish service role and boundaries"
+        owner: "architect"
+        priority: "high"
+        depends_on: ["MWF-E13-T4"]
+        acceptance:
+          - "brain manager 读取 MANIFEST/index 的职责固定"
+          - "不得猜目录/不得手工改 mapping 的规则固定"
+      - task_id: "MWF-E14-T2"
+        title: "define runtime package publish flow and hold conditions"
+        owner: "architect"
+        priority: "high"
+        depends_on: ["MWF-E14-T1"]
+        acceptance:
+          - "validate/publish/verify/archive 四阶段顺序固定"
+          - "hold/reject 条件固定"
+      - task_id: "MWF-E14-T3"
+        title: "define publish verification report and promotion to base rules"
+        owner: "architect"
+        priority: "high"
+        depends_on: ["MWF-E14-T2"]
+        acceptance:
+          - "publish_verification_report 字段固定"
+          - "runtime->base promotion 规则固定"
+
+  - milestone_id: "MWF-M12"
+    title: "Brain manager publish contract complete"
+    includes: ["MWF-E14-T1", "MWF-E14-T2", "MWF-E14-T3"]
+
+  - epic_id: "MWF-E15"
+    title: "Service Rollout and Minimum Runtime Topology"
+    goal: "固定最小上线顺序、依赖图与最小拓扑，避免实现阶段乱序启动"
+    tasks:
+      - task_id: "MWF-E15-T1"
+        title: "define minimum viable service stack and rollout order"
+        owner: "architect"
+        priority: "high"
+        depends_on: ["MWF-E14-T3"]
+        acceptance:
+          - "foundation/execution_core/visibility/delivery 分阶段顺序固定"
+          - "service dependency graph 固定"
+      - task_id: "MWF-E15-T2"
+        title: "define minimum brain_infra and sandbox runtime topology"
+        owner: "architect"
+        priority: "high"
+        depends_on: ["MWF-E15-T1"]
+        acceptance:
+          - "brain_infra 最小服务集固定"
+          - "project sandbox 最小服务集固定"
+          - "first demo scope 固定"
+
+  - milestone_id: "MWF-M13"
+    title: "Rollout order and minimum topology complete"
+    includes: ["MWF-E15-T1", "MWF-E15-T2"]
+
+  - epic_id: "MWF-E16"
+    title: "Failure Paths and Recovery"
+    goal: "把 proposal 中缺失的失败路径、恢复路径和清理路径补成硬契约"
+    tasks:
+      - task_id: "MWF-E16-T1"
+        title: "define bootstrap, provisioning, and sandbox hold failure paths"
+        owner: "architect"
+        priority: "critical"
+        depends_on: ["MWF-E15-T2"]
+        acceptance:
+          - "bootstrap fail / provisioning fail / hold -> retry|destroy 路径固定"
+          - "失败后清理与重试规则固定"
+      - task_id: "MWF-E16-T2"
+        title: "define rollback-failed and release recovery paths"
+        owner: "architect"
+        priority: "critical"
+        depends_on: ["MWF-E10-T3"]
+        acceptance:
+          - "rollback failed 状态和处理路径固定"
+          - "release fail -> rollback fail -> escalation 路径固定"
+      - task_id: "MWF-E16-T3"
+        title: "define project orchestrator crash recovery and re-attachment rules"
+        owner: "architect"
+        priority: "critical"
+        depends_on: ["MWF-E3-T4", "MWF-E4-T4"]
+        acceptance:
+          - "orchestrator 重启后如何恢复 local runtime 和 agent ownership 规则固定"
+          - "恢复后的 snapshot / heartbeat / timer 重注册规则固定"
+
+  - milestone_id: "MWF-M14"
+    title: "Failure and recovery contract complete"
+    includes: ["MWF-E16-T1", "MWF-E16-T2", "MWF-E16-T3"]
+
+  - epic_id: "MWF-E17"
+    title: "Sync, Watchdog, and Concurrency Contract"
+    goal: "补齐 snapshot、heartbeat、timer、watchdog 的版本控制和误报抑制规则"
+    tasks:
+      - task_id: "MWF-E17-T1"
+        title: "define task state versioning and CAS update rules"
+        owner: "architect"
+        priority: "critical"
+        depends_on: ["MWF-E4-T4"]
+        acceptance:
+          - "task update version 字段固定"
+          - "timer / worker / orchestrator 并发更新的 CAS 规则固定"
+      - task_id: "MWF-E17-T2"
+        title: "define snapshot cadence, heartbeat protocol, and stale suppression rules"
+        owner: "architect"
+        priority: "critical"
+        depends_on: ["MWF-E4-T3"]
+        acceptance:
+          - "snapshot 周期建议值固定"
+          - "heartbeat 通道和字段固定"
+          - "短暂失联与实质性失联的区分规则固定"
+      - task_id: "MWF-E17-T3"
+        title: "define watchdog thresholds and false-positive mitigation rules"
+        owner: "architect"
+        priority: "high"
+        depends_on: ["MWF-E17-T2"]
+        acceptance:
+          - "stale/offline/blocked/watchdog 阈值固定"
+          - "误报抑制与 escalation guard 规则固定"
+
+  - milestone_id: "MWF-M15"
+    title: "Sync and concurrency contract complete"
+    includes: ["MWF-E17-T1", "MWF-E17-T2", "MWF-E17-T3"]
+
+  - epic_id: "MWF-E18"
+    title: "Config Registry Storage and Conflict Policy"
+    goal: "为 config registry 补齐底层存储、恢复和冲突处理定义"
+    tasks:
+      - task_id: "MWF-E18-T1"
+        title: "select config registry storage backend and persistence model"
+        owner: "architect"
+        priority: "critical"
+        depends_on: ["MWF-E13-T4"]
+        acceptance:
+          - "storage backend 明确"
+          - "持久化与恢复策略明确"
+      - task_id: "MWF-E18-T2"
+        title: "define config version conflict resolution and audit rules"
+        owner: "architect"
+        priority: "high"
+        depends_on: ["MWF-E18-T1"]
+        acceptance:
+          - "配置冲突解决策略固定"
+          - "配置变更审计与回滚规则固定"
+
+  - milestone_id: "MWF-M16"
+    title: "Config registry storage contract complete"
+    includes: ["MWF-E18-T1", "MWF-E18-T2"]
+
+  - epic_id: "MWF-E19"
+    title: "Sandbox Archival and Trace Durability"
+    goal: "确保 sandbox 销毁前，本地 runtime、日志和审计证据不会丢失"
+    tasks:
+      - task_id: "MWF-E19-T1"
+        title: "define sandbox archive dump contract"
+        owner: "architect"
+        priority: "high"
+        depends_on: ["MWF-E11-T3", "MWF-E12-T3"]
+        acceptance:
+          - "local task runtime dump 规则固定"
+          - "execution trace dump 规则固定"
+          - "log bundle dump 规则固定"
+      - task_id: "MWF-E19-T2"
+        title: "define archive-before-destroy gate in lifecycle"
+        owner: "architect"
+        priority: "high"
+        depends_on: ["MWF-E19-T1"]
+        acceptance:
+          - "ARCHIVED 前必须完成 dump 的 gate 固定"
+          - "destroy 前 audit evidence preservation 规则固定"
+
+  - milestone_id: "MWF-M17"
+    title: "Sandbox archival contract complete"
+    includes: ["MWF-E19-T1", "MWF-E19-T2"]
+
+  - epic_id: "MWF-E20"
+    title: "Rollout Degrade Modes"
+    goal: "为非核心服务补齐降级运行模式，避免单点故障拖垮全局"
+    tasks:
+      - task_id: "MWF-E20-T1"
+        title: "define degrade modes for logging, watchdog, and release services"
+        owner: "architect"
+        priority: "high"
+        depends_on: ["MWF-E15-T2"]
+        acceptance:
+          - "logging/watchdog/release manager 失败时的降级模式固定"
+          - "must-have 与 nice-to-have 服务边界固定"
+      - task_id: "MWF-E20-T2"
+        title: "define rollout acceptance criteria per phase"
+        owner: "architect"
+        priority: "high"
+        depends_on: ["MWF-E20-T1"]
+        acceptance:
+          - "每个 rollout phase 的 acceptance criteria 固定"
+          - "degrade mode 下的可接受行为固定"
+
+  - milestone_id: "MWF-M18"
+    title: "Rollout degrade-mode contract complete"
+    includes: ["MWF-E20-T1", "MWF-E20-T2"]
+
+  - epic_id: "MWF-E21"
+    title: "Spec Checklist and Completion Coverage"
+    goal: "把 workflow requirement 落成项目级 spec checklist，并将完成度与 evidence 纳入 gate 和 audit"
+    tasks:
+      - task_id: "MWF-E21-T1"
+        title: "define project spec checklist schema and status formulas"
+        owner: "architect"
+        priority: "critical"
+        depends_on: ["MWF-E7-T3", "MWF-E9-T3", "MWF-E12-T2"]
+        acceptance:
+          - "workflow requirement -> checklist item 的映射规则固定"
+          - "completion_pct/evidence_coverage_pct 口径固定"
+          - "waive/block/evidence 的最小字段固定"
+      - task_id: "MWF-E21-T2"
+        title: "generate checklist baseline during planning and persist under project_root/spec"
+        owner: "developer"
+        priority: "critical"
+        depends_on: ["MWF-E21-T1"]
+        acceptance:
+          - "项目 planning 后可自动生成 spec_checklist.yaml"
+          - "总点数和 stage_completion 可初始化"
+      - task_id: "MWF-E21-T3"
+        title: "sync checklist status with task, review, test, and release evidence"
+        owner: "developer"
+        priority: "high"
+        depends_on: ["MWF-E21-T2", "MWF-E9-T3", "MWF-E11-T2"]
+        acceptance:
+          - "task/review/test/release 事件可回写 checklist"
+          - "没有 evidence 的 done 不可计入高可信完成"
+      - task_id: "MWF-E21-T4"
+        title: "add audit checks for uncovered requirements and false completion"
+        owner: "developer"
+        priority: "high"
+        depends_on: ["MWF-E21-T3", "MWF-E6-T3"]
+        acceptance:
+          - "audit report 可输出 uncovered requirements"
+          - "静默漏项、伪完成、未审批 waive 可被识别"
+          - "高风险 coverage gap 会 materialize 成 follow-up item"
+
+  - milestone_id: "MWF-M19"
+    title: "Spec checklist coverage contract complete"
+    includes: ["MWF-E21-T1", "MWF-E21-T2", "MWF-E21-T3", "MWF-E21-T4"]

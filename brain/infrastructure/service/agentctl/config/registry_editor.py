@@ -27,6 +27,8 @@ class AgentEntry:
     role: str = ""
     scope: str = "group"
     group: str = ""
+    project: str = ""
+    sandbox_id: str = ""
     path: str = ""
     agent_type: str = "claude"
     agent_cli: str = ""  # claude/claude_code | native | "" (infer from agent_type)
@@ -40,6 +42,7 @@ class AgentEntry:
     env: dict[str, str] | None = None
     export_cmd: dict[str, str] | None = None
     initial_prompt: str = ""
+    hooks: list[str] | None = None
 
 
 def _indent(lines: list[str], spaces: int) -> list[str]:
@@ -59,6 +62,19 @@ def _yaml_str(value: str) -> str:
     return value
 
 
+def _group_key_for_line(stripped: str) -> str | None:
+    """Return the group key for a `groups:` child line, if present."""
+    if not stripped:
+        return None
+    indent = len(stripped) - len(stripped.lstrip())
+    if indent != 2:
+        return None
+    body = stripped.strip()
+    if body.startswith("-") or ":" not in body:
+        return None
+    return body.split(":", 1)[0].strip()
+
+
 def render_agent_yaml_v2(entry: AgentEntry) -> str:
     """Render an AgentEntry in V2 groups format (2-space base indent)."""
     lines: list[str] = []
@@ -71,6 +87,10 @@ def render_agent_yaml_v2(entry: AgentEntry) -> str:
         lines.append(f"  scope: {entry.scope}")
     if entry.group:
         lines.append(f"  group: {entry.group}")
+    if entry.project:
+        lines.append(f"  project: {entry.project}")
+    if entry.sandbox_id:
+        lines.append(f"  sandbox_id: {entry.sandbox_id}")
     path = entry.path or entry.cwd
     if path:
         lines.append(f"  path: {path}")
@@ -114,6 +134,11 @@ def render_agent_yaml_v2(entry: AgentEntry) -> str:
 
     if entry.initial_prompt:
         lines.append(f"  initial_prompt: {entry.initial_prompt}")
+
+    if entry.hooks:
+        lines.append("  hooks:")
+        for hook in entry.hooks:
+            lines.append(f"    - {hook}")
 
     lines.append(f"  required: {str(bool(entry.required)).lower()}")
     lines.append(f"  desired_state: {entry.desired_state}")
@@ -182,15 +207,17 @@ def append_agent_to_group(path: Path, group_name: str, entry: AgentEntry) -> Non
         raise RegistryEditError("could not find 'groups:' top-level key in agents_registry.yaml")
 
     # Find the target group header: "  {group_name}:"
-    group_header = f"  {group_name}:"
     group_idx = None
     for i in range(groups_idx + 1, len(lines)):
         stripped = lines[i].rstrip("\n\r")
         # Stop if we hit another top-level key
         if stripped and not stripped[0].isspace() and ":" in stripped:
             break
-        if stripped == group_header:
+        if _group_key_for_line(stripped) == group_name:
             group_idx = i
+            suffix = stripped.strip().split(":", 1)[1].strip()
+            if suffix == "[]":
+                lines[i] = f"  {group_name}:\n"
             break
 
     block = render_agent_yaml_v2(entry)
@@ -205,11 +232,10 @@ def append_agent_to_group(path: Path, group_name: str, entry: AgentEntry) -> Non
                 insert_at = j + 1
                 continue
             indent = len(stripped) - len(stripped.lstrip())
-            # If we hit another group key (indent 2, ends with ':') or top-level key
-            if indent <= 2 and stripped.rstrip().endswith(":") and not stripped.lstrip().startswith("-"):
+            if indent == 0 and ":" in stripped:
                 insert_at = j
                 break
-            if indent == 0 and ":" in stripped:
+            if _group_key_for_line(stripped) is not None:
                 insert_at = j
                 break
             insert_at = j + 1

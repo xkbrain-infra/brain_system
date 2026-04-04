@@ -1,0 +1,287 @@
+# Phase 6: EXECUTION — dispatch / collect / review / test / rework 循环
+# 来源: workflow_core.yaml → meta.phase_files.execution
+# steps: 6_1 (dispatch_ready_tasks), 6_2 (collect_results),
+#         6_2b (dispatch_review), 6_3 (resolve_blocker),
+#         6_4 (evaluate_release_readiness)
+# 含: task_timeout_policy
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PHASE 6: EXECUTION — dispatch / collect / review / test / rework 循环
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# 这是一个循环，不是单次执行。
+# orchestrator 在 dispatch → collect → evaluate 之间不断循环。
+#
+# ── 超时和心跳监控机制 ──────────────────────────────────────────────────────
+#
+# 问题: orchestrator 是被动等 IPC 的，如果 worker 挂了不回报怎么办？
+# 解决: agentctl 基础设施层负责 heartbeat，orchestrator 处理离线事件。
+#
+# 工作流程:
+#   1. agentctl 每 30s 检测所有 registered agent 的 tmux session 存活
+#   2. agent 连续 2 次 heartbeat 失败 → agentctl 标记为 offline
+#   3. agentctl 通过 IPC 发送 AGENT_OFFLINE 事件给 orchestrator
+#   4. orchestrator 收到 AGENT_OFFLINE → 进入 resolve_blocker
+#
+# 此外 orchestrator 在 collect_results 中设置 per-task 超时:
+#   - dispatch 时记录 dispatched_at timestamp
+#   - collect 时检查: now - dispatched_at > task_timeout → 视为超时
+#   - 超时处理: 先检查 agent 状态，再决定重发或换 agent
+#
+task_timeout_policy:
+  default_timeout_minutes: 60        # 单个 task 默认超时
+  timeout_overrides:                 # 按 task.kind 覆盖
+    implementation: 90
+    review: 30
+    test: 45
+    research: 120
+    deploy: 60
+  on_timeout:
+    1: "通过 agentctl 检查 agent 状态: agentctl status {agent_id}"
+    2: "如果 agent online → IPC ping，等待 30s 回复"
+    3: "如果 agent offline 或无回复 → 标记 task 为 timed_out"
+    4: "timed_out 处理: 进入 resolve_blocker (category: retryable 或 reassignable)"
+  heartbeat_source: "agentctl (基础设施层)"
+  heartbeat_interval: 30s
+  offline_threshold: "连续 2 次 heartbeat 失败 (60s)"
+  offline_event: "AGENT_OFFLINE via IPC → orchestrator"
+
+  # ── 6.1 派发任务 ───────────────────────────────────────────────────────────
+  - step_id: "MWF-OPC:6_1:dispatch_ready_tasks"
+    phase: execution
+    who:
+      executor: project_orchestrator
+      profile: coordinator
+    purpose: "从 READY set 中选择 task，派发给 worker agents"
+
+    features:
+      parallel_dispatch: true       # 执行阶段允许并行
+      timeout_minutes: 60
+
+    do:
+      - action: "读取当前 task_graph，计算 READY set"
+        tool: "file_read state/task_graph.yaml + 当前 task 状态"
+        details: "READY = 依赖全部 DONE + packet 字段完整 + 无 conflict_key 冲突"
+
+      - action: "对每个 READY task，匹配 worker agent"
+        tool: "LLM reasoning"
+        details: |
+          task.owner = dev_api → 找 agent roster 中 role=dev_api 的 agent
+          task.owner = qa → 找 role=qa 的 agent
+          如果 agent 已有活跃 task → 排队或选其他 slot
+
+      - action: "持久化 assignment（先写后发）"
+        tool: "file_write"
+        target: "state/dispatch_log.yaml (追加)"
+
+      - action: "发送 task packet 给 worker"
+        tool: "IPC TASK_ASSIGN → {worker_agent_id}"
+        payload: |
+          task_id, title, objective,
+          input_refs, completion_checks, output_contract,
+          evidence_required, handoff_payload
+        expect_reply: "TASK_ACCEPT 或 TASK_BLOCKED (timeout: 30s)"
+
+      - action: "更新 task 状态 READY → ACTIVE"
+        tool: "file_write / task_manager API"
+        details: |
+          同时记录 dispatched_at: {ISO8601} 到 task_graph 中该 task
+          用于 collect_results 阶段的超时检测
+
+    artifact: "state/dispatch_log.yaml (追加)"
+    check: "所有选中的 task 已从 READY → ACTIVE；assignment 已落盘"
+    on_success: "MWF-OPC:6_2:collect_results"
+    on_retry: "worker 未响应 → 重发或换 agent"
+    on_blocked: "所有 READY task 都被阻断 → resolve_blocker"
+
+  # ── 6.2 收集结果 ───────────────────────────────────────────────────────────
+  - step_id: "MWF-OPC:6_2:collect_results"
+    phase: execution
+    who:
+      executor: project_orchestrator
+      profile: coordinator
+    purpose: "收集 worker 回报，验证 output contract，推进 task 状态"
+
+    do:
+      - action: "等待 worker 完成回报"
+        tool: "IPC 接收 TASK_COMPLETE / TASK_FAILED / TASK_BLOCKED / AGENT_OFFLINE"
+        details: |
+          同时检查 task 超时:
+            遍历所有 ACTIVE task:
+              如果 now - task.dispatched_at > task_timeout_policy.{task.kind}:
+                → 执行 on_timeout 流程 (检查 agent → ping → 标记 timed_out)
+          如果收到 AGENT_OFFLINE 事件:
+            → 将该 agent 所有 ACTIVE task 标记为 orphaned
+            → 进入 resolve_blocker (category: reassignable)
+
+      - action: "验证 output contract"
+        tool: "LLM reasoning + file_read"
+        checks:
+          - "completion_checks 是否全部满足"
+          - "evidence_required 是否都有对应 artifact"
+          - "output_contract 的 changed_paths/reports 是否存在"
+
+      - action: "决定 task 下一步状态"
+        tool: "LLM reasoning"
+        details: |
+          output 完整 + 需要 review → ACTIVE → REVIEW, 进入 dispatch_review step
+          output 完整 + 不需 review → ACTIVE → VERIFIED → DONE
+          output 不完整 → ACTIVE → ACTIVE (need_retry, 说明缺什么)
+          worker 报告 FAILED → ACTIVE → FAILED, 进入 resolve_blocker
+
+      - action: "更新 task 状态、checklist、milestone"
+        tool: "file_write / task_manager API"
+
+      - action: "重算 READY set（依赖变化可能解锁新 task）"
+        tool: "LLM reasoning + file_write"
+
+      - action: "分类已完成 task: 标记哪些需要 review、哪些直接 DONE"
+        tool: "file_write"
+        target: "state/collect_batch.yaml"
+        details: |
+          pending_reviews: [task_id]      # 需要进入 dispatch_review
+          direct_done: [task_id]          # 不需 review，直接 DONE
+          need_retry: [task_id]           # 需要重试
+          failed: [task_id]              # 失败，需要 resolve_blocker
+
+    artifact: "state/task_graph.yaml (更新状态) + state/collect_batch.yaml"
+    check: "所有已收到的 report 已处理；task 状态已更新"
+    on_success: "MWF-OPC:6_2b:dispatch_review"
+    on_retry: "部分 report 未处理 → 继续收集"
+    on_blocked: "worker 离线或关键 task FAILED → resolve_blocker"
+
+  # ── 6.2b 派发 review ─────────────────────────────────────────────────────────
+  - step_id: "MWF-OPC:6_2b:dispatch_review"
+    phase: execution
+    who:
+      executor: project_orchestrator
+      profile: coordinator
+    purpose: "对 collect_results 标记为需要 review 的 task，派发 review task 给 reviewer/qa"
+
+    do:
+      - action: "读取 collect_batch.yaml 的 pending_reviews"
+        tool: "file_read state/collect_batch.yaml"
+        skip_if: "pending_reviews 为空 → 直接 success，跳到 evaluate_release_readiness"
+
+      - action: "为每个 pending_review task 构造 review task packet"
+        tool: "LLM reasoning"
+        details: |
+          对每个需要 review 的 task:
+            1. 读取原始 task 的 completion_checks 和 output_contract
+            2. 读取 worker 提交的 artifact_refs 和 evidence
+            3. 确定 reviewer: task.review_by 指定的 role → 匹配 agent roster
+            4. 构造 review_checklist:
+               - 代码质量 (如果是 implementation task)
+               - 功能正确性 (对照 completion_checks)
+               - evidence 完整性 (对照 evidence_required)
+               - 架构合规 (如果 task 涉及架构变更)
+
+      - action: "持久化 review assignment（先写后发）"
+        tool: "file_write"
+        target: "state/dispatch_log.yaml (追加)"
+
+      - action: "发送 review task 给 reviewer"
+        tool: "IPC TASK_ASSIGN → {reviewer_agent_id}"
+        payload: |
+          message_type: TASK_ASSIGN
+          task_id: "{original_task_id}-REVIEW"
+          payload:
+            review_mode: true
+            original_task_id: "{original_task_id}"
+            original_task: {title, objective}
+            artifact_refs: [worker 提交的文件路径]
+            review_checklist: [检查维度]
+            completion_checks: [原始 task 的验收标准]
+        expect_reply: "TASK_ACCEPT (timeout: 30s)"
+
+      - action: "等待 reviewer 返回 REVIEW_COMPLETE"
+        tool: "IPC 接收 REVIEW_COMPLETE"
+        details: |
+          收到 REVIEW_COMPLETE 后:
+            decision=approve → task REVIEW → VERIFIED → DONE, 更新 checklist evidence
+            decision=reject → task REVIEW → ACTIVE (rework),
+              创建 rework task: 原 worker 接收 review_findings 修复
+              rework task 的 input_refs 包含 review_findings
+              rework_round += 1
+              如果 rework_round > max_rework_rounds(3) → escalate
+
+      - action: "更新 task 状态和 dispatch_log"
+        tool: "file_write / task_manager API"
+
+    artifact: "state/dispatch_log.yaml (追加 review 记录)"
+    artifact_schema:
+      reviews_dispatched:
+        - original_task_id: string
+          review_task_id: string
+          reviewer_agent_id: string
+          review_decision: "approve | reject | pending"
+          rework_round: int
+
+    check: "所有 pending_reviews 都已收到 review 结果；review 状态已更新"
+    on_success: "MWF-OPC:6_4:evaluate_release_readiness"
+    on_retry: "部分 review 未返回 → 继续等待"
+    on_blocked: "reviewer 离线或超过 max_rework_rounds → resolve_blocker"
+
+  # ── 6.3 处理阻断 ──────────────────────────────────────────────────────────
+  - step_id: "MWF-OPC:6_3:resolve_blocker"
+    phase: execution
+    who:
+      executor: project_orchestrator
+      profile: coordinator
+    purpose: "处理 review reject、test fail、agent 离线、依赖缺失"
+
+    do:
+      - action: "分类 blocker"
+        tool: "LLM reasoning"
+        categories:
+          retryable: "worker 可重试（如临时失败、环境问题）→ 重新 dispatch"
+          reassignable: "当前 worker 不适合 → 换其他 agent"
+          rework: "review/test 驳回 → 创建 rework task，带 review_findings"
+          replan: "发现 task 设计有问题 → 回到 model_tasks 补充"
+          escalate: "超出 orchestrator 能力 → escalate 给 brain_pmo"
+
+      - action: "执行对应的恢复操作"
+        tool: "IPC + file_write"
+
+    check: "blocker 有 resolution_path"
+    on_success: "MWF-OPC:6_1:dispatch_ready_tasks"    # 回到 dispatch 循环
+    on_retry: "resolution 不充分 → 继续分析"
+    on_blocked: "无法自行解决 → escalate 给 brain_pmo"
+
+  # ── 6.4 评估 release readiness ─────────────────────────────────────────────
+  - step_id: "MWF-OPC:6_4:evaluate_release_readiness"
+    phase: execution
+    who:
+      executor: project_orchestrator
+      profile: coordinator
+    purpose: "检查是否满足进入 release 的条件"
+
+    do:
+      - action: "检查所有 deliverables 对应的 task 状态"
+        tool: "file_read state/task_graph.yaml"
+        checks:
+          - "所有 critical/high task 是否 DONE/VERIFIED"
+          - "所有需要 review 的 task 是否已 REVIEW → VERIFIED"
+          - "所有需要 test 的 task 是否有 test evidence"
+          - "是否有未解决的 blocker"
+          - "spec_checklist 覆盖率"
+
+      - action: "写 readiness 决策"
+        tool: "file_write"
+        target: "state/release_readiness.yaml"
+
+    artifact: "state/release_readiness.yaml"
+    artifact_schema:
+      deliverables_done: bool
+      reviews_done: bool
+      tests_done: bool
+      blockers_resolved: bool
+      checklist_coverage: "percentage"
+      release_ready: bool
+      remaining_gaps: [string]
+
+    check: "release_readiness.release_ready = true"
+    on_success: "MWF-OPC:7_1:drive_release"
+    on_retry: "不 ready → 回到 dispatch_ready_tasks 继续推进"     # ← 这是核心循环
+    on_blocked: "有无法解决的 gap → escalate"
+

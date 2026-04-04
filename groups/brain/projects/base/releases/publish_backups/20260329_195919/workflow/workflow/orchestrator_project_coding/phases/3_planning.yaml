@@ -1,0 +1,364 @@
+# Phase 3: PLANNING — 多 agent 协作产出项目计划
+# 来源: workflow_core.yaml → meta.phase_files.planning
+# steps: 3_1 (define_plan), 3_2 (create_spec_checklist)
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PHASE 3: PLANNING — 多 agent 协作产出项目计划
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# 从这里开始，执行者是 sandbox 内的 project_orchestrator
+# brain 侧角色只做 review / approval
+#
+
+  # ── 3.1 产出项目计划（多 agent 协作）────────────────────────────────────────
+  - step_id: "MWF-OPC:3_1:define_plan"
+    phase: planning
+    who:
+      coordinator: project_orchestrator
+      profile: coordinator
+      participants:
+        - role: architect
+          profile: architect
+          responsibilities: ["技术选型", "架构设计", "模块划分", "接口定义", "复杂度估算"]
+        - role: researcher
+          profile: researcher
+          responsibilities: ["技术方案调研", "最佳实践收集", "风险评估"]
+        - role: qa
+          profile: coder
+          responsibilities: ["测试策略", "QA 验证链路", "质量门定义"]
+      reviewer: brain_pmo
+    purpose: "把需求和调研收敛成完整的项目计划"
+
+    features:
+      discussion_mode: true
+      discussion_participants:
+        - {role: architect, task: "起草技术方案和架构"}
+        - {role: researcher, task: "补充调研结论和风险评估"}
+        - {role: qa, task: "定义测试和质量策略"}
+      human_approval_required: true    # plan 需要用户确认
+      timeout_minutes: 60
+
+    do:
+      - action: "TASK_UPDATE: in_progress"
+        action_id: "MWF-OPC:3_1:define_plan:A01"
+        tool: "task_manager API"
+        call: |
+          event_type: TASK_UPDATE
+          task_id:    "MWF-OPC:3_1:define_plan"
+          status:     in_progress
+
+      # ─── Round 1: Architect 起草 ───────────────────────────────────────────
+      - action: "orchestrator 派发 planning task 给 architect"
+        action_id: "MWF-OPC:3_1:define_plan:A02"
+        tool: "IPC TASK_ASSIGN → architect agent"
+        task_packet:
+          instruction: |
+            基于 state/intake.yaml 和 state/research.yaml，起草项目计划:
+              1. 技术选型: 语言、框架、runtime
+              2. 架构设计: 整体架构、模块划分、接口边界
+              3. 模块估算: 模块数、接口数、复杂度
+              4. 里程碑定义: 阶段划分、时间估算
+              5. 依赖分析: 外部依赖、模块间依赖
+              6. 环境策略: dev/stage/prod 各层职责
+          input_refs:
+            - "state/intake.yaml"
+            - "state/research.yaml"
+          output_target: "state/plan_draft_v1.yaml"
+        wait_for: "architect 完成并返回结果"
+
+      # ─── Round 2: QA 补充测试策略 ─────────────────────────────────────────
+      - action: "orchestrator 派发测试策略 task 给 QA"
+        action_id: "MWF-OPC:3_1:define_plan:A03"
+        tool: "IPC TASK_ASSIGN → qa agent"
+        task_packet:
+          instruction: |
+            基于 architect 的架构草案，定义:
+              1. 测试策略: unit/integration/e2e/smoke 各层覆盖
+              2. QA 验证链路: stage 验证 + prod smoke
+              3. 质量门: 什么条件算通过
+          input_refs:
+            - "state/plan_draft_v1.yaml"
+          output_target: "state/test_strategy_draft.yaml"
+        wait_for: "qa 完成"
+
+      # ─── Round 3: Orchestrator 整合 ───────────────────────────────────────
+      - action: "orchestrator 整合所有输入，生成完整 project_plan"
+        action_id: "MWF-OPC:3_1:define_plan:A04"
+        tool: "LLM reasoning + file_write"
+        details: |
+          整合 architect 草案 + QA 测试策略 + intake 约束，写完整计划:
+            1. 补充: 交付目标、范围边界、非目标
+            2. 补充: 角色分配、agent 策略
+            3. 补充: task 设计原则（拆分粒度、packet 规则）
+            4. 补充: 跟踪模型、报告节奏
+            5. 补充: 风险和升级策略
+            6. 补充: validation path (review → test → release → audit)
+            7. 实例化 spec_checklist
+        target: "state/project_plan.yaml"
+
+      # ─── Round 4: Cross-review ─────────────────────────────────────────────
+      - action: "architect review 完整计划的技术部分"
+        action_id: "MWF-OPC:3_1:define_plan:A05"
+        tool: "IPC TASK_ASSIGN → architect"
+        task_packet:
+          instruction: "review state/project_plan.yaml 的技术选型、架构、接口部分，提出修改建议"
+          output_target: "state/plan_review_architect.yaml"
+
+      - action: "orchestrator 处理 review 意见，更新计划"
+        action_id: "MWF-OPC:3_1:define_plan:A06"
+        tool: "LLM reasoning + file_write"
+        target: "state/project_plan.yaml"
+
+      # ─── Round 5: PMO 审批 ─────────────────────────────────────────────────
+      - action: "发送给 brain_pmo 审批"
+        action_id: "MWF-OPC:3_1:define_plan:A07"
+        tool: "IPC → brain_pmo"
+        details: "PMO 审批范围、里程碑、资源假设。如果驳回，附修改要求，回到 Round 3"
+
+      - action: "cross_model_validation: 验证 state/project_plan.yaml"
+        action_id: "MWF-OPC:3_1:define_plan:A08"
+        type: "cross_model_validation"
+        strategy_ref: "workflow_core.yaml → audit_strategy.cross_model_validation"
+        execution_flow:
+          "1_write_request":
+            path: "{project_root}/state/step_results/MWF-OPC_3_1_define_plan/validation_request.yaml"
+            content:
+              step_id: "MWF-OPC:3_1:define_plan"
+              validator_model_rule: "不同于 orchestrator 当前模型"
+              artifact: "state/project_plan.yaml"
+              check_items:
+                - {id: "CHK-01", type: "file_exists",  target: "state/project_plan.yaml"}
+                - {id: "CHK-02", type: "field_assert", field: "delivery_target",      assert: "非空"}
+                - {id: "CHK-03", type: "field_assert", field: "deliverables",         assert: "非空数组（至少 1 项）"}
+                - {id: "CHK-04", type: "field_assert", field: "architecture_summary", assert: "非空字符串"}
+                - {id: "CHK-05", type: "field_assert", field: "modules",              assert: "非空数组"}
+                - {id: "CHK-06", type: "field_assert", field: "milestones",           assert: "非空数组（至少 1 项）"}
+                - {id: "CHK-07", type: "field_assert", field: "test_plan",            assert: "非空（含 unit/integration 字段）"}
+                - {id: "CHK-08", type: "field_assert", field: "role_roster",          assert: "非空数组"}
+                - {id: "CHK-09", type: "field_assert", field: "planning_decision",    assert: "== PASS"}
+          "2_spawn_validator":
+            command: "agentctl start --role step_validator --model {validator_model} --ephemeral"
+            note: "validator_model 由 model_selection 规则确定，与 orchestrator 不同"
+          "3_wait_result":
+            wait_for: "IPC: VALIDATE_COMPLETE"
+            timeout: "120s"
+            on_timeout: "fallback → same_model_isolated (见 workflow_core.yaml)"
+          "4_write_completion_check":
+            path: "{project_root}/state/step_results/MWF-OPC_3_1_define_plan/completion_check.yaml"
+        on_fail:
+          action: "TASK_UPDATE(blocked) + IPC notify brain_pmo"
+          payload: "completion_check.yaml path + failed check_items"
+
+      - action: "TASK_UPDATE: completed + SPEC_PROGRESS（phase 3_1 完成）"
+        action_id: "MWF-OPC:3_1:define_plan:A09"
+        tool: "task_manager API"
+        call: |
+          # 标记 step task 完成
+          event_type: TASK_UPDATE
+          task_id:    "MWF-OPC:3_1:define_plan"
+          status:     completed
+
+          # Phase 3_1 (define_plan) 完成 → 推进 spec stage 到 S4_analysis
+          event_type:    SPEC_PROGRESS
+          spec_id:       "{project_id}"
+          target_stage:  S4_analysis
+
+    artifact: "state/project_plan.yaml"
+    artifact_schema:
+      project_id: string
+      plan_version: string
+
+      # 交付定义
+      delivery_target: "complete | mvp (需审批)"
+      scope_in: [string]
+      scope_out: [string]
+      non_goals: [string]
+      deliverables: [{name: string, description: string, acceptance: string}]
+
+      # 技术基线
+      implementation_language: string
+      runtime_stack: string
+      engineering_standards: [string]
+
+      # 架构
+      architecture_summary: string
+      modules: [{name: string, responsibility: string, interfaces: [string]}]
+      complexity_estimate: {modules: int, interfaces: int, effort: string}
+
+      # 里程碑
+      milestones: [{id: string, name: string, deliverables: [string], acceptance: string}]
+      execution_phases: [{phase: string, milestone_ids: [string]}]
+
+      # 角色
+      role_roster: [{role_key: string, count: int, agent_type: string, model: string}]
+
+      # 环境与测试
+      environment_plan: {dev: string, stage: string, prod: string}
+      test_plan: {unit: string, integration: string, e2e: string, smoke: string}
+      qa_plan: {stage_verification: string, prod_smoke: string}
+
+      # 依赖
+      external_dependencies: [{name: string, owner: string, status: string}]
+      dependency_strategy: string
+      parallelism_strategy: string
+
+      # Task 设计原则
+      task_design_rules:
+        granularity: string
+        packet_required_fields: [string]
+        assignment_strategy: string
+      task_packet_rules:
+        required_inputs: [string]
+        required_outputs: [string]
+        done_definition_required: true
+        evidence_required: true
+
+      # 跟踪与验证
+      tracking_plan: {snapshot_cadence: string, report_cadence: string}
+      validation_path: {review: string, test: string, release: string, audit: string}
+      risk_register: [{risk: string, severity: string, mitigation: string}]
+
+      # Spec checklist
+      spec_checklist_ref: "state/spec_checklist.yaml"
+
+      # 决策
+      planning_decision: "PASS | HOLD"
+
+    check: |
+      所有 required 字段非空 AND
+      deliverables 至少 1 项 AND
+      milestones 至少 1 项 AND
+      test_plan 已定义 AND
+      planning_decision=PASS
+    on_success: "MWF-OPC:3_2:create_spec_checklist"
+    on_retry: "PMO 驳回或 architect review 有重大修改 → 回到 Round 3"
+    on_blocked: "关键技术决策无法达成 → escalate"
+
+  # ── 3.2 实例化 Spec Checklist ──────────────────────────────────────────────
+  - step_id: "MWF-OPC:3_2:create_spec_checklist"
+    phase: planning
+    who:
+      executor: project_orchestrator
+      profile: coordinator
+    purpose: "把 project_plan 的 deliverables、milestones、validation_path 实例化为可追踪的 checklist"
+
+    do:
+      - action: "TASK_UPDATE: in_progress"
+        action_id: "MWF-OPC:3_2:create_spec_checklist:A01"
+        tool: "task_manager API"
+        call: |
+          event_type: TASK_UPDATE
+          task_id:    "MWF-OPC:3_2:create_spec_checklist"
+          status:     in_progress
+
+      - action: "读取 project_plan.yaml，提取所有需要追踪的点"
+        action_id: "MWF-OPC:3_2:create_spec_checklist:A02"
+        tool: "file_read state/project_plan.yaml"
+        extract:
+          - "每个 deliverable → 1 个 checklist item"
+          - "每个 milestone → 1 个 checklist item"
+          - "test_plan 的每个层级 → 1 个 checklist item"
+          - "qa_plan 的 stage_verification + prod_smoke → 2 个 checklist item"
+          - "validation_path 的 review/test/release/audit → 各 1 个 checklist item"
+          - "engineering_standards 的关键项 → 各 1 个 checklist item"
+
+      - action: "写 spec_checklist.yaml"
+        action_id: "MWF-OPC:3_2:create_spec_checklist:A03"
+        tool: "file_write"
+        target: "state/spec_checklist.yaml"
+        details: |
+          每个 item 的结构:
+            id: "CHK-{seq:03d}"
+            source: "来自 project_plan 的哪个字段"
+            source_ref: "deliverables[0] | milestones[1] | test_plan.unit | ..."
+            description: "需要验证的内容"
+            completion_rule: "什么条件算完成"
+            status: "pending | in_progress | done | waived | blocked"
+            evidence_refs: []  # 完成时填写证据路径
+            task_refs: []      # 对应的 task_id（task_modeling 后填写）
+            waive_reason: ""   # 如果 waived，必须说明原因
+            notes: ""
+
+      - action: "cross_model_validation: 验证 state/spec_checklist.yaml"
+        action_id: "MWF-OPC:3_2:create_spec_checklist:A04"
+        type: "cross_model_validation"
+        strategy_ref: "workflow_core.yaml → audit_strategy.cross_model_validation"
+        execution_flow:
+          "1_write_request":
+            path: "{project_root}/state/step_results/MWF-OPC_3_2_create_spec_checklist/validation_request.yaml"
+            content:
+              step_id: "MWF-OPC:3_2:create_spec_checklist"
+              validator_model_rule: "不同于 orchestrator 当前模型"
+              artifact: "state/spec_checklist.yaml"
+              check_items:
+                - {id: "CHK-01", type: "file_exists",  target: "state/spec_checklist.yaml"}
+                - {id: "CHK-02", type: "field_assert", field: "items",         assert: "非空数组"}
+                - {id: "CHK-03", type: "field_assert", field: "summary.total", assert: "> 0"}
+                - {id: "CHK-04", type: "items_check",  target: "items[*].id",
+                   assert: "格式 CHK-NNN"}
+                - {id: "CHK-05", type: "items_check",  target: "items[*].completion_rule",
+                   assert: "非空字符串（每项必须有完成判定规则）"}
+                - {id: "CHK-06", type: "cross_file",
+                   source: "state/project_plan.yaml",
+                   rule: "每个 deliverables[] 都能在 spec_checklist.items 中找到对应 source_ref"}
+                - {id: "CHK-07", type: "cross_file",
+                   source: "state/project_plan.yaml",
+                   rule: "每个 milestones[] 都能在 spec_checklist.items 中找到对应 source_ref"}
+          "2_spawn_validator":
+            command: "agentctl start --role step_validator --model {validator_model} --ephemeral"
+            note: "validator_model 由 model_selection 规则确定，与 orchestrator 不同"
+          "3_wait_result":
+            wait_for: "IPC: VALIDATE_COMPLETE"
+            timeout: "120s"
+            on_timeout: "fallback → same_model_isolated (见 workflow_core.yaml)"
+          "4_write_completion_check":
+            path: "{project_root}/state/step_results/MWF-OPC_3_2_create_spec_checklist/completion_check.yaml"
+        on_fail:
+          action: "TASK_UPDATE(blocked) + IPC notify brain_pmo"
+          payload: "completion_check.yaml path + failed check_items"
+
+      - action: "TASK_UPDATE: completed + SPEC_PROGRESS（phase 3_2 完成）"
+        action_id: "MWF-OPC:3_2:create_spec_checklist:A05"
+        tool: "task_manager API"
+        call: |
+          # 标记 step task 完成
+          event_type: TASK_UPDATE
+          task_id:    "MWF-OPC:3_2:create_spec_checklist"
+          status:     completed
+
+          # Phase 3_2 (create_spec_checklist) 完成 → 推进 spec stage 到 S5_solution
+          event_type:    SPEC_PROGRESS
+          spec_id:       "{project_id}"
+          target_stage:  S5_solution
+
+    artifact: "state/spec_checklist.yaml"
+    artifact_schema:
+      project_id: string
+      plan_version: string
+      created_at: "ISO8601"
+      items:
+        - id: "CHK-001"
+          source: "deliverables | milestones | test_plan | qa_plan | validation_path | engineering_standards"
+          source_ref: string
+          description: string
+          completion_rule: string
+          status: "pending | in_progress | done | waived | blocked"
+          evidence_refs: [string]
+          task_refs: [string]
+          waive_reason: string
+      summary:
+        total: int
+        pending: int
+        done: int
+        coverage_percentage: int
+
+    check: |
+      items 非空 AND
+      每个 deliverable 都有对应 checklist item AND
+      每个 milestone 都有对应 checklist item AND
+      summary.total > 0
+    on_success: "MWF-OPC:4_1:model_tasks"
+    on_retry: "checklist 不完整 → 补充遗漏项"
+    on_blocked: "project_plan 不完整 → 回到 define_plan"
+
+

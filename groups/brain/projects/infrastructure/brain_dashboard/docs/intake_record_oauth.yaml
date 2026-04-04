@@ -1,0 +1,70 @@
+---
+# Feature Intake Record: OAuth Provider Configuration
+# Feature ID: brain-dashboard-oauth-config-2026-03-17
+
+intake_record:
+  project_id: brain-dashboard-2026-03-11
+  feature_id: brain-dashboard-oauth-config-2026-03-17
+  profile: software_dev
+  status: intake_passed
+
+  project_goal: |
+    在 brain_dashboard Web 页面中新增 Provider OAuth 配置模块，
+    支持用户通过 Web UI 完成各 provider 的 OAuth 认证流程配置，
+    无需手动编辑 providers.yaml 文件。
+
+  scope_in:
+    - 读取并展示 providers.yaml 中所有 provider 的配置状态
+    - 支持 api_key 类型 provider 的密钥配置（alibaba/bytedance/minimax/claude）
+    - 支持 oauth_device 类型 provider 的 Device Code 授权流程（openai）
+    - 支持 oauth (code) 类型 provider 的 Authorization Code 授权流程（copilot）
+    - 支持 gemini PKCE 类型 provider 的授权流程（google）
+    - 配置结果写回 providers.yaml 对应字段
+    - UI 上隐藏/脱敏敏感字段（access_token、secret 等）
+    - provider enable/disable 开关
+
+  scope_out:
+    - 历史 token 审计记录
+    - 多用户权限隔离（ACL）
+    - 自动 token 刷新（由 proxy 自身负责）
+    - 修改 routing.yaml 的路由配置
+
+  acceptance:
+    - 访问 /providers 页面可以看到所有 provider 列表及配置状态
+    - api_key 类型可以通过 UI 输入并保存 key
+    - oauth_device 类型可以触发 Device Code 流程，UI 显示 user_code 和验证 URL，自动轮询获取 token
+    - oauth/gemini 类型可以触发授权跳转，回调后自动写入 token
+    - providers.yaml 配置变更后，proxy 可以感知（文件变更）
+    - 敏感字段（token、secret）在 UI 中不明文展示
+
+  constraints:
+    tech_stack: "FastAPI + HTMX + Tailwind CSS（与现有 dashboard 一致）"
+    environment: "brain sandbox full_sandbox"
+    dependencies:
+      - brain_agent_proxy providers.yaml（路径：/brain/infrastructure/service/brain_agent_proxy/config/providers.yaml）
+      - 现有 dashboard v2.2.0 框架（app.py + api/v2/）
+
+  priority: normal
+  sponsor: agent-brain_manager
+
+  requested_roles:
+    - developer
+    - devops
+
+  baseline_image: "现有 brain_dashboard sandbox（full_sandbox，已 bootstrap）"
+
+  intake_decision: PASS
+  intake_time: "2026-03-17T00:00:00Z"
+
+  sandbox_request:
+    strategy: reuse_existing
+    existing_sandbox: full_sandbox
+    reason: "项目已有 full_sandbox，增量功能开发无需新建 sandbox"
+
+  initial_open_questions:
+    - Q1: "copilot OAuth callback URL 如何注册？dashboard 是否有公网或 loopback 回调能力？"
+    - Q2: "providers.yaml 写入需要特殊权限吗？dashboard 进程是否有写权限？"
+    - Q3: "token 写入 providers.yaml 还是只写 token_file？"
+    - Q4: "gemini oauth callback 端口是 8085（配置中 redirect_uri），还是走 dashboard 8080？"
+
+  next_phase: research

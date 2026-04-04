@@ -28,6 +28,9 @@ roles:
   researcher:
     template: roles/researcher.md
     description: "研究调研 - 数据分析、技术调研"
+  orchestrator:
+    template: roles/orchestrator.md
+    description: "执行引擎 - 驱动 delivery workflow、spawn workers、推进项目状态机"
   frontdesk:
     template: roles/frontdesk.md
     description: "消息中枢 - IPC 路由、平台网关"

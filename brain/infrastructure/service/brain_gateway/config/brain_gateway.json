@@ -18,14 +18,9 @@
     },
     "chat_types": {
       "private": "agent-brain_frontdesk",
-      "channel": "agent-system_pmo"
+      "channel": "agent-brain_frontdesk"
     },
-    "keywords": [
-      {
-        "pattern": "(?i)(deploy|release)",
-        "target": "agent-system_devops"
-      }
-    ],
+    "keywords": [],
     "default": "agent-brain_frontdesk",
     "reply_targets": {
       "telegram": "service-telegram_api"

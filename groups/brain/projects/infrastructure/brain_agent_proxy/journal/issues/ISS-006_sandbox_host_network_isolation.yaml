@@ -1,0 +1,23 @@
+id: ISS-006
+title: "Sandbox 无法通过 host.docker.internal 访问 host API 服务"
+discovered_at: "2026-03-24T02:15:00Z"
+discovered_by: agent-brain_manager
+stage: bootstrap
+severity: high
+description: |
+  自定义 bridge 网络 (sandbox_brain-development-*) 与 host 网络完全隔离。
+  容器内无法通过 host.docker.internal 或直接 IP 访问 host 的 localhost 服务。
+impact: |
+  - Orchestrator 无法连接 API 代理 (port 8210)
+  - Sandbox 内所有 agent 无法使用 host 的 brain_agent_proxy 服务
+  - 必须通过其他方式（如在 sandbox 内运行独立代理）
+resolution: "待定 - 需要修改 Docker 网络配置或使用 host 网络模式"
+resolved_at: ""
+base_upgrade_candidate: true
+base_upgrade_detail: |
+  问题出在 groups/brain/projects/base/sandbox/templates/compose.base.yaml 的网络配置。
+  当前使用自定义 bridge 网络，导致与 host 隔离。
+  可能的解决方案：
+  1. 使用 host 网络模式 (network_mode: host) - 但会影响端口映射
+  2. 配置 Docker IPvlan/lmacvlan - 复杂
+  3. 在 base image 内运行独立 API 代理 - 推荐

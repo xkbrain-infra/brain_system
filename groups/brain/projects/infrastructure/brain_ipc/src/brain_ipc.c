@@ -1126,16 +1126,14 @@ static char* handle_ipc_send(json_t *data, int client_fd) {
     }
 
     // Phase 2: HMAC + Nonce security check
-    char *sec_err = NULL;
+    const char *sec_err = NULL;
     if (!phase2_security_check(data, &sec_err)) {
         LOG_WARN("PHASE2 rejected: %s", sec_err ? sec_err : "unknown");
         if (acl_mode_enforce) {
             char err_buf[256];
             snprintf(err_buf, sizeof(err_buf), "PHASE2_REJECT: %s", sec_err ? sec_err : "security check failed");
-            free(sec_err);
             return json_error(err_buf);
         }
-        free(sec_err);
     } else if (json_object_get(data, "hmac_signature")) {
         LOG_INFO("PHASE2: security check passed");
     }
@@ -1401,16 +1399,14 @@ static char* handle_ipc_send_delayed(json_t *data) {
     }
 
     // Phase 2: HMAC + Nonce security check (same as ipc_send)
-    char *sec_err = NULL;
+    const char *sec_err = NULL;
     if (!phase2_security_check(data, &sec_err)) {
         LOG_WARN("PHASE2 rejected (delayed): %s", sec_err ? sec_err : "unknown");
         if (acl_mode_enforce) {
             char err_buf[256];
             snprintf(err_buf, sizeof(err_buf), "PHASE2_REJECT: %s", sec_err ? sec_err : "security check failed");
-            free(sec_err);
             return json_error(err_buf);
         }
-        free(sec_err);
     } else if (json_object_get(data, "hmac_signature")) {
         LOG_INFO("PHASE2: security check passed (delayed)");
     }
@@ -2104,6 +2100,16 @@ static int run_server(void) {
     signal(SIGPIPE, SIG_IGN);
     signal(SIGCHLD, SIG_IGN); // Prevent zombie processes from tmux_notify
 
+    // Get socket paths from environment (with defaults)
+    const char *socket_path = getenv("BRAIN_IPC_SOCKET");
+    if (!socket_path || !socket_path[0]) {
+        socket_path = SOCKET_PATH;
+    }
+    const char *pid_path = getenv("BRAIN_IPC_PID");
+    if (!pid_path || !pid_path[0]) {
+        pid_path = PID_FILE;
+    }
+
     cleanup();
 
     // Open log file (env override + sensible default).
@@ -2147,7 +2153,7 @@ static int run_server(void) {
     struct sockaddr_un addr;
     memset(&addr, 0, sizeof(addr));
     addr.sun_family = AF_UNIX;
-    strncpy(addr.sun_path, SOCKET_PATH, sizeof(addr.sun_path) - 1);
+    strncpy(addr.sun_path, socket_path, sizeof(addr.sun_path) - 1);
 
     if (bind(server_fd, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
         LOG_ERROR("bind() failed: %s", strerror(errno));
@@ -2155,7 +2161,7 @@ static int run_server(void) {
         return 1;
     }
 
-    chmod(SOCKET_PATH, 0600);  // Phase 1a: owner-only (brain_ipc group not available)
+    chmod(socket_path, 0600);  // Phase 1a: owner-only (brain_ipc group not available)
 
     if (listen(server_fd, MAX_CLIENTS) < 0) {
         LOG_ERROR("listen() failed: %s", strerror(errno));
@@ -2174,7 +2180,7 @@ static int run_server(void) {
     pthread_create(&cleanup_tid, NULL, conversation_cleanup_thread, NULL);
 
     LOG_INFO("Brain IPC v2.0 started (C implementation, full feature parity)");
-    printf("Brain IPC v2.0 running on %s (PID: %d)\n", SOCKET_PATH, getpid());
+    printf("Brain IPC v2.0 running on %s (PID: %d)\n", socket_path, getpid());
 
     // Self heartbeat using timestamp (update every 60 seconds)
     time_t last_heartbeat = time(NULL);

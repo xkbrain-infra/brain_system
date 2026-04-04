@@ -1,153 +1,195 @@
 #include "brain_task_manager/store/spec_store.h"
+#include "brain_task_manager/core/yaml_util.h"
 #include <fstream>
 #include <sys/stat.h>
+#include <dirent.h>
+#include <cerrno>
 
-SpecStore::SpecStore(const std::string& data_dir) : data_dir_(data_dir) {
-  if (!data_dir_.empty() && data_dir_.back() != '/') data_dir_ += '/';
-  file_path_ = data_dir_ + "specs.json";
-}
-
-int SpecStore::Load() {
-  std::lock_guard<std::mutex> lock(mu_);
-  std::ifstream f(file_path_);
-  if (!f.is_open()) {
-    LOG_WARN("spec_store", LogFmt("specs file not found: %s, starting empty", file_path_.c_str()));
-    return 0;
-  }
-
-  auto j = json::parse(f, nullptr, false);
-  if (j.is_discarded() || !j.contains("specs") || !j["specs"].is_object()) {
-    LOG_ERROR("spec_store", LogFmt("failed to parse specs file: %s", file_path_.c_str()));
-    return 0;
-  }
-
-  specs_.clear();
-  for (auto& [key, val] : j["specs"].items()) {
-    SpecRecord s = SpecRecord::from_json(val);
-    specs_[s.spec_id] = s;
-  }
-
-  LOG_INFO("spec_store", LogFmt("loaded %d specs from %s", (int)specs_.size(), file_path_.c_str()));
-  return static_cast<int>(specs_.size());
-}
-
-bool SpecStore::Save() {
-  std::lock_guard<std::mutex> lock(mu_);
-
-  json j;
-  j["specs"] = json::object();
-  for (auto& [id, s] : specs_) {
-    j["specs"][id] = s.to_json();
-  }
-
-  std::string tmp_path = file_path_ + ".tmp";
-  {
-    std::ofstream out(tmp_path);
-    if (!out.is_open()) {
-      LOG_ERROR("spec_store", LogFmt("failed to open tmp file: %s", tmp_path.c_str()));
-      return false;
-    }
-    out << j.dump(2) << "\n";
-    out.flush();
-    if (!out.good()) {
-      LOG_ERROR("spec_store", LogFmt("write failed: %s", tmp_path.c_str()));
-      return false;
+static bool MkdirP(const std::string& path) {
+  for (size_t pos = 1; pos < path.size(); ++pos) {
+    if (path[pos] == '/') {
+      std::string partial = path.substr(0, pos);
+      if (mkdir(partial.c_str(), 0755) != 0 && errno != EEXIST) return false;
     }
   }
-
-  if (rename(tmp_path.c_str(), file_path_.c_str()) != 0) {
-    LOG_ERROR("spec_store", LogFmt("rename failed: %s -> %s", tmp_path.c_str(), file_path_.c_str()));
-    return false;
-  }
-
+  if (mkdir(path.c_str(), 0755) != 0 && errno != EEXIST) return false;
   return true;
 }
 
-std::string SpecStore::Create(const SpecRecord& spec, std::string& out_error) {
+ProjectStore::ProjectStore(const std::string& data_dir) : data_dir_(data_dir) {
+  if (!data_dir_.empty() && data_dir_.back() != '/') data_dir_ += '/';
+}
+
+// 递归扫描 data_dir，找所有 project.json 文件
+void ProjectStore::ScanDir(const std::string& dir, int depth) {
+  if (depth > 6) return;  // 防止过深递归
+  DIR* d = opendir(dir.c_str());
+  if (!d) return;
+
+  struct dirent* entry;
+  while ((entry = readdir(d)) != nullptr) {
+    if (entry->d_name[0] == '.') continue;
+    std::string name = entry->d_name;
+    std::string path = dir + name;
+
+    struct stat st;
+    if (stat(path.c_str(), &st) != 0) continue;
+
+    if (S_ISDIR(st.st_mode)) {
+      ScanDir(path + "/", depth + 1);
+    } else if (name == "project.yaml") {
+      std::ifstream f(path);
+      if (!f.is_open()) continue;
+      YAML::Node node = YAML::Load(f);
+      json j = YamlToJson(node);
+      if (j.is_null()) {
+        LOG_ERROR("project_store", LogFmt("failed to parse: %s", path.c_str()));
+        continue;
+      }
+      ProjectRecord p = ProjectRecord::from_json(j);
+      if (!p.project_id.empty()) {
+        projects_[p.project_id] = p;
+      }
+    }
+  }
+  closedir(d);
+}
+
+int ProjectStore::Load() {
+  std::lock_guard<std::mutex> lock(mu_);
+  projects_.clear();
+  ScanDir(data_dir_, 0);
+  LOG_INFO("project_store", LogFmt("loaded %d projects from %s",
+           (int)projects_.size(), data_dir_.c_str()));
+  return static_cast<int>(projects_.size());
+}
+
+bool ProjectStore::SaveOne(const ProjectRecord& proj) {
+  std::string dir = ProjectDataDir(data_dir_, proj.group, proj.project_id);
+  if (!MkdirP(dir)) {
+    LOG_ERROR("project_store", LogFmt("failed to create dir: %s", dir.c_str()));
+    return false;
+  }
+  std::string file_path = dir + "project.yaml";
+  std::string tmp_path  = file_path + ".tmp";
+
+  {
+    std::ofstream out(tmp_path);
+    if (!out.is_open()) return false;
+    out << JsonToYaml(proj.to_json()) << "\n";
+    out.flush();
+    if (!out.good()) return false;
+  }
+
+  return rename(tmp_path.c_str(), file_path.c_str()) == 0;
+}
+
+int ProjectStore::Save() {
+  std::lock_guard<std::mutex> lock(mu_);
+  int ok = 0;
+  for (auto& [id, proj] : projects_) {
+    if (SaveOne(proj)) ok++;
+    else LOG_ERROR("project_store", LogFmt("failed to save project: %s", id.c_str()));
+  }
+  return ok;
+}
+
+std::string ProjectStore::Create(const ProjectRecord& proj, std::string& out_error) {
   std::lock_guard<std::mutex> lock(mu_);
 
-  if (spec.spec_id.empty()) { out_error = "spec_id is required"; return ""; }
-  if (spec.title.empty()) { out_error = "title is required"; return ""; }
-  if (spec.group.empty()) { out_error = "group is required"; return ""; }
-  if (spec.owner.empty()) { out_error = "owner is required"; return ""; }
+  if (proj.project_id.empty()) { out_error = "project_id is required"; return ""; }
+  if (proj.title.empty())      { out_error = "title is required";      return ""; }
+  if (proj.group.empty())      { out_error = "group is required";      return ""; }
+  if (proj.owner.empty())      { out_error = "owner is required";      return ""; }
 
-  if (specs_.count(spec.spec_id)) {
-    out_error = "spec_id already exists: " + spec.spec_id;
+  if (projects_.count(proj.project_id)) {
+    out_error = "project_id already exists: " + proj.project_id;
     return "";
   }
 
-  SpecRecord s = spec;
-  s.stage = SpecStage::S1_alignment;
-  s.active = true;
-  if (s.created_at.empty()) s.created_at = NowUTC();
-  s.updated_at = s.created_at;
+  ProjectRecord p = proj;
+  p.stage = SpecStage::S1_alignment;
+  p.active = true;
+  if (p.created_at.empty()) p.created_at = NowUTC();
+  p.updated_at = p.created_at;
 
-  specs_[s.spec_id] = s;
+  if (!SaveOne(p)) {
+    out_error = "failed to persist project: " + p.project_id;
+    return "";
+  }
 
-  // Generate intake task ID
-  std::string intake_task_id = s.spec_id + "-T001";
+  projects_[p.project_id] = p;
 
+  std::string intake_task_id = p.project_id + "-T001";
   out_error = "";
   return intake_task_id;
 }
 
-std::string SpecStore::Progress(const std::string& spec_id, const std::string& target_stage) {
+std::string ProjectStore::Progress(const std::string& project_id,
+                                    const std::string& target_stage) {
   std::lock_guard<std::mutex> lock(mu_);
 
-  auto it = specs_.find(spec_id);
-  if (it == specs_.end()) return "spec not found: " + spec_id;
-  if (!it->second.active) return "spec is archived: " + spec_id;
+  auto it = projects_.find(project_id);
+  if (it == projects_.end()) return "project not found: " + project_id;
+  if (!it->second.active)    return "project is archived: " + project_id;
+  if (!IsValidStage(target_stage)) return "invalid stage: " + target_stage;
 
-  SpecRecord& s = it->second;
+  ProjectRecord& p = it->second;
   SpecStage target = SpecStageFromStr(target_stage);
-  int current_order = SpecStageOrder(s.stage);
-  int target_order = SpecStageOrder(target);
+  int current_order = SpecStageOrder(p.stage);
+  int target_order  = SpecStageOrder(target);
 
-  // Must advance exactly one step, or jump to archived from S8_complete
   if (target_order != current_order + 1) {
-    return "illegal stage progression: " + std::string(SpecStageToStr(s.stage))
+    return "illegal stage progression: " + std::string(SpecStageToStr(p.stage))
            + " -> " + target_stage + " (must advance sequentially)";
   }
 
-  s.stage = target;
-  s.updated_at = NowUTC();
+  p.stage      = target;
+  p.updated_at = NowUTC();
+  if (target == SpecStage::Archived) p.active = false;
 
-  if (target == SpecStage::Archived) {
-    s.active = false;
-  }
-
+  if (!SaveOne(p)) return "failed to persist project after progress: " + project_id;
   return "";
 }
 
-std::vector<SpecRecord> SpecStore::Query(const SpecQueryFilter& filter) const {
+std::vector<ProjectRecord> ProjectStore::Query(const ProjectQueryFilter& filter) const {
   std::lock_guard<std::mutex> lock(mu_);
-  std::vector<SpecRecord> result;
-  for (auto& [id, s] : specs_) {
-    if (!s.active && filter.spec_id.empty()) continue;  // skip inactive unless querying by ID
-    if (MatchesFilter(s, filter)) result.push_back(s);
+  std::vector<ProjectRecord> result;
+  for (auto& [id, p] : projects_) {
+    if (!p.active && filter.project_id.empty()) continue;
+    if (MatchesFilter(p, filter)) result.push_back(p);
   }
   return result;
 }
 
-const SpecRecord* SpecStore::Get(const std::string& spec_id) const {
+const ProjectRecord* ProjectStore::Get(const std::string& project_id) const {
   std::lock_guard<std::mutex> lock(mu_);
-  auto it = specs_.find(spec_id);
-  if (it == specs_.end()) return nullptr;
+  auto it = projects_.find(project_id);
+  if (it == projects_.end()) return nullptr;
   return &it->second;
 }
 
-int SpecStore::Count() const {
+std::vector<std::pair<std::string, std::string>> ProjectStore::ListProjectKeys() const {
+  std::lock_guard<std::mutex> lock(mu_);
+  std::vector<std::pair<std::string, std::string>> result;
+  for (auto& [id, p] : projects_) {
+    result.emplace_back(p.group, p.project_id);
+  }
+  return result;
+}
+
+int ProjectStore::Count() const {
   std::lock_guard<std::mutex> lock(mu_);
   int count = 0;
-  for (auto& [id, s] : specs_) {
-    if (s.active) count++;
+  for (auto& [id, p] : projects_) {
+    if (p.active) count++;
   }
   return count;
 }
 
-bool SpecStore::MatchesFilter(const SpecRecord& s, const SpecQueryFilter& f) const {
-  if (!f.spec_id.empty() && s.spec_id != f.spec_id) return false;
-  if (!f.group.empty() && s.group != f.group) return false;
-  if (!f.stage.empty() && SpecStageToStr(s.stage) != f.stage) return false;
+bool ProjectStore::MatchesFilter(const ProjectRecord& p, const ProjectQueryFilter& f) const {
+  if (!f.project_id.empty() && p.project_id != f.project_id) return false;
+  if (!f.group.empty()      && p.group      != f.group)       return false;
+  if (!f.stage.empty()      && SpecStageToStr(p.stage) != f.stage) return false;
   return true;
 }

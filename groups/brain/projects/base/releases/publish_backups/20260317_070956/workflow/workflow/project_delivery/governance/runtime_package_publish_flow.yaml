@@ -1,0 +1,41 @@
+runtime_package_publish_flow:
+  id: "MWF-BM-002"
+  version: "0.1"
+  intent: "定义 brain manager 发布 runtime architecture package 的顺序流"
+
+phases:
+  validate:
+    steps:
+      - "load MANIFEST.yaml"
+      - "load index.yaml"
+      - "validate every MANIFEST target exists in index publish_mapping"
+      - "validate every publish_mapping target stays inside publish_target"
+      - "validate published_layout covers all mapped files"
+      - "validate entrypoints exist after rename_on_publish"
+
+  publish:
+    steps:
+      - "create target runtime package skeleton if missing"
+      - "apply copy_as_is actions"
+      - "apply rename_on_publish actions"
+      - "write MANIFEST.proposal.yaml and CHANGELOG.pending.md into package root"
+      - "refresh package index references"
+
+  verify:
+    steps:
+      - "verify target files exist"
+      - "verify package entrypoints are readable"
+      - "verify DESIGN, index, MANIFEST remain consistent"
+      - "emit publish verification report"
+
+  archive:
+    steps:
+      - "archive proposal batch with timestamp"
+      - "retain proposal MANIFEST and verification report"
+      - "mark batch as published/held/rejected"
+
+hold_conditions:
+  - "MANIFEST and index publish_mapping mismatch"
+  - "target path outside publish_target"
+  - "required entrypoint missing"
+  - "file classification inconsistent with published_layout"

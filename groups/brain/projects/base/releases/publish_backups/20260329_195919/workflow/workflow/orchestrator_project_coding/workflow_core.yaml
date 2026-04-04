@@ -1,0 +1,1234 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Project Delivery — Orchestrator Project Coding Workflow (Core)
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# 这不是"定义文档"。这是 agent 的执行手册。
+# 每个 step 回答 5 个问题：
+#   1. WHO — 哪个 agent (profile) 执行
+#   2. HOW — 用什么工具/命令/MCP/skill
+#   3. WHAT — 具体产出什么文件、什么字段
+#   4. CHECK — 怎么验证完成
+#   5. NEXT — 成功/重试/阻断分别去哪
+#
+# step_result 契约（每个 step 必须返回）:
+#   { status: success|need_retry|blocked, result: {}, next_step: "...", reason: "..." }
+#
+# 本文件是 core — 始终加载。
+# 各 phase 的 step 定义在 phases/ 目录下，按需加载。
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 1. META — 工作流身份
+# ─────────────────────────────────────────────────────────────────────────────
+meta:
+  id: "MWF-EXEC-ORCHESTRATOR-PROJECT-CODING"
+  version: "3.0"
+  profile: "software_dev"
+  state_dir: "state/"
+
+  # ── 执行环境 ──
+  # 所有 phase 在 sandbox 容器内执行。
+  # brain 是全局基础设施，不在 sandbox 内复制。
+  execution_environment: sandbox
+
+  sandbox_architecture: |
+    sandbox 容器运行在 docker 网络 xk-brain-network 上。
+
+    挂载（容器内路径 = 宿主机路径，无重映射）:
+      {host_xkagent_infra}:/xkagent_infra:ro  ← 整个 xkagent_infra 只读，OS 层面强制
+      {host_project_root}:{project_root}       ← 本项目目录单独覆盖挂载为可写（唯一可写区域）
+      sandbox-root-{instance_id}:/root         ← 命名卷，agent home 目录（ephemeral）
+
+    读写权限边界（OS 层面强制，非约定）:
+      可写:   {project_root}/          仅本项目目录
+      只读:   /xkagent_infra/brain/   brain 全量
+              /xkagent_infra/groups/  其他所有 group/project
+              其余 /xkagent_infra/**  全部只读
+
+    容器内关键路径（路径 = 宿主机路径）:
+      {project_root}/                        — 目标项目目录（可读写）
+        已有项目: /xkagent_infra/groups/{group_id}/projects/{project_id}
+        草稿项目: /xkagent_infra/groups/draft/{project_id}
+      {project_root}/payload/project_init.yaml  — 启动参数（brain devops 预写，orchestrator 启动时读）
+      {project_root}/state/                  — orchestrator 状态文件（Phase 0 创建）
+      {project_root}/artifacts/              — task 产出物（worker 写入）
+      {project_root}/runtime/agents/        — worker agent 运行时目录（spawn 时创建子目录）
+
+    外部服务（同一 xk-brain-network，不在容器内）:
+      IPC daemon               — 消息通信（所有 agent 共享，通过 ${BRAIN_IPC_HOST}:${BRAIN_IPC_PORT}）
+      agentctl                 — agent 生命周期管理（${BRAIN_AGENTCTL_HOST}:${BRAIN_AGENTCTL_PORT}）
+      task_manager             — 任务状态管理（${BRAIN_TASK_MANAGER_HOST}:${BRAIN_TASK_MANAGER_PORT}）
+
+    sandbox 不包含:
+      - 独立的 brain 副本（通过 /xkagent_infra/brain/ 访问，与宿主机共享同一卷）
+      - IPC daemon 进程（通过网络访问）
+      - agentctl 服务端（通过网络访问）
+
+  companion_files:
+    orchestrator_prompt: "orchestrator_agents_md_template.md"
+    worker_protocol: "worker_task_protocol.yaml"
+    provider_profiles: "config/provider_profiles.yaml"
+    sandbox_config: "config/sandbox_config.template.yaml"
+    global_config: "config/global_config.template.yaml"
+
+  phase_files:
+    init:          "phases/0_init.yaml"
+    intake:        "phases/1_intake.yaml"
+    research:      "phases/2_research.yaml"
+    planning:      "phases/3_planning.yaml"
+    task_modeling:  "phases/4_task_modeling.yaml"
+    execution:     "phases/5_execution.yaml"
+    release:       "phases/6_release.yaml"
+    audit:         "phases/7_audit.yaml"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 2. STEP ID 命名规范
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# 每个 step_id 必须全局唯一，格式:
+#   {workflow_id}:{phase_seq}_{step_seq}:{step_name}
+#
+# 示例:
+#   MWF-OPC:0_1:environment_init
+#   MWF-OPC:1_1:capture_requirement
+#   MWF-OPC:5_1:dispatch_ready_tasks
+#
+# 设计理由:
+#   - workflow_id 前缀 → 跨 workflow 不冲突
+#   - phase_seq_step_seq → 排序可预测
+#   - step_name → 人类可读
+#   - vector DB 检索时以 workflow_id 为 namespace
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 3. PROVIDER/MODEL 规范
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# Provider/model 不在 workflow 中硬编码。
+# 所有 step 通过 profile key 引用，具体 provider/model 由 provider_profiles.yaml 决定。
+#
+# 解析链:
+#   step.who.profile → role_profile_map[executor] → profiles[profile_key] → provider + model
+#
+# 覆盖链:
+#   step.who.profile_override > intake.yaml.profile_overrides > provider_profiles.yaml.profiles
+#
+# 完整文档: provider_profiles.yaml
+#
+# who 块格式:
+#   who:
+#     executor: brain_pmo              # 角色
+#     profile: coordinator             # profile key (来自 provider_profiles.yaml)
+#     context: "在 brain infra 内执行"  # 执行环境
+#     # provider/model 由 profile 解析，不在这里写
+#
+# 可用 profiles:
+#   coordinator  — 协调、routing、多 agent 调度
+#   coder        — 代码生成、实现、测试编写
+#   researcher   — 技术调研、方案对比
+#   reviewer     — 代码审查、架构评审
+#   infra        — Docker/shell/部署
+#   ui_dev       — 前端开发
+#   auditor      — 审计、合规检查
+#   architect    — 架构设计、技术决策
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 4. GLOBAL CONFIG — 全局开关和可选功能
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# 每个 step 可以通过 features 字段开启/关闭以下功能。
+# 如果 step 没有声明 features，则使用 global_defaults。
+# step 级声明 > global_defaults。
+
+global_defaults:
+  discussion_mode: false        # 是否多 agent 讨论后再决策
+  multi_agent_review: false     # 是否需要多个 agent 交叉 review
+  human_approval_required: false # 是否需要人工审批
+  evidence_required: true       # 是否必须产出 evidence
+  parallel_dispatch: false      # 是否允许并行派发 (仅 execution 阶段有意义)
+  auto_retry: true              # check 不通过时是否自动重试
+  max_retries: 3                # 自动重试上限
+  snapshot_on_complete: true    # step 完成后是否自动更新 project_snapshot
+  timeout_minutes: 30           # step 超时时间
+
+# features 字段在 step 中的用法:
+#
+# - step_id: MWF-OPC:4_1:define_plan
+#   features:
+#     discussion_mode: true               # 本 step 开启讨论
+#     discussion_participants:             # 讨论参与者
+#       - {role: architect, task: "评估架构可行性"}
+#       - {role: researcher, task: "补充技术调研结论"}
+#     human_approval_required: true        # plan 需要人工审批
+#
+# - step_id: MWF-OPC:6_1:dispatch_ready_tasks
+#   features:
+#     parallel_dispatch: true              # 执行阶段允许并行
+#     timeout_minutes: 60                  # 执行阶段超时放宽
+#
+# discussion_mode 工作流程:
+#   1. orchestrator 准备初始 proposal
+#   2. 按 discussion_participants 逐个派发 review 请求
+#   3. 收集每个 participant 的 feedback
+#   4. orchestrator 综合 feedback，形成最终决策
+#   5. 如果有分歧 → orchestrator 裁决并记录 dissent
+#   6. 结果写入 step_result.discussion_record
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 5. STEP SCHEMA — 每个 step 可用的字段
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# 必填字段:
+#   step_id:     string    — 全局唯一 ID (MWF-OPC:{phase}_{seq}:{name})
+#   phase:       string    — 所属 phase
+#   who:                   — 执行者
+#     executor:  string    — role_key
+#     profile:   string    — profile key (引用 provider_profiles.yaml)
+#     context:   string    — 执行环境描述
+#   purpose:     string    — 这个 step 要达成什么
+#   do:          list      — 具体动作列表（每个 action 有 action/tool/details）
+#   artifact:    string    — 产出文件路径
+#   artifact_schema: map   — 产出文件的字段定义
+#   check:       string    — 通过条件
+#   on_success:  string    — 成功后跳转的 step_id
+#   on_retry:    string    — 重试说明
+#   on_blocked:  string    — 阻断处理
+#
+# 可选字段:
+#   features:              — 覆盖 global_defaults 的开关
+#     discussion_mode:           bool
+#     discussion_participants:   list of {role, task}
+#     multi_agent_review:        bool
+#     review_agents:             list of role_key
+#     human_approval_required:   bool
+#     parallel_dispatch:         bool
+#     auto_retry:                bool
+#     max_retries:               int
+#     timeout_minutes:           int
+#     snapshot_on_complete:      bool
+#   collaborators:         — 本 step 需要协作的其他 agent
+#     - role: string
+#       profile: string     — profile key
+#       task: string        — 该 collaborator 在这个 step 做什么
+#   depends_on:            — 前置 step_id 列表 (除 routing_map 外的额外依赖)
+#   hooks:                 — step 生命周期 hooks
+#     pre_execute:  string — step 开始前执行的命令/检查
+#     post_execute: string — step 完成后执行的命令
+#     on_failure:   string — step 失败时执行的命令
+#   skills:                — 本 step 可调用的 skill 列表
+#     - skill_id: string
+#       description: string
+#   mcps:                  — 本 step 需要的 MCP server 列表
+#     - server: string
+#       operations: [string]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 6. STEP RESULT ENVELOPE — 每个 step 必须返回
+# ─────────────────────────────────────────────────────────────────────────────
+step_result_envelope:
+  status: "success | need_retry | blocked"
+  phase_id: "当前 phase"
+  step_id: "全局唯一 step_id"
+  result:
+    description: "本 step 结构化结果，至少包含该 step 声明的 artifact"
+  next_step: "下一个 step_id"
+  reason: "为什么得到这个状态"
+  evidence_refs: ["optional — 本 step 的证据路径"]
+  state_updates: "optional — 需要更新到 project_snapshot 的变更"
+  discussion_record: "optional — 如果 discussion_mode=true，记录讨论过程和结论"
+  checkpoint_ref: "state/checkpoints/{step_id}.yaml — 本 step 的 checkpoint 文件路径"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 7. PROJECT STATES & SNAPSHOT
+# ─────────────────────────────────────────────────────────────────────────────
+project_states: [BOOTSTRAPPING, INIT, INTAKE, RESEARCHING, PLANNING, TASK_MODELING, EXECUTING, RELEASING, AUDITING, CLOSED, BLOCKED]
+# BOOTSTRAPPING: brain 侧已在 task_manager 立项，sandbox 尚未启动或正在启动
+# BLOCKED:       某个 phase/step 阻断，等待人工介入
+
+project_snapshot_schema:
+  project_id: string
+  group_id: string
+  sandbox_id: string
+  current_phase: string
+  current_step: string
+  project_status: "INTAKE | RESEARCHING | ... | CLOSED"
+  task_summary:
+    total: int
+    ready: int
+    active: int
+    review: int
+    done: int
+    blocked: int
+    failed: int
+  milestone_summary:
+    - milestone_id: string
+      status: "not_started | in_progress | done"
+      completion_percentage: int
+  checklist_summary:
+    total_items: int
+    done_items: int
+    coverage_percentage: int
+  active_blockers: [{blocker_id: string, reason: string, owner: string}]
+  last_step_result_ref: "state/step_results/{step_id_safe}_{timestamp}.yaml"
+  updated_at: "ISO8601"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 8. TASK_MANAGER PROTOCOL — 数据模型 + API + step 生命周期
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# task_manager 是整个 workflow 执行过程的 source of truth。
+# project_snapshot.yaml 是 orchestrator 的本地缓存，从 task_manager 同步。
+#
+# ── 数据模型（4 层）─────────────────────────────────────────────────────────
+
+task_manager_data_model:
+  # task_manager 使用 Spec + Task 两层模型（没有 Project/Phase/Step 层级）
+  # 数据存储: /xkagent_infra/runtime/data/brain_task_manager/
+  # 配置文件: brain/infrastructure/config/brain_task_manager/brain_task_manager.json
+
+  Spec:
+    spec_id:    string              # = project_id
+    title:      string
+    group:      string              # = group_id
+    owner:      string              # = pmo_agent_id
+    stage:      |
+      S1_alignment | S2_requirements | S3_research | S4_analysis |
+      S5_solution | S6_tasks | S7_verification | S8_complete
+    created_at: datetime
+    updated_at: datetime
+    # 由 brain PMO 在立项时调用 SPEC_CREATE 创建
+    # orchestrator 通过 SPEC_PROGRESS 推进 stage，通过 SPEC_QUERY 查询状态
+
+  Task:
+    task_id:     string             # workflow step task: "MWF-OPC:0_1:environment_init" 等
+    title:       string
+    owner:       string             # agent 角色或 agent_id
+    priority:    "critical | high | normal | low"
+    spec_id:     string             # 归属的 spec_id
+    group:       string
+    description: string
+    depends_on:  "string[]"
+    tags:        "string[]"
+    status:      |
+      pending | ready | in_progress | review | verified |
+      completed | blocked | failed | cancelled | archived
+    created_at:  datetime
+    updated_at:  datetime
+
+  # Phase → Spec stage 映射:
+  #   Phase 0 (init) 完成       → S1_alignment（SPEC_CREATE 时已设置，SPEC_PROGRESS 确认）
+  #   Phase 1 (intake) 完成     → SPEC_PROGRESS → S2_requirements
+  #   Phase 2 (research) 完成   → SPEC_PROGRESS → S3_research
+  #   Phase 3_1 (define_plan) 完成  → SPEC_PROGRESS → S4_analysis
+  #   Phase 3_2 (spec_checklist) 完成 → SPEC_PROGRESS → S5_solution
+  #   Phase 4 (task_modeling) 完成  → SPEC_PROGRESS → S6_tasks
+  #   Phase 5 (execution) 进行中    → 保持 S6_tasks（不推进）
+  #   Phase 6 (release) 完成    → SPEC_PROGRESS → S7_verification
+  #   Phase 7 (audit) 完成      → SPEC_PROGRESS → S8_complete
+
+# ── API（实际 event_type，调用方 / 时机）────────────────────────────────────
+
+task_manager_api:
+
+  SPEC_CREATE:
+    caller:   "brain PMO（立项时，sandbox 启动之前）"
+    required: "spec_id, title, group, owner"
+    returns:  "SPEC_CREATED + intake_task_id（自动创建 intake task）"
+    once:     true
+    note:     "orchestrator init 阶段不调此接口，只调 SPEC_QUERY 验证 stage"
+
+  SPEC_PROGRESS:
+    caller:   "orchestrator（每个 phase 的最后一个 step 完成时）"
+    required: "spec_id, target_stage"
+    returns:  "SPEC_PROGRESSED"
+
+  SPEC_QUERY:
+    caller:   "orchestrator（验证 spec 存在 + stage，brain PMO 监控进度）"
+    required: "spec_id（或 group、stage 过滤条件）"
+    returns:  "SPEC_QUERY_RESULT"
+    example:  |
+      event_type: SPEC_QUERY
+      spec_id:    "{project_id}"
+      # → SPEC_QUERY_RESULT.specs[0].stage 查看当前 stage
+
+  TASK_CREATE:
+    caller:   "brain PMO（SPEC_CREATE 后批量创建 workflow step tasks）或 orchestrator（创建项目执行任务）"
+    required: "task_id, title, owner, priority, spec_id, group, description, depends_on[], tags[]"
+    returns:  "TASK_CREATED"
+
+  TASK_UPDATE:
+    caller:   "orchestrator（每个 workflow step 开始 + 结束时必须调用）"
+    required: "task_id, status（以及可选的其他字段）; optional: expected_version"
+    returns:  "TASK_UPDATED"
+    statuses:
+      in_progress: "step task 开始执行的第一个 action"
+      completed:   "step task 所有 actions 完成后的最后一个 action（注意: 不是 done）"
+      blocked:     "step task 无法继续时"
+      failed:      "step task 执行失败"
+    note:     "status=done 不存在，使用 completed"
+
+  TASK_QUERY:
+    caller:   "orchestrator（查询 step/project task 状态，brain PMO 监控进度）"
+    required: "spec_id、status、group、owner 等过滤条件"
+    returns:  "TASK_QUERY_RESULT"
+
+  TASK_STATS:
+    caller:   "orchestrator（获取 spec 下 task 统计）"
+    required: "spec_id"
+    returns:  "TASK_STATS_RESULT"
+
+  TASK_PIPELINE_CHECK:
+    caller:   "orchestrator（检查 spec pipeline 整体状态）"
+    required: "spec_id"
+    returns:  "TASK_PIPELINE_RESULT"
+
+# ── step 标准生命周期模板（每个 step 必须遵循）──────────────────────────────
+
+step_lifecycle_template:
+  description: |
+    每个 step 的标准执行结构。共四段:
+      1. TASK_UPDATE(in_progress)   — 开始标记
+      2. 实际工作 actions            — step 的业务逻辑
+      3. completion_check            — 交叉验证产出物（必须，见 audit_strategy）
+      4. TASK_UPDATE(completed/blocked) + 可选 SPEC_PROGRESS  — 结束标记
+         （只有 completion_check 通过才打 completed；phase 最后一步还需调 SPEC_PROGRESS）
+
+    注意:
+      - 使用 event_type: TASK_UPDATE（不是 STEP_UPDATE，该接口不存在）
+      - 使用 status: completed（不是 done，done 不存在）
+      - PHASE_READY / PHASE_BLOCKED 事件不存在；用 TASK_QUERY / SPEC_QUERY 查询状态
+      - IPC 中的 message_type 字段仅用于非 task_manager 的消息（如 ORCHESTRATOR_READY、
+        BOOTSTRAP_DISPATCH 等）；task_manager 消息使用 event_type 字段
+
+  structure:
+    - action: "TASK_UPDATE: in_progress"
+      tool: "task_manager API"
+      call: |
+        event_type: TASK_UPDATE
+        task_id:    "{step_task_id}"
+        status:     in_progress
+
+    # ... step 的实际 actions ...
+
+    - action: "completion_check: 交叉验证产出物"
+      # 具体执行策略见下方 audit_strategy
+      # 验证结果写入: {project_root}/state/step_results/{step_id_safe}/completion_check.yaml
+      # passed=false → TASK_UPDATE(blocked)，不打 completed
+
+    - action: "TASK_UPDATE: completed 或 blocked（+ 可选 SPEC_PROGRESS）"
+      tool: "task_manager API"
+      call: |
+        completion_check passed=true  →
+          event_type: TASK_UPDATE
+          task_id:    "{step_task_id}"
+          status:     completed
+          # 若为 phase 最后一步，还需调用:
+          # event_type: SPEC_PROGRESS
+          # spec_id:    "{project_id}"
+          # target_stage: {对应 Sx}
+
+        completion_check passed=false →
+          event_type:  TASK_UPDATE
+          task_id:     "{step_task_id}"
+          status:      blocked
+          description: "{completion_check 中第一条 fail.detail}"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# audit_strategy — completion_check 的执行策略
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# 核心原则: orchestrator 不能自证清白。
+#   completion_check 必须由独立的 validator agent 执行，
+#   validator 与 orchestrator 使用不同的模型（cross-model validation）。
+#
+# validator 的隔离性保障:
+#   - 冷启动: 无 orchestrator 的执行上下文和对话历史
+#   - 不同模型: 不同的推理偏差，避免同一模型的系统性误判
+#   - 只读 artifacts: validator 不执行任何写操作，只读文件和调用只读 API
+#   - 一次性: 验证完成后 agent 销毁，不留驻
+
+audit_strategy:
+
+  # ── 核心原则 ──────────────────────────────────────────────────────────────
+  # orchestrator 不能自证清白。
+  # Phase 0 与 Phase 1-7 验证者不同，被验证对象性质不同:
+  #
+  #   Phase 0: 验证的是 sandbox 环境本身
+  #     → 执行者: sandbox 内的 orchestrator
+  #     → 验证者: brain devops（sandbox 外），独立读 state 文件 + docker inspect
+  #     → orchestrator 被动等待 SANDBOX_VERIFY_RESULT，不参与验证执行
+  #
+  #   Phase 1-7: 验证的是项目工作产物（文档/计划/任务图/发布记录等）
+  #     → 执行者: sandbox 内的 orchestrator
+  #     → 验证者: sandbox 内不同模型的 validator agent（冷启动，无执行上下文）
+  #     → 跨模型确保推理偏差不同，validator 只读 artifacts，不依赖执行记忆
+
+  # ── 策略 1: brain devops 外部验证（Phase 0 专用）───────────────────────────
+  external_devops_validation:
+    applies_to: "phase_0 only"
+    validator: "brain devops agent（sandbox 外，与 orchestrator 完全隔离）"
+
+    orchestrator_actions: |
+      A11: 写 validation_request.yaml（包含 check_items 列表）
+           路径: {project_root}/state/step_results/MWF-OPC_0_1_environment_init/validation_request.yaml
+      A11: IPC send SANDBOX_VERIFY_REQUEST → brain_devops
+           payload: {step_id, orchestrator_agent_id, check_items, request_timeout: 300s}
+      A12: IPC recv SANDBOX_VERIFY_RESULT（timeout: 300s）
+           on_timeout → TASK_UPDATE(task_id="MWF-OPC:0_1:environment_init", status=blocked, description="devops verify timeout 300s")
+      A13: 根据 result.passed 调用 TASK_UPDATE(completed 或 blocked) + 若 passed SPEC_PROGRESS(S1_alignment)
+
+    devops_actions: |
+      收到 SANDBOX_VERIFY_REQUEST 后，brain devops 独立执行（无需 orchestrator 参与）:
+        1. file_read: {project_root}/state/global_config.yaml
+           断言: project_id/group_id/sandbox_id/paths.* 字段均非空
+        2. file_read: {project_root}/state/project_snapshot.yaml
+           断言: init_decision=PASS, environment_status 所有项 = ok
+        3. bash: test -d {project_root}/state          → exit 0
+        4. bash: test -d {project_root}/artifacts      → exit 0
+        5. bash: git -C {project_root} branch --show-current
+           断言: stdout == "feature/{pending_id}"
+        6. docker inspect --format='{{.State.Health.Status}}' {container_name}
+           断言: stdout == "healthy"
+      完成后: IPC send SANDBOX_VERIFY_RESULT → {orchestrator_agent_id}
+
+    ipc_messages:
+      request:
+        message_type: "SANDBOX_VERIFY_REQUEST"
+        step_id: "MWF-OPC:0_1:environment_init"
+        orchestrator_agent_id: "{orchestrator_agent_id}"
+        check_items: []                  # 完整列表见 phases/0_init.yaml A11
+        request_timeout: 300
+      result:
+        message_type: "SANDBOX_VERIFY_RESULT"
+        passed: "true | false"
+        verified_by: "{devops_agent_id}"
+        check_results:
+          - id: string
+            status: "ok | fail"
+            detail: "fail 时说明具体不一致之处"
+        verified_at: "ISO8601"
+
+    completion_check_output: "{project_root}/state/step_results/MWF-OPC_0_1_environment_init/completion_check.yaml"
+    result_owner: "brain devops 是验证结果的签名者（verified_by 字段）"
+
+  # ── 策略 2: 跨模型 validator agent（Phase 1-7 主策略）─────────────────────
+  cross_model_validation:
+    applies_to: "phase_1 through phase_7（所有步骤的 completion_check 默认策略）"
+    description: |
+      orchestrator 完成 step 工作后，通过 agentctl 临时启动使用不同模型的
+      validator agent，由它独立读取 artifacts 并返回验证报告。
+      orchestrator 收到报告后写入 completion_check.yaml，决定 done/blocked。
+
+    model_selection:
+      rule: "validator 模型必须与 orchestrator 当前使用的模型不同"
+      examples:
+        - orchestrator: claude-sonnet  →  validator: gemini-pro 或 doubao-pro
+        - orchestrator: gemini-pro     →  validator: claude-sonnet
+        - orchestrator: doubao-pro     →  validator: claude-sonnet 或 gemini-pro
+      resolver: "从 provider_profiles.yaml 获取 orchestrator 当前模型，选第一个可用的不同模型"
+      fallback: "备选模型不可用 → 降级为 same_model_isolated（策略 3）"
+
+    # ── 文件路径规范 ────────────────────────────────────────────────────────
+    file_paths:
+      step_id_safe_rule: "将 step_id 中的 ':' 全部替换为 '_'，用于目录名"
+      examples:
+        - raw:  "MWF-OPC:1_1:capture_requirement"
+          safe: "MWF-OPC_1_1_capture_requirement"
+        - raw:  "MWF-OPC:5_2b:dispatch_review"
+          safe: "MWF-OPC_5_2b_dispatch_review"
+      validation_request: "{project_root}/state/step_results/{step_id_safe}/validation_request.yaml"
+      completion_check:   "{project_root}/state/step_results/{step_id_safe}/completion_check.yaml"
+
+    # ── check_item 类型定义（validator agent 支持的所有类型）───────────────
+    check_item_types:
+
+      file_exists:
+        description: "验证文件存在（存在 → ok，不存在 → fail）"
+        required_fields: [id, type, target]
+        target: "文件路径，相对于 project_root"
+        example: {id: "CHK-01", type: "file_exists", target: "state/intake.yaml"}
+
+      field_assert:
+        description: "读取 YAML/JSON 文件的指定字段，验证值满足断言"
+        required_fields: [id, type, field, assert]
+        optional_fields: {target: "文件路径，省略时用 artifact（validation_request 中指定的主产物）"}
+        assert_syntax:
+          "非空":                "字段存在且不为 null/empty string/空数组"
+          "非空字符串":          "字符串类型且 len > 0"
+          "非空数组":            "数组类型且 len > 0"
+          "非空数组（至少 N 项）": "数组类型且 len >= N"
+          "== VALUE":           "精确等于指定值（字符串/布尔/数值）"
+          "> N":                "数值 > N"
+          "in [A, B, C]":      "值在枚举列表中（忽略大小写）"
+          "[] 空列表":           "数组类型且 len == 0"
+          "格式 CHK-NNN":        "字符串匹配正则 /^CHK-\d{3}$/"
+          "非空（含 X/Y 字段）": "对象且包含指定字段且非空"
+        example: {id: "CHK-02", type: "field_assert", field: "intake_decision", assert: "== ACCEPTED"}
+
+      items_check:
+        description: "遍历数组，验证每个元素的子字段都满足断言（全量检查）"
+        required_fields: [id, type, target, assert]
+        target: "JSONPath 风格，如 items[*].type 或 tasks[*].completion_checks"
+        assert: "同 field_assert 的 assert_syntax（作用于每个元素）"
+        example: {id: "CHK-03", type: "items_check", target: "items[*].status", assert: "in [open, resolved, escalated]"}
+
+      no_match:
+        description: "筛选满足 filter 条件的数组元素，断言结果集为空"
+        required_fields: [id, type, target, filter, assert]
+        target: "数组字段路径"
+        filter: "过滤表达式（AND 连接多个条件），如 type=ask_user AND status=open"
+        assert: "固定写 '为空（...）'，描述为什么应该为空"
+        example:
+          id: "CHK-04"
+          type: "no_match"
+          target: "items"
+          filter: "type=ask_user AND status=open"
+          assert: "为空（所有 ask_user 项均已回复）"
+
+      cross_file:
+        description: "跨文件一致性验证：validator 读多个文件，执行联合断言"
+        required_fields: [id, type, source, rule]
+        source: "参照文件路径（相对 project_root）"
+        rule: "自然语言描述的联合断言规则（validator 逐项解析执行）"
+        example:
+          id: "CHK-05"
+          type: "cross_file"
+          source: "state/decisions.yaml"
+          rule: "items[type=research AND status=open] 为空（所有 research 项均已 resolved）"
+
+      batch_check:
+        description: "针对本轮操作批次的一致性验证（专用于循环步骤 5_1/5_2/5_2b）"
+        required_fields: [id, type, target, assert]
+        target: "批次描述（validator 根据描述定位本批条目）"
+        assert: "断言规则"
+        example:
+          id: "CHK-06"
+          type: "batch_check"
+          target: "本轮 dispatch 的条目"
+          assert: "每个 task 在 dispatch_log 中都有对应条目且含 dispatched_at 时间戳"
+
+      dag_check:
+        description: "对依赖字段执行拓扑排序，验证有向图无环"
+        required_fields: [id, type, target, assert]
+        target: "依赖字段的 JSONPath，如 tasks[*].depends_on"
+        assert: "固定写 '依赖无环'"
+        example: {id: "CHK-07", type: "dag_check", target: "tasks[*].depends_on", assert: "依赖无环"}
+
+      escalation_check:
+        description: "验证 escalate 类 blocker 已通过 IPC 通知 brain_pmo（读 dispatch_log 或 ipc_log）"
+        required_fields: [id, type, rule]
+        rule: "验证规则说明"
+        example:
+          id: "CHK-08"
+          type: "escalation_check"
+          rule: "若 blocker.category=escalate，dispatch_log 中有对应 ipc_notify 记录"
+
+    # ── 执行流程（6 步，orchestrator 视角）─────────────────────────────────
+    execution_flow:
+
+      "step_1: orchestrator 写 validation_request":
+        executor: orchestrator
+        action: |
+          写入: {project_root}/state/step_results/{step_id_safe}/validation_request.yaml
+        content:
+          step_id: "{step_id}"
+          orchestrator_agent_id: "{orchestrator_agent_id}"
+          requested_at: "{ISO8601}"
+          validator_model_rule: "不同于 orchestrator 当前使用的模型"
+          artifact: "state/XXX.yaml"        # 本 step 的主产物，各 step 不同
+          check_items:                       # 每个 step 的具体内容见 phases/{N}_*.yaml
+            - id: "CHK-NN"
+              type: "..."
+              ...
+
+      "step_2: orchestrator 启动 validator agent":
+        executor: orchestrator
+        action: "通过 agentctl 启动 ephemeral validator"
+        command: |
+          agentctl start \
+            --role step_validator \
+            --model {validator_model} \
+            --task-file {project_root}/state/step_results/{step_id_safe}/validation_request.yaml \
+            --report-to {orchestrator_agent_id} \
+            --ephemeral
+        agent_id_pattern: "agent_{group_id}_{project_id}_validator_{step_short_id}"
+        note: |
+          step_short_id: 取 step_id 最后一段，如 capture_requirement
+          --ephemeral: 验证完成后 agentctl 自动销毁，不留驻
+
+      "step_3: validator 独立执行验证":
+        executor: "validator agent（不同模型，冷启动，无 orchestrator 执行上下文）"
+        action: "读取 validation_request.yaml，逐条执行 check_items"
+        check_item_execution:
+          file_exists:     "检查文件路径是否存在"
+          field_assert:    "读 YAML，提取字段，按 assert_syntax 断言"
+          items_check:     "遍历数组，对每个元素执行断言"
+          no_match:        "筛选元素，断言结果集为空"
+          cross_file:      "读多个文件，按 rule 执行联合断言"
+          batch_check:     "读 dispatch_log，定位本批条目，执行批次断言"
+          dag_check:       "构建依赖图，拓扑排序，验证无环"
+          escalation_check: "读 dispatch_log 或 ipc_log，验证 escalate 通知存在"
+        constraints: |
+          validator 只执行只读操作，不调用 IPC send，不写任何文件，
+          不依赖 orchestrator 的任何内存状态，纯粹基于落盘产物验证。
+
+      "step_4: validator IPC 回报":
+        executor: "validator agent"
+        action: "IPC send VALIDATE_COMPLETE → {orchestrator_agent_id}"
+        payload:
+          message_type: "VALIDATE_COMPLETE"
+          step_id: "{step_id}"
+          validator_agent_id: "{validator_agent_id}"
+          validator_model: "{model_name}"
+          passed: "true | false"
+          check_results:
+            - id: "{check_item_id}"
+              status: "ok | fail"
+              detail: "fail 时说明具体不一致之处"
+          validated_at: "{ISO8601}"
+        note: "回报后 validator agent 自动销毁（--ephemeral）"
+
+      "step_5: orchestrator 写 completion_check":
+        executor: orchestrator
+        action: "等待并接收 VALIDATE_COMPLETE，写入 completion_check.yaml"
+        wait_for: "IPC: VALIDATE_COMPLETE（来自 validator_agent_id）"
+        timeout: "120s"
+        on_timeout: "降级执行 same_model_isolated（策略 3），重新走 step_1-5"
+        output_path: "{project_root}/state/step_results/{step_id_safe}/completion_check.yaml"
+        content: |
+          (将 VALIDATE_COMPLETE payload 完整写入，追加以下字段)
+          strategy: cross_model_validation   # 或 same_model_isolated（降级时）
+          fallback_reason: "..."             # 降级时填写原因
+          requested_at: "{ISO8601}"          # orchestrator 发起验证的时间
+
+      "step_6: orchestrator 决定 TASK_UPDATE":
+        executor: orchestrator
+        logic: |
+          completion_check.passed = true
+            → TASK_UPDATE(task_id="{step_task_id}", status=completed)
+            → 若为 phase 最后一步: SPEC_PROGRESS(spec_id="{project_id}", target_stage=Sx)
+
+          completion_check.passed = false
+            → TASK_UPDATE(task_id="{step_task_id}", status=blocked,
+                description='{check_results 中第一条 fail 的 detail}')
+            → IPC send to brain_pmo:
+                message_type: STEP_BLOCKED
+                step_id: "{step_id}"
+                completion_check_path: "{completion_check_output}"
+                failed_items: [fail 的 check_item id 列表]
+
+    # ── 循环步骤特殊说明（Phase 5）──────────────────────────────────────────
+    loop_step_notes: |
+      Phase 5 是循环执行的（5_1 → 5_2 → 5_2b → 5_4 → 回到 5_1）。
+
+      5_1 / 5_2 / 5_2b / 5_3 每轮循环均执行一次 cross_model_validation:
+        - 验证"本轮"的操作结果（dispatch_log 本批、collect_batch 等）
+        - 非全局验证，是局部验证（batch_check + cross_file）
+        - completion_check.yaml 每轮覆盖写（保留最新一轮验证结果）
+
+      5_4 (evaluate_release_readiness) 验证是条件性的:
+        - release_ready=false → 跳过 cross_model_validation，直接回到 5_1
+          （此时不调用 TASK_UPDATE:completed，5_1 进入时调用自己的 in_progress）
+        - release_ready=true  → 执行 cross_model_validation，
+          通过后才调用 TASK_UPDATE:completed，整个 execution phase 结束
+          （spec stage 仍为 S6_tasks；由 phase 6 完成后 SPEC_PROGRESS → S7_verification）
+
+  # ── 策略 3: 同模型独立实例（降级策略）──────────────────────────────────────
+  same_model_isolated:
+    description: |
+      当跨模型验证不可用时，启动与 orchestrator 相同模型的全新实例作为 validator。
+      隔离性弱于跨模型验证，但仍优于 orchestrator 自我验证。
+    trigger:
+      - "cross_model_validation step_2: agentctl 返回 provider unavailable（备选模型不可用）"
+      - "cross_model_validation step_5: IPC VALIDATE_COMPLETE 超时（120s 未收到）"
+    execution: |
+      与 cross_model_validation.execution_flow 完全相同，唯一区别:
+        --model {same_model_as_orchestrator}  （不要求不同模型）
+      completion_check.yaml 中追加:
+        strategy: same_model_isolated
+        fallback_reason: "validator 模型不可用 | VALIDATE_COMPLETE 超时 120s"
+    reliability: |
+      对结构化断言（file_exists / field_assert / dag_check）完全可靠，
+      不依赖主观推理，模型相同不影响结果。
+      对语义质量判断（如"调研报告是否充分"）弱于跨模型验证——可接受的权衡。
+
+  # ── 策略 4: 外部异步审计（非阻塞补充）──────────────────────────────────────
+  external_async_audit:
+    description: |
+      task_manager 在收到 TASK_UPDATE(completed) 后推送 TASK_DONE 事件给 brain PMO。
+      brain PMO 可独立读取 completion_check.yaml 做二次抽查。
+      这是非阻塞的：不影响 workflow 继续推进。
+      如果 PMO 发现问题，可发送 ROLLBACK_STEP 指令给 orchestrator。
+    trigger: "task_manager 自动推送 TASK_DONE 事件（与 orchestrator 无关，不需转发）"
+
+    pmo_actions: |
+      收到 TASK_DONE 事件后，brain PMO 可选执行:
+        1. 读取 {project_root}/state/step_results/{step_id_safe}/completion_check.yaml
+        2. 抽查: 随机选 1-2 条 check_item，自行重新验证（file_read 或 bash）
+        3. 如果发现与 completion_check.yaml 记录不一致:
+             IPC send ROLLBACK_STEP → orchestrator:
+               message_type: ROLLBACK_STEP
+               step_id: "{step_id}"
+               reason: "PMO 抽查发现验证结果与实际不符: {具体描述}"
+               evidence_path: "{pmo 自己的验证日志路径}"
+
+    rollback_handling: |
+      orchestrator 收到 ROLLBACK_STEP 时:
+        1. 如果 next_step 已启动 → 中止 next_step 当前 action，不继续
+        2. TASK_UPDATE(task_id="{rolled_back_step_task_id}", status=blocked,
+                        description=ROLLBACK_STEP.reason)
+        3. 从头重新执行被回滚的 step（从 TASK_UPDATE:in_progress 开始）
+        4. 或者等待 brain PMO 进一步指令（PMO 可能需要人工介入）
+
+    note: "brain PMO 的抽查是可选补充，非强制。workflow 不阻塞等待 PMO 审计完成。"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 9. STATE DIRECTORY LAYOUT — 文件类型和路径规范
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# 所有 state 文件按用途分为三类:
+#
+#   ┌────────────────────┬───────────────────────────────────────────────────────┐
+#   │ 类型               │ 规则                                                 │
+#   ├────────────────────┼───────────────────────────────────────────────────────┤
+#   │ snapshot (覆盖写)  │ 最新值覆盖旧值，始终只有一个版本                     │
+#   │ append-only (追加) │ 只追加不覆盖，保留完整历史                           │
+#   │ per-task (按 task) │ 每个 task 一个目录，worker 产出归属于此              │
+#   └────────────────────┴───────────────────────────────────────────────────────┘
+#
+state_directory_layout:
+  base_path: "state/"                    # 相对于 orchestrator runtime_home
+
+  # ── task_manager 持久化数据（远端权威状态，非本地文件）──
+  task_manager_data:
+    path: "/xkagent_infra/runtime/data/brain_task_manager/"
+    config: "brain/infrastructure/config/brain_task_manager/brain_task_manager.json"
+    note: |
+      task_manager 的 spec/task 数据存储于此路径（容器外，由 task_manager 服务管理）。
+      orchestrator 通过 IPC/MCP 调用 task_manager API，不直接读写此目录。
+      state/project_snapshot.yaml 是 orchestrator 的本地缓存，从 task_manager 同步。
+
+  # ── snapshot 类型 (覆盖写) ──
+  snapshots:
+    - path: "state/project_snapshot.yaml"
+      description: "项目全局状态，每次决策循环更新"
+      writer: orchestrator_only
+
+    - path: "state/intake.yaml"
+      description: "需求收集结果，intake 阶段一次写入"
+      writer: brain_pmo
+
+    - path: "state/decisions.yaml"
+      description: "未知项分类和决议"
+      writer: brain_pmo
+
+    - path: "state/research.yaml"
+      description: "技术调研报告"
+      writer: brain_researcher
+
+    - path: "state/sandbox_plan.yaml"
+      description: "sandbox 规划"
+      writer: brain_devops
+
+    - path: "state/project_plan.yaml"
+      description: "项目计划，planning 阶段产出，可能多次修订"
+      writer: orchestrator_only
+
+    - path: "state/task_graph.yaml"
+      description: "任务图 + 任务状态，execution 阶段持续更新"
+      writer: orchestrator_only
+
+    - path: "state/spec_checklist.yaml"
+      description: "验收 checklist，随 task 完成逐项更新"
+      writer: orchestrator_only
+
+    - path: "state/release_readiness.yaml"
+      description: "发布就绪评估"
+      writer: orchestrator_only
+
+    - path: "state/release_record.yaml"
+      description: "发布记录"
+      writer: orchestrator_only
+
+    - path: "state/collect_batch.yaml"
+      description: "当前 collect_results 批次的分类结果"
+      writer: orchestrator_only
+
+  # ── append-only 类型 (追加写) ──
+  append_logs:
+    - path: "state/ipc_log.yaml"
+      description: "所有 IPC 消息收发记录（发出和收到均追加），全 phase 通用，不可覆盖"
+      format: |
+        - ts:        ISO8601
+          direction: "send | recv"
+          from:      string   # send 时 = orchestrator_agent_id
+          to:        string   # recv 时 = orchestrator_agent_id
+          type:      string   # 消息类型，如 ORCHESTRATOR_READY / PROCEED_CONFIRMED / INTAKE_REQUEST
+          step_id:   string   # 发送时所在 step
+          ref_id:    string   # optional，关联的 task_id / project_id
+          summary:   string   # 消息内容摘要（不超过 200 字），敏感字段脱敏
+      writer: orchestrator_only
+      rule: |
+        每次 ipc_send / ipc_recv 之后立即追加，不得延后批量写。
+        ipc_log 是 IPC 通信的审计链，escalation_check 等验证步骤会读取此文件。
+
+    - path: "state/dispatch_log.yaml"
+      description: "所有 task dispatch/review 记录，按时间追加"
+      format: |
+        - timestamp: ISO8601
+          action: "dispatch | review | rework | reassign"
+          task_id: string
+          agent_id: string
+          details: string
+      writer: orchestrator_only
+
+  # ── per-step 结果 (每 step 一个文件) ──
+  step_results:
+    path_pattern: "state/step_results/{step_id_safe}_{timestamp}.yaml"
+    description: "每个 step 执行完毕的 step_result envelope 落盘"
+    retention: "保留所有历史，不覆盖"
+    writer: orchestrator_only
+
+  # ── checkpoint 文件 (context 桥梁) ──
+  checkpoints:
+    path_pattern: "state/checkpoints/{step_id_safe}.yaml"
+    description: "每个 step 完成后的关键结论摘要，下一 step 冷启动时读取"
+    retention: "保留最近 3 个 step 的 checkpoint，更早的可归档"
+    writer: orchestrator_only
+
+  # ── per-task 产出 (worker 写入) ──
+  task_artifacts:
+    path_pattern: "{project_root}/artifacts/tasks/{task_id}/"
+    description: "worker 的实际产出（代码 diff、测试报告、文档等）"
+    writer: assigned_worker
+    contents:
+      - "artifact files (代码、文档、配置)"
+      - "evidence files (测试报告、截图、日志)"
+      - "report.yaml (worker 的自检报告)"
+
+  # ── init 阶段产出 (orchestrator 自举) ──
+  init_artifacts:
+    - path: "state/project_snapshot.yaml"
+      description: "初始化时创建，后续每步更新"
+      writer: orchestrator_only
+    - path: "state/agent_roster.yaml"
+      description: "lazy spawn 时记录，跟踪所有 worker agent"
+      writer: orchestrator_only
+
+  # ── audit 阶段产出 ──
+  audit_artifacts:
+    - path: "state/audit_report.yaml"
+      writer: project_auditor
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 9. CONTEXT CHECKPOINT — step 间上下文清理协议
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# 问题:
+#   orchestrator 跑完一个 step 后，context window 里残留了大量过程数据：
+#   对话记录、中间推理、IPC 往返、临时计算等。如果不清理，每跑一个 step
+#   context 就膨胀一层，到 Phase 6 循环时直接爆炸。
+#
+# 解决:
+#   每个 step 完成时，orchestrator 必须执行 "context checkpoint"：
+#     1. 将本 step 的关键结论提炼为结构化摘要
+#     2. 持久化到 checkpoint 文件
+#     3. 请求 context 清理（/compact 或 equivalent）
+#     4. 下一个 step 启动时，只从 checkpoint 文件恢复必要上下文
+#
+# 设计原则:
+#   - checkpoint 是 step 之间的"记忆桥梁"
+#   - 过程数据丢弃，结论数据保留
+#   - 下一个 step 冷启动时，读 checkpoint 就能完全理解当前位置
+#
+context_checkpoint:
+
+  # ── 什么时候执行 checkpoint ──
+  trigger:
+    - "每个 step 完成（status=success）后，写 step_result 之后"
+    - "step 需要重试（status=need_retry）且已重试 >= 2 次时"
+    - "Phase 切换时（必须 checkpoint，因为要换 phase 文件）"
+    - "Phase 5 循环中每次 evaluate_release_readiness 完成后（防止循环膨胀）"
+
+  # ── checkpoint 文件格式 ──
+  checkpoint_file:
+    path_pattern: "state/checkpoints/{step_id_safe}.yaml"
+    description: "每个 step 完成后写一个 checkpoint 文件，下一个 step 启动时读"
+    schema:
+      # 身份
+      project_id: string
+      checkpoint_step: "刚完成的 step_id"
+      next_step: "即将执行的 step_id"
+      current_phase: string
+      timestamp: "ISO8601"
+
+      # 本 step 的关键结论（替代整个 context）
+      conclusions:
+        summary: "1-3 句话概括本 step 做了什么、结果是什么"
+        decisions_made: ["本 step 做出的关键决策列表"]
+        artifacts_produced: ["本 step 产出的文件路径"]
+        open_issues: ["未解决的问题（传递给后续 step）"]
+
+      # 下一个 step 需要的输入（显式声明）
+      next_step_context:
+        required_reads: ["下一个 step 需要读取的文件路径"]
+        carry_forward: "需要带入下一 step 的关键信息（不超过 500 字）"
+
+      # 项目全局状态摘要（从 project_snapshot 提取）
+      project_status_snapshot:
+        phase: string
+        task_summary: "{total}/{done}/{active}/{blocked}"
+        checklist_coverage: "percentage"
+        active_blockers: ["blocker 列表"]
+
+  # ── step 完成后的 checkpoint 流程 ──
+  on_step_complete:
+    sequence:
+      1:
+        action: "写 step_result"
+        target: "state/step_results/{step_id_safe}_{timestamp}.yaml"
+        note: "这是完整的 step_result envelope，保留完整细节"
+
+      2:
+        action: "更新 project_snapshot"
+        target: "state/project_snapshot.yaml"
+        note: "更新 current_step, task_summary 等"
+
+      3:
+        action: "写 checkpoint"
+        target: "state/checkpoints/{step_id_safe}.yaml"
+        note: |
+          从刚完成的工作中提炼:
+            - conclusions.summary: 本 step 做了什么
+            - conclusions.decisions_made: 关键决策
+            - conclusions.artifacts_produced: 产出文件
+            - next_step_context.required_reads: 下一 step 需要读什么
+            - next_step_context.carry_forward: 需要带入的关键信息
+
+      4:
+        action: "请求 context 清理"
+        method: "/compact"
+        note: |
+          告诉 runtime: "我已经 checkpoint 了，请清理 context window"。
+          compact 后 context 中只保留:
+            - 系统 prompt (AGENTS.md)
+            - 最近的 checkpoint 摘要
+          所有中间对话、IPC 往返、推理过程都被压缩或丢弃。
+
+  # ── 下一个 step 启动时的恢复流程 ──
+  on_step_start:
+    sequence:
+      1:
+        action: "读 project_snapshot.yaml"
+        purpose: "确认当前 phase 和 step"
+
+      2:
+        action: "读上一个 step 的 checkpoint"
+        target: "state/checkpoints/{previous_step_id_safe}.yaml"
+        purpose: "恢复关键结论和上下文"
+
+      3:
+        action: "读当前 phase 文件"
+        target: "phases/{phase_file}"
+        purpose: "加载当前 step 的 do/check/routing"
+
+      4:
+        action: "按 checkpoint.next_step_context.required_reads 加载输入文件"
+        purpose: "只读需要的文件，不读无关的"
+
+      5:
+        action: "开始执行 step.do 列表"
+
+  # ── Phase 5 循环的特殊处理 ──
+  execution_loop_checkpoint:
+    description: |
+      Phase 5 是循环（dispatch → collect → review → evaluate → 回到 dispatch）。
+      每轮循环可能跑 4-5 个 step，如果不清理，几轮后 context 就爆了。
+
+    策略:
+      - "每轮循环结束时（evaluate_release_readiness 完成后）必须 checkpoint"
+      - "checkpoint 的 carry_forward 只保留: 本轮完成的 task、新解锁的 task、未解决的 blocker"
+      - "历史轮次的过程数据通过 dispatch_log.yaml 持久化，不留在 context 中"
+      - "如果 context 使用率 > 70%，即使在循环中间也执行 checkpoint"
+
+    轮次摘要格式:
+      round_number: int
+      tasks_dispatched: ["task_id"]
+      tasks_completed: ["task_id"]
+      tasks_failed: ["task_id"]
+      reviews_approved: ["task_id"]
+      reviews_rejected: ["task_id"]
+      new_ready_tasks: ["task_id"]
+      remaining_blockers: ["blocker description"]
+      release_ready: bool
+
+  # ── context 使用率监控 ──
+  context_monitor:
+    description: |
+      orchestrator 应该在每个 step 的 do 列表执行过程中监控 context 使用率。
+      如果 context 使用率过高，执行"紧急 checkpoint"。
+
+    thresholds:
+      warning: 60      # context 使用 60% 时提示
+      checkpoint: 70   # context 使用 70% 时执行 mid-step checkpoint
+      critical: 85     # context 使用 85% 时暂停，checkpoint + compact，然后继续
+
+    mid_step_checkpoint:
+      description: "在 step 执行中间做 checkpoint，不是等 step 结束"
+      trigger: "context 使用率 >= checkpoint threshold"
+      action: |
+        1. 将当前 step 的已完成 action 和中间结果写入临时 checkpoint
+        2. 执行 /compact
+        3. 恢复后继续执行 step 的剩余 action
+      target: "state/checkpoints/{step_id_safe}_partial_{seq}.yaml"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 10. SPAWN PROTOCOL — Worker Agent 按需创建
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# 旧架构: bootstrap 阶段在宿主机逐个构造所有 agent runtime
+# 新架构: orchestrator 在 sandbox 内按需 spawn（lazy spawn）
+#
+# 原则:
+#   - 第一次需要某 role 时才 spawn，不提前创建
+#   - orchestrator 是所有 worker 的生命周期管理者
+#   - 通过 agentctl 操作，禁止直接 tmux
+#
+spawn_protocol:
+  where: "sandbox 内部（agent runtime 在本地，agentctl 通过网络调用）"
+  when: "第一次需要某 role 时（lazy spawn）"
+
+  naming:
+    format: "agent_{group_id}_{project_key}_{role_key}_{slot:02d}"
+    example: "agent_brain_dashboard_developer_01"
+
+  steps:
+    1:
+      action: "从 provider_profiles.yaml 解析 role → profile → provider/model/ipc_method"
+      details: |
+        role_profile_map[role_key] → profile_key
+        profiles[profile_key] → {provider, model, agent_type, ipc_method}
+        检查 intake.yaml.profile_overrides → 项目级覆盖
+
+    2:
+      action: "创建 agent runtime 目录"
+      command: |
+        AGENT_ID={agent_id}
+        mkdir -p {project_root}/runtime/agents/$AGENT_ID
+
+    3:
+      action: "渲染 provider-specific 配置"
+      details: |
+        如果 ipc_method = mcp (claude / copilot):
+          渲染 .claude/settings.local.json + .mcp.json
+
+        如果 ipc_method = cli (codex / gemini):
+          渲染 .codex/config.toml + ipc_env.sh
+
+    4:
+      action: "渲染 AGENTS.md (worker 版)"
+      details: |
+        来源: worker_task_protocol.yaml 的 role_specific_prompts.{role_key}.AGENTS_md_snippet
+        追加: receive_task / execute_task / report_result SOP
+        追加: IPC 通信方式说明（按 ipc_method 分支）
+
+    5:
+      action: "写 runtime_meta.yaml"
+      details: "agent_id, role_key, profile, provider, model, ipc_method, project_id, sandbox_id"
+
+    6:
+      action: "启动 agent"
+      command: "agentctl start --apply {agent_id}"
+      timeout: 60s
+      forbidden: "禁止直接 tmux new-session"
+
+    7:
+      action: "验证 agent 上线"
+      check: "ipc_list_agents() 中出现 {agent_id} (超时 60s)"
+
+    8:
+      action: "记录到 agent_roster"
+      target: "state/agent_roster.yaml"
+      append: |
+        - agent_id: string
+          role_key: string
+          profile: string
+          provider: string
+          model: string
+          ipc_method: "mcp | cli"
+          status: "online | offline | terminated"
+          spawned_at: "ISO8601"
+          spawned_by_step: "触发 spawn 的 step_id"
+
+  lifecycle:
+    restart: "agentctl restart --apply {agent_id}"
+    terminate: "agentctl stop {agent_id} — worker 完成所有 task 后可终止"
+    crash_recovery: |
+      1. 检查 agentctl status {agent_id}
+      2. 如果 offline → agentctl restart --apply {agent_id}
+      3. 如果持续失败 → 创建新 agent (递增 slot) 接手
+
+  roster_file:
+    path: "state/agent_roster.yaml"
+    description: "所有 spawned worker 的注册表，orchestrator 维护"
+    writer: orchestrator_only
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# ROUTING MAP — step 跳转总览
+# ═══════════════════════════════════════════════════════════════════════════════
+
+routing_map:
+
+  # ── Brain 侧前置流程（sandbox 外，不在 orchestrator 执行范围）──────────────
+  # 这段由 brain PMO workflow 负责，是 Phase 0 的前提条件。
+  # 详细流程见 sandbox_config.template.yaml startup_sequence。
+  #
+  #   立项
+  #     → brain PMO: SPEC_CREATE(spec_id=project_id, title=..., group=group_id, owner=pmo_agent_id)
+  #         task_manager: spec stage=S1_alignment, intake_task 自动创建
+  #         brain PMO 批量 TASK_CREATE 所有 workflow step tasks（status=pending）
+  #     → brain devops: 渲染 sandbox config / git 分支 / docker compose up
+  #     → agentctl start {orchestrator_agent_id}
+  #     → orchestrator 冷启动，进入 Phase 0
+  #
+  # ── Sandbox 侧（orchestrator 执行，每个 step 遵循 step_lifecycle_template）─
+
+  # Phase 0: Init — 环境自检 + 验证 task_manager spec（SPEC_QUERY）+ 写全局配置
+  # 前置: TASK_QUERY 返回 MWF-OPC:0_1:environment_init status=ready
+  # 完成后: SPEC_PROGRESS → S1_alignment（确认 alignment 阶段完成）
+  "MWF-OPC:0_1:environment_init":          {success: "MWF-OPC:1_1:capture_requirement"}
+
+  # Phase 1: Intake — 通过 IPC 和 brain PMO 收集需求
+  # 完成后: SPEC_PROGRESS → S2_requirements（1_2 最后一步）
+  "MWF-OPC:1_1:capture_requirement":       {success: "MWF-OPC:1_2:classify_unknowns"}
+  "MWF-OPC:1_2:classify_unknowns":         {success: "MWF-OPC:2_1:research_if_needed"}
+
+  # Phase 2: Research — sandbox 内 spawn researcher
+  # 完成后: SPEC_PROGRESS → S3_research
+  "MWF-OPC:2_1:research_if_needed":        {success: "MWF-OPC:3_1:define_plan"}
+
+  # Phase 3: Planning — 多 agent 协作
+  # 3_1 完成后: SPEC_PROGRESS → S4_analysis
+  # 3_2 完成后: SPEC_PROGRESS → S5_solution
+  "MWF-OPC:3_1:define_plan":               {success: "MWF-OPC:3_2:create_spec_checklist"}
+  "MWF-OPC:3_2:create_spec_checklist":     {success: "MWF-OPC:4_1:model_tasks"}
+
+  # Phase 4: Task Modeling — 产出 task_graph，seed 进 task_manager
+  # 完成后: SPEC_PROGRESS → S6_tasks
+  "MWF-OPC:4_1:model_tasks":               {success: "MWF-OPC:5_1:dispatch_ready_tasks"}
+
+  # Phase 5: Execution — dispatch / collect / review / evaluate 循环
+  # spec stage 在整个 execution 期间保持 S6_tasks
+  "MWF-OPC:5_1:dispatch_ready_tasks":      {success: "MWF-OPC:5_2:collect_results"}
+  "MWF-OPC:5_2:collect_results":           {success: "MWF-OPC:5_2b:dispatch_review", blocked: "MWF-OPC:5_3:resolve_blocker"}
+  "MWF-OPC:5_2b:dispatch_review":          {success: "MWF-OPC:5_4:evaluate_release_readiness", blocked: "MWF-OPC:5_3:resolve_blocker"}
+  "MWF-OPC:5_3:resolve_blocker":           {success: "MWF-OPC:5_1:dispatch_ready_tasks"}
+  "MWF-OPC:5_4:evaluate_release_readiness": {success: "MWF-OPC:6_1:drive_release", retry: "MWF-OPC:5_1:dispatch_ready_tasks"}
+
+  # Phase 6: Release
+  # 完成后: SPEC_PROGRESS → S7_verification
+  "MWF-OPC:6_1:drive_release":             {success: "MWF-OPC:7_1:run_audit"}
+
+  # Phase 7: Audit & Close
+  "MWF-OPC:7_1:run_audit":                 {success: "MWF-OPC:7_2:workflow_complete"}
+  # MWF-OPC:7_2:workflow_complete → 终态，TASK_UPDATE(completed) + SPEC_PROGRESS → S8_complete

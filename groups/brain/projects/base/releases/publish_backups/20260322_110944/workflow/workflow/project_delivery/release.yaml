@@ -1,0 +1,61 @@
+workflow:
+  id: "MWF-WF-REL-001"
+  name: "Release Workflow"
+  owner: "release_manager"
+  trigger: "project orchestrator submitted release candidate"
+  note: "release 负责 staging gate、production approval、prod deploy、smoke、rollback 和 evidence 封存"
+  steps:
+    - "freeze candidate artifacts and source revision"
+    - "verify build and test gate"
+    - "verify review gate"
+    - "verify audit/security gate"
+    - "deploy to staging"
+    - "run staging verification with QA or equivalent automation evidence"
+    - "request production approval"
+    - "deploy to production"
+    - "run production smoke tests with QA or equivalent automation evidence"
+    - "mark RELEASED or execute rollback"
+  outputs:
+    - release decision
+    - deployment result
+    - rollback record if needed
+    - release recovery report when rollback fails
+  rule:
+    - "project done is not equal to release done"
+    - "stage verification and prod smoke are mandatory gates for software_dev profile"
+
+pass_gate:
+  id: "RELEASE_PASS"
+  rule: "只有 staging pass、production approval complete、prod smoke pass、evidence 完整时，release 才可标记 RELEASED"
+  required_checks:
+    candidate_frozen:
+      description: "候选版本和 revision 已冻结"
+    stage_passed:
+      description: "stage gate 全部通过"
+    production_approved:
+      description: "生产发布审批完成"
+    prod_smoke_passed:
+      description: "生产 smoke 验证通过"
+    release_evidence_complete:
+      description: "release report 所需 evidence 齐全"
+
+fail_gate:
+  id: "RELEASE_ROLLBACK_OR_HOLD"
+  rule: "任一关键 gate 失败时，必须进入 HOLD 或 ROLLED_BACK，而不是静默跳过"
+  typical_reasons:
+    - "stage validation failed"
+    - "production approval missing"
+    - "prod smoke failed"
+    - "rollback path unavailable"
+    - "release evidence missing"
+  required_followups:
+    - "deploy fail or smoke fail must enter ROLLBACK_PENDING"
+    - "rollback failure must enter ROLLBACK_FAILED and trigger critical escalation"
+
+failure_paths:
+  references:
+    - "44_failure_paths.yaml"
+  required_cases:
+    - "RELEASE_DEPLOY_FAILED"
+    - "POST_RELEASE_SMOKE_FAILED"
+    - "ROLLBACK_FAILED"

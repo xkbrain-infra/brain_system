@@ -12,8 +12,8 @@ from fastapi import APIRouter, HTTPException
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
-# Task manager data paths
-TASK_MANAGER_DATA_DIR = "/xkagent_infra/brain/infrastructure/service/brain_task_manager/data"
+# Task manager data paths — 以 config 为准: brain/infrastructure/config/brain_task_manager/brain_task_manager.json → data_dir
+TASK_MANAGER_DATA_DIR = "/xkagent_infra/runtime/data/brain_task_manager"
 TASKS_FILE = os.path.join(TASK_MANAGER_DATA_DIR, "tasks.json")
 SPECS_FILE = os.path.join(TASK_MANAGER_DATA_DIR, "specs.json")
 

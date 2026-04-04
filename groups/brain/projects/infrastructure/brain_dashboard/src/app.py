@@ -7,8 +7,7 @@ import logging
 from pathlib import Path
 
 from fastapi import FastAPI, WebSocketDisconnect, Request
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from starlette.websockets import WebSocketState
 import time
 
@@ -77,6 +76,31 @@ app.include_router(sse_router)
 # Static web templates path - auto-detect based on script location
 SCRIPT_DIR = Path(__file__).parent.resolve()
 TEMPLATES_DIR = SCRIPT_DIR / "web" / "templates"
+
+
+@app.get("/oauth2callback")
+async def oauth_callback(code: str = "", state: str = "", error: str = "", provider: str = ""):
+    """Handle OAuth authorization code callback for copilot and gemini providers."""
+    from api.v2.providers import handle_oauth_callback
+
+    if error:
+        logger.warning(f"OAuth callback error: {error}")
+        return RedirectResponse(url=f"/?oauth_error={error}#tab-providers")
+
+    if not code or not state:
+        return RedirectResponse(url="/?oauth_error=missing_params#tab-providers")
+
+    try:
+        result = await handle_oauth_callback(
+            provider_id=provider or None,
+            code=code,
+            state=state,
+        )
+        pid = result.get("provider_id", "")
+        return RedirectResponse(url=f"/?oauth_success={pid}#tab-providers")
+    except Exception as e:
+        logger.error(f"OAuth callback exchange failed: {e}")
+        return RedirectResponse(url=f"/?oauth_error=exchange_failed#tab-providers")
 
 
 @app.get("/", response_class=HTMLResponse)

@@ -1,0 +1,9 @@
+---
+project:
+  id: brain_sandbox_service
+  name: brain_sandbox_service
+  version: 0.1.0
+organization:
+  org: xkagent_infra
+  group: infrastructure
+  type: infrastructure_service

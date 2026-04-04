@@ -1,0 +1,165 @@
+# Phase 4: TASK MODELING — 把 plan 变成 executable task packets
+# 来源: workflow_core.yaml → meta.phase_files.task_modeling
+# steps: 4_1 (model_tasks)
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PHASE 4: TASK MODELING — 把 plan 变成 executable task packets
+# ═══════════════════════════════════════════════════════════════════════════════
+
+  # ── 4.1 ────────────────────────────────────────────────────────────────────
+  - step_id: "MWF-OPC:4_1:model_tasks"
+    phase: task_modeling
+    who:
+      coordinator: project_orchestrator
+      profile: coordinator
+      participants:
+        - role: architect
+          profile: architect
+          responsibilities: ["任务依赖分析", "接口任务拆分", "conflict_keys 标注"]
+      reviewer: project_orchestrator
+    purpose: "把 project_plan 的 deliverables 拆成 executable task packets"
+
+    do:
+      - action: "TASK_UPDATE: in_progress"
+        action_id: "MWF-OPC:4_1:model_tasks:A01"
+        tool: "task_manager API"
+        call: |
+          event_type: TASK_UPDATE
+          task_id:    "MWF-OPC:4_1:model_tasks"
+          status:     in_progress
+
+      - action: "orchestrator 读取 project_plan，列出所有 deliverables 和 milestones"
+        action_id: "MWF-OPC:4_1:model_tasks:A02"
+        tool: "file_read state/project_plan.yaml"
+
+      - action: "architect 执行任务拆分"
+        action_id: "MWF-OPC:4_1:model_tasks:A03"
+        tool: "IPC TASK_ASSIGN → architect"
+        task_packet:
+          instruction: |
+            基于 project_plan.yaml，将每个 deliverable 拆成任务:
+              1. 每个 task 必须是 EXECUTABLE — 有确定的输入、输出、完成定义
+              2. 模糊的事项 → 拆成 decision/research task，不是 implementation task
+              3. 需要 QA 验证的 → 显式建模为 test/review task
+              4. 标注 depends_on (前置任务)
+              5. 标注 conflict_keys (共享资源/互斥)
+              6. 标注 owner (哪个 role 执行)
+              7. 每个 task 按 task_graph_schema 格式写
+          input_refs:
+            - "state/project_plan.yaml"
+          output_target: "state/task_graph_draft.yaml"
+
+      - action: "orchestrator 验证 task graph 质量"
+        action_id: "MWF-OPC:4_1:model_tasks:A04"
+        tool: "LLM reasoning"
+        checks:
+          - "每个 deliverable 都有对应 task 覆盖"
+          - "每个 dispatchable task 有 completion_checks + output_contract + evidence_required"
+          - "没有过粗的 task (一个 task 包含多个独立交付)"
+          - "没有过细的 task (应该是 todo 而不是 task)"
+          - "依赖关系无环"
+          - "initial_ready_set 可计算（无依赖的 task）"
+
+      - action: "建立 checklist ↔ task 双向映射"
+        action_id: "MWF-OPC:4_1:model_tasks:A05"
+        tool: "file_read state/spec_checklist.yaml + LLM reasoning + file_write"
+        details: |
+          对 spec_checklist 中每个 item:
+            找到覆盖它的 task_id → 写入 item.task_refs
+          对 task_graph 中每个 task:
+            找到它关联的 checklist item → 写入 task.spec_id
+          验证:
+            没有未被任何 task 覆盖的 checklist item（除非显式 waive）
+
+      - action: "写入最终 task_graph"
+        action_id: "MWF-OPC:4_1:model_tasks:A06"
+        tool: "file_write"
+        target: "state/task_graph.yaml"
+        format_ref: "models/task_graph_schema.yaml"
+
+      - action: "更新 spec_checklist 的 task_refs"
+        action_id: "MWF-OPC:4_1:model_tasks:A07"
+        tool: "file_write"
+        target: "state/spec_checklist.yaml"
+
+      - action: "cross_model_validation: 验证 state/task_graph.yaml"
+        action_id: "MWF-OPC:4_1:model_tasks:A08"
+        type: "cross_model_validation"
+        strategy_ref: "workflow_core.yaml → audit_strategy.cross_model_validation"
+        execution_flow:
+          "1_write_request":
+            path: "{project_root}/state/step_results/MWF-OPC_4_1_model_tasks/validation_request.yaml"
+            content:
+              step_id: "MWF-OPC:4_1:model_tasks"
+              validator_model_rule: "不同于 orchestrator 当前模型"
+              artifact: "state/task_graph.yaml"
+              check_items:
+                - {id: "CHK-01", type: "file_exists",  target: "state/task_graph.yaml"}
+                - {id: "CHK-02", type: "field_assert", field: "initial_ready_set",  assert: "非空数组"}
+                - {id: "CHK-03", type: "field_assert", field: "tasks",              assert: "非空数组"}
+                - {id: "CHK-04", type: "items_check",  target: "tasks[*].completion_checks",  assert: "非空（每个 dispatchable task 都有）"}
+                - {id: "CHK-05", type: "items_check",  target: "tasks[*].output_contract",    assert: "非空（每个 dispatchable task 都有）"}
+                - {id: "CHK-06", type: "items_check",  target: "tasks[*].evidence_required",  assert: "非空（每个 dispatchable task 都有）"}
+                - {id: "CHK-07", type: "dag_check",    target: "tasks[*].depends_on",         assert: "依赖无环"}
+                - {id: "CHK-08", type: "cross_file",
+                   source: "state/spec_checklist.yaml",
+                   rule: "每个非 waived 的 checklist item 在 task_graph 中都有对应 task（通过 spec_id 或 task_refs）"}
+          "2_spawn_validator":
+            command: "agentctl start --role step_validator --model {validator_model} --ephemeral"
+            note: "validator_model 由 model_selection 规则确定，与 orchestrator 不同"
+          "3_wait_result":
+            wait_for: "IPC: VALIDATE_COMPLETE"
+            timeout: "120s"
+            on_timeout: "fallback → same_model_isolated (见 workflow_core.yaml)"
+          "4_write_completion_check":
+            path: "{project_root}/state/step_results/MWF-OPC_4_1_model_tasks/completion_check.yaml"
+        on_fail:
+          action: "TASK_UPDATE(blocked) + IPC notify brain_pmo"
+          payload: "completion_check.yaml path + failed check_items"
+
+      - action: "TASK_UPDATE: completed + SPEC_PROGRESS（phase 4 完成）"
+        action_id: "MWF-OPC:4_1:model_tasks:A09"
+        tool: "task_manager API"
+        call: |
+          # 标记 step task 完成
+          event_type: TASK_UPDATE
+          task_id:    "MWF-OPC:4_1:model_tasks"
+          status:     completed
+
+          # Phase 4 (task_modeling) 完成 → 推进 spec stage 到 S6_tasks
+          event_type:    SPEC_PROGRESS
+          spec_id:       "{project_id}"
+          target_stage:  S6_tasks
+
+    artifact: "state/task_graph.yaml"
+    artifact_schema:
+      project_id: string
+      group_id: string
+      created_at: "ISO8601"
+      initial_ready_set: ["task_id 列表"]
+      tasks:
+        - task_id: "task_{project}_{seq:03d}"
+          title: string
+          objective: string
+          owner: "agent role"
+          kind: "implementation | review | test | deploy | research | planning"
+          priority: "critical | high | normal | low"
+          depends_on: ["前置 task_id"]
+          completion_checks: [string]
+          output_contract: {changed_paths: [string], reports: [string]}
+          evidence_required: [string]
+          review_by: "optional, agent role"
+          handoff_payload: "optional"
+          conflict_keys: "optional"
+          spec_id: "optional — 关联的 checklist item id (CHK-xxx)"
+
+    check: |
+      所有 deliverables 被 task 覆盖 AND
+      所有 dispatchable task 有 packet fields AND
+      initial_ready_set 非空 AND
+      依赖无环
+    on_success: "MWF-OPC:5_1:dispatch_ready_tasks"
+    on_retry: "task graph 不完整 → architect 补充后重试"
+    on_blocked: "deliverables 不可拆分 → 回到 define_plan 重新规划"
+
+

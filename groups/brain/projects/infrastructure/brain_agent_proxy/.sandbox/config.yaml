@@ -1,0 +1,6 @@
+# Sandbox 项目级覆盖配置
+# 用于覆盖 sandbox.global.yaml 中的默认配置
+
+sandbox:
+  naming:
+    group: infrastructure

@@ -26,6 +26,7 @@ ROLE_DEFAULTS: dict[str, dict[str, Any]] = {
         "agent_type": "claude",
         "agent_cli": "",
         "agent_model": "Sonnet",
+        "provider_model": "claude/Sonnet",
         "capabilities": [
             "project_management",
             "task_coordination",
@@ -39,6 +40,7 @@ ROLE_DEFAULTS: dict[str, dict[str, Any]] = {
         "agent_type": "claude",
         "agent_cli": "",
         "agent_model": "Opus",
+        "provider_model": "claude/Opus",
         "capabilities": [
             "architecture_design",
             "code_review",
@@ -51,6 +53,7 @@ ROLE_DEFAULTS: dict[str, dict[str, Any]] = {
         "agent_type": "claude",
         "agent_cli": "",
         "agent_model": "Sonnet",
+        "provider_model": "claude/Sonnet",
         "capabilities": [
             "deployment",
             "infrastructure",
@@ -63,6 +66,7 @@ ROLE_DEFAULTS: dict[str, dict[str, Any]] = {
         "agent_type": "claude",
         "agent_cli": "",
         "agent_model": "Opus",
+        "provider_model": "claude/Opus",
         "capabilities": [
             "code_implementation",
             "debugging",
@@ -75,6 +79,7 @@ ROLE_DEFAULTS: dict[str, dict[str, Any]] = {
         "agent_type": "claude",
         "agent_cli": "",
         "agent_model": "Sonnet",
+        "provider_model": "claude/Sonnet",
         "capabilities": [
             "quality_assurance",
             "testing",
@@ -87,6 +92,7 @@ ROLE_DEFAULTS: dict[str, dict[str, Any]] = {
         "agent_type": "claude",
         "agent_cli": "",
         "agent_model": "Sonnet",
+        "provider_model": "claude/Sonnet",
         "capabilities": [
             "data_analysis",
             "reporting",
@@ -98,6 +104,7 @@ ROLE_DEFAULTS: dict[str, dict[str, Any]] = {
         "agent_type": "claude",
         "agent_cli": "",
         "agent_model": "Haiku",
+        "provider_model": "claude/Haiku",
         "capabilities": [
             "message_routing",
             "telegram_gateway",
@@ -110,6 +117,7 @@ ROLE_DEFAULTS: dict[str, dict[str, Any]] = {
         "agent_type": "claude",
         "agent_cli": "",
         "agent_model": "Sonnet",
+        "provider_model": "claude/Sonnet",
         "capabilities": [
             "ui_design",
             "ux_design",
@@ -125,6 +133,7 @@ ROLE_FALLBACK: dict[str, Any] = {
     "agent_type": "claude",
     "agent_cli": "",
     "agent_model": "Sonnet",
+    "provider_model": "claude/Sonnet",
     "capabilities": [],
     "tags": [],
 }
@@ -358,6 +367,7 @@ class Provisioner:
                     "agent_type": role_defaults.get("agent_type", "claude"),
                     "agent_cli": role_defaults.get("agent_cli", ""),
                     "agent_model": role_defaults.get("agent_model", "Sonnet"),
+                    "provider_model": role_defaults.get("provider_model", "claude/Sonnet"),
                     "cwd": str(agent_dir),
                     "role": role,
                     "group": group_id,

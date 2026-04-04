@@ -1,12 +1,12 @@
 name: ${COMPOSE_PROJECT_NAME:-xk-agent-infra}
 
 networks:
-  ${COMPOSE_PROJECT_NAME:-xk-agent-infra}-net:
-    name: ${COMPOSE_PROJECT_NAME:-xk-agent-infra}-net
+  xk-agent-infra-net:
+    name: xk-agent-infra-net
     driver: bridge
 
 services:
-  ${COMPOSE_PROJECT_NAME:-xk-agent-infra}:
+  xk-agent-infra:
     build:
       context: .
       dockerfile: Dockerfile
@@ -28,10 +28,10 @@ services:
         fi
         exec /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf
     networks:
-      - ${COMPOSE_PROJECT_NAME:-xk-agent-infra}-net
+      - xk-agent-infra-net
     volumes:
-      - ${COMPOSE_PROJECT_NAME:-xk-agent-infra}-data:/xkagent_infra
-      - ${COMPOSE_PROJECT_NAME:-xk-agent-infra}-root:/root
+      - /services/xkagent_infra:/xkagent_infra
+      - xk-agent-infra-root:/root
     ports:
       - "${SSH_PORT:-8622}:22"
     environment:
@@ -71,5 +71,5 @@ services:
     restart: unless-stopped
 
 volumes:
-  ${COMPOSE_PROJECT_NAME:-xk-agent-infra}-data:
-  ${COMPOSE_PROJECT_NAME:-xk-agent-infra}-root:
+  xk-agent-infra-data:
+  xk-agent-infra-root:

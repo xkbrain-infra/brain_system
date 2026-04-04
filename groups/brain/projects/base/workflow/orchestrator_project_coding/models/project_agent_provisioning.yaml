@@ -1,0 +1,78 @@
+project_agent_provisioning:
+  id: "MWF-AGENT-PROVISION-001"
+  version: "0.2"
+  intent: "定义 orchestrator_project_coding workflow 下 project-scoped agent 的命名、runtime bridge、template bundle 与 bootstrap 物化规则"
+
+canonical_scope:
+  workflow: "/brain/base/workflow/orchestrator_project_coding/workflow_core.yaml"
+  legacy_compatibility_ref: "/brain/base/workflow/project_delivery/models/project_agent_provisioning.yaml"
+
+runtime_surfaces:
+  project_agent_manifests:
+    canonical_root: "/xkagent_infra/groups/{group_id}/projects/{project_id}/config/agents"
+    role: "project SSOT records"
+  sandbox_agent_runtime:
+    canonical_root: "/xkagent_infra/runtime/sandbox/{sandbox_id}/agents/{agent_id}"
+    role: "sandbox runtime instances"
+  template_bundle:
+    canonical_root: "/xkagent_infra/runtime/sandbox/{sandbox_id}/template_bundles/agents/{agent_id}"
+    role: "bridge between approved template source and sandbox runtime"
+
+naming_contract:
+  project_agent_id:
+    format: "agent_{group_id}_{project_key}_{role_key}_{slot}"
+    example: "agent_brain_dashboard_developer_01"
+    rules:
+      - "agent_id 是稳定的 project-scoped logical identity，不包含 sandbox_id"
+  runtime_tmux_session:
+    format: "sbx_{sandbox_id}__{project_agent_id}"
+    example: "sbx_1lqi3z__agent_brain_dashboard_developer_01"
+    rules:
+      - "sandbox runtime session naming 必须显式带 sandbox_id，避免把 project agent 误认成 host-global agent"
+  slot:
+    rule:
+      - "同一 role 可按容量创建多个 slot，slot 使用两位序号"
+      - "project_key 必须使用稳定、可路径化的 project identifier"
+
+bootstrap_roster:
+  minimum_required_roles:
+    - "project_orchestrator"
+  optional_by_profile:
+    - "architect"
+    - "developer"
+    - "researcher"
+    - "qa"
+    - "devops"
+    - "reviewer"
+  rules:
+    - "bootstrap 阶段至少要把 orchestrator 准备好"
+    - "最终执行 roster 可在 planning 后扩容，但 bootstrap roster 必须先实现 project-scoped identities"
+
+provisioning_flow:
+  steps:
+    - "read requested_roles and workflow profile"
+    - "resolve approved group agent templates and capability profiles"
+    - "package approved template sources into template bundles"
+    - "materialize project_agent_provision_plan under project root"
+    - "render project_agent_roster manifest with project-scoped agent ids"
+    - "create sandbox runtime homes under /xkagent_infra/runtime/sandbox/{sandbox_id}/agents/{agent_id}"
+    - "materialize template bundles into /xkagent_infra/runtime/sandbox/{sandbox_id}/template_bundles/agents/{agent_id}"
+    - "render provider-specific config/prompt/hooks into runtime_home"
+    - "for proxy-backed providers, write host-reachable ANTHROPIC_BASE_URL / ANTHROPIC_AUTH_TOKEN / ANTHROPIC_MODEL"
+    - "for Claude Code CLI, copy /root/.claude/ and /root/.claude.json and preseed trust/onboarding"
+    - "start agents through agentctl-managed lifecycle"
+
+runtime_creation_contract:
+  required_steps:
+    - "mkdir -p /xkagent_infra/runtime/sandbox/{sandbox_id}/agents/{agent_id}"
+    - "materialize template bundle into /xkagent_infra/runtime/sandbox/{sandbox_id}/template_bundles/agents/{agent_id}"
+    - "render provider-specific config into runtime_home"
+    - "write runtime_meta.yaml with provider/model/project/sandbox/orchestrator refs"
+    - "register sandbox-local agents_registry bridge entry"
+    - "launch agent under agentctl control"
+  rules:
+    - "运行目录必须是 /xkagent_infra/runtime/sandbox/{sandbox_id}/agents/{agent_id}"
+    - "不得直接以 template_source_ref 目录作为 cwd"
+    - "provider-specific config 必须在 sandbox runtime bridge 内渲染"
+    - ".bootstrap 只允许存放 runtime state（pid/log/socket metadata），helper code 必须来自发布后的 infrastructure service bundle"
+    - "sandbox-local service 必须能够通过 `.bootstrap/instance.yaml` 在容器内解析当前实例元数据"

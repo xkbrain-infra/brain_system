@@ -1,0 +1,92 @@
+planning_detail_model:
+  id: "MWF-PLAN-DETAIL-001"
+  version: "0.1"
+  intent: "细化 planning 阶段的技术选型、架构估算、联调测试、task 设计与跟踪机制"
+
+technical_selection:
+  required_questions:
+    - "使用什么实现语言和为什么"
+    - "使用什么 runtime/framework 和为什么"
+    - "现有系统/团队标准是否要求特定技术栈"
+    - "代码规范、测试规范、review 规范是什么"
+  outputs:
+    - implementation_language
+    - runtime_stack
+    - standards_profile
+    - technology_decision_log
+
+architecture_design:
+  required_questions:
+    - "系统拆成多少模块"
+    - "每个模块的职责边界是什么"
+    - "模块之间有哪些接口"
+    - "哪些接口对外，哪些接口对内"
+    - "数据流和关键路径是什么"
+  outputs:
+    - architecture_summary
+    - module_list
+    - interface_list
+    - critical_path
+
+estimation:
+  required_questions:
+    - "预计多少模块"
+    - "预计多少接口"
+    - "哪些工作包复杂度最高"
+    - "哪些 work package 可并行"
+  outputs:
+    - module_estimate
+    - interface_estimate
+    - work_package_estimate
+    - complexity_estimate
+
+integration_and_testing:
+  required_questions:
+    - "是否需要外部系统联调"
+    - "联调对象、窗口、责任人是谁"
+    - "哪些测试必须在 planning 时就预留"
+    - "mock、stub、real env 的边界是什么"
+    - "dev/stage/prod 分别承担什么验证职责"
+    - "QA 在哪些节点必须介入"
+  outputs:
+    - external_integration_map
+    - integration_plan
+    - test_plan
+    - qa_plan
+    - environment_usage_plan
+    - environment_requirements
+
+task_and_assignment:
+  required_questions:
+    - "task 按模块拆还是按交付链拆"
+    - "task 粒度如何控制"
+    - "owner/participants/reviewer 如何定义"
+    - "QA/verification task 如何显式建模"
+    - "哪些 task 必须串行，哪些可并行"
+  outputs:
+    - task_design_strategy
+    - assignment_strategy
+    - dependency_strategy
+    - parallelism_strategy
+
+tracking_and_reporting:
+  required_questions:
+    - "项目怎么跟踪"
+    - "workflow 要求点如何映射为项目 spec checklist"
+    - "snapshot cadence 多久一次"
+    - "哪些 report 必须阶段性产出"
+    - "哪些指标必须上 board"
+    - "哪些 service/endpoint/supervisor 程序必须提前注册"
+    - "使用哪些 config version 和 environment baseline"
+  outputs:
+    - tracking_plan
+    - spec_checklist_strategy
+    - board_metrics
+    - reporting_cadence
+    - escalation_visibility_rules
+    - service_dependency_inventory
+    - config_version_plan
+
+planning_pass_rule:
+  - "以上六个维度至少都要有结构化输出"
+  - "缺少任何一个维度，planning 不合格"

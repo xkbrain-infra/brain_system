@@ -12,7 +12,8 @@ sandbox:
   # Level 1: Full container isolation required for core infrastructure
   container:
     image: brain/dashboard-dev:latest
-    status: pending_bootstrap
+    status: completed
+    feature_delivered: brain-dashboard-oauth-config-2026-03-17
     dockerfile: ./deploy/Dockerfile.dev
     compose_file: ./deploy/compose.dev.yaml
 

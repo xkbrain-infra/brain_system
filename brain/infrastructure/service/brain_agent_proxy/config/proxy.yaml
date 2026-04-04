@@ -1,0 +1,55 @@
+version: '1.0'
+clients:
+  bgw-client-v1-c0ca182810dda8a1b77e7bdfa5b486d2:
+    agent_name: agent-brain_manager
+    description: Brain manager (resident)
+    provider: minimax
+    model: minimax-m2.7
+  bgw-client-v1-fee4665eb5f723a9a80dd97cbbb3ad27:
+    agent_name: agent-brain_frontdesk
+    description: Brain 前台接待 Agent
+    provider: copilot
+    model: gpt-5-mini
+  bgw-client-v1-be8e71ee0dc20025891af62392abafcb:
+    agent_name: tmp-agent-doubao
+    description: 临时 Doubao Seed 2.0 Pro 测试 Agent
+    provider: bytedance
+    model: doubao-seed-2-0-pro
+  bgw-client-v1-6eabce592a2d0c76fd809e69222e7d2e:
+    agent_name: agent-brain_codex_foos
+    description: brain 的 dev Agent
+    provider: openai
+    model: gpt-5.4
+  bgw-client-v1-197404bda8ed50271c98bbe024afa6c7:
+    agent_name: tmpproxy-copilot_orch
+    description: brain 的 orchestrator Agent
+    provider: claude
+    model: claude-sonnet-4.6
+  bgw-client-v1-30655de2ee65d29f6e253ad700471c84:
+    agent_name: tmp-agent_minimax
+    description: brain 的 custom Agent
+    provider: minimax
+    model: minimax-m2.7
+  bgw-client-v1-e241c550d39723dd03248d405ce157d5:
+    agent_name: agent-brain_devops
+    description: brain 的 devops Agent
+    provider: minimax
+    model: minimax-m2.7
+  bgw-client-v1-f7be31cba1b6db9b2b6294dc97104f0d:
+    agent_name: agent-brain_pmo
+    description: brain 的 pmo Agent
+    provider: minimax
+    model: minimax-m2.7
+  bgw-client-v1-3aad8ffd4affa51888dad558e5108aaa:
+    agent_name: agent-tmp_kimi
+    description: brain 的 dev Agent
+    provider: kimi
+    model: kimi-for-coding
+  bgw-client-v1-43032e5b51c51dc5897794a883fa7046:
+    agent_name: tmp-agent_sonnet
+    description: brain 的 custom Agent
+    provider: claude
+    model: claude-sonnet-4.6
+model_routing: {}
+default_strategy: capability_match
+model_strategy_map: {}

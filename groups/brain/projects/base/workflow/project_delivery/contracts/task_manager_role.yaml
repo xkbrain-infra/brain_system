@@ -1,6 +1,6 @@
 task_manager_role:
   id: "MWF-TM-001"
-  version: "0.1"
+  version: "0.2"
   intent: "定义 multicore 架构中 task manager 的职责、边界与输入输出"
 
 positioning:
@@ -21,15 +21,34 @@ must_not:
   - "不负责决定 reassign/replan/escalate"
   - "不直接替代 orchestrator 向 worker 分配任务"
 
+storage:
+  backend: "SQLite"
+  db_path: "/xkagent_infra/runtime/data/brain_shared.db"
+  schema_ref: "brain/base/spec/standards/infra/database/brain_shared_schema.yaml"
+  tables:
+    - groups_tm_projects
+    - groups_tm_tasks
+    - groups_tm_assignments
+    - groups_tm_dispatches
+    - groups_tm_snapshots
+    - groups_tm_events
+  supplementary_jsonl:
+    project_events: "groups/{group_id}/{project_id}/events.jsonl"
+    dispatch_trace: "groups/{group_id}/{project_id}/dispatch.jsonl"
+  naming_rule: "groups_{domain}_{entity}，必须含 group_id + project_id 列"
+  concurrency: "optimistic locking via version column，UPDATE ... WHERE version = expected"
+
 write_owners:
   orchestrator:
     writes:
-      - "CREATE_PROJECT"
-      - "TASK_CREATE"
-      - "TASK_UPDATE"
-      - "ASSIGNMENT_UPDATE"
-      - "PROJECT_SNAPSHOT"
-      - "TASK_EVENT_APPEND"
+      - "CREATE_PROJECT       → groups_tm_projects INSERT"
+      - "TASK_CREATE          → groups_tm_tasks INSERT"
+      - "TASK_UPDATE          → groups_tm_tasks UPDATE (with version CAS)"
+      - "ASSIGNMENT_UPDATE    → groups_tm_assignments INSERT + groups_tm_tasks.owner_agent_id UPDATE"
+      - "DISPATCH_CREATE      → groups_tm_dispatches INSERT"
+      - "DISPATCH_UPDATE      → groups_tm_dispatches UPDATE"
+      - "PROJECT_SNAPSHOT     → groups_tm_snapshots INSERT"
+      - "TASK_EVENT_APPEND    → groups_tm_events INSERT + append JSONL"
   agents:
     writes_via_orchestrator: true
     note: "agent 原则上通过 orchestrator 回报，不直接写全局 task manager"
@@ -42,24 +61,31 @@ readers:
   - "watchdog jobs"
 
 task_record_contract:
+  table: "groups_tm_tasks"
   required_fields:
     - task_id
     - project_id
+    - group_id
+    - task_type       # workflow_task | execution_task
     - title
-    - owner
-    - participants
-    - todo_list
-    - depends_on
     - status
-    - trigger_policy
-    - deadline
+    - created_at
     - updated_at
+    - version         # CAS 乐观锁，每次 UPDATE +1
+  execution_task_fields:
+    - stage           # intake/bootstrap/delivery/testing/release/audit
+    - kind            # implementation/review/test/deploy/research/planning
+    - priority
+    - owner_agent_id
+    - active_dispatch_id
+    - depends_on      # JSON array
+    - todo_list       # JSON array
+    - deadline
   optional_fields:
     - review_by
     - artifact_refs
     - next_check_at
     - escalation_policy
-    - last_log_ref
 
 assignment_model:
   principle: "assignment is decided by orchestrator, then persisted in task manager"

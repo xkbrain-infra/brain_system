@@ -1,0 +1,80 @@
+task_modeling_rules:
+  id: "MWF-TASKMODEL-001"
+  version: "0.1"
+  intent: "细化 task modeling 的边界、粒度、角色、依赖与并发规则"
+
+task_vs_todo:
+  task:
+    definition: "需要独立 owner、状态跟踪、依赖控制、验收或跨角色 handoff 的工作单元"
+    indicators:
+      - "跨角色协作"
+      - "需要独立 review/test/approval"
+      - "需要独立 timer/check"
+      - "会影响依赖图"
+  todo:
+    definition: "task 内部的执行清单，不需要独立状态机和依赖图"
+    indicators:
+      - "只属于单一 owner 的内部步骤"
+      - "不需要独立 handoff"
+      - "不需要独立 trigger"
+
+granularity_rules:
+  too_coarse:
+    examples:
+      - "整个平台后端开发"
+      - "全部前端页面接入"
+    issue: "无法追踪依赖、review 和并行执行"
+  too_fine:
+    examples:
+      - "写一个函数"
+      - "改一个按钮颜色"
+    issue: "task graph 爆炸，治理成本高于收益"
+  target_rule:
+    - "一个 task 应对应一个可独立交付、可独立验收、可独立 handoff 的工作单元"
+
+role_assignment:
+  owner_rule:
+    - "每个 task 只能有一个 primary owner"
+  participant_rule:
+    - "需要协作但非主责的角色写入 participants"
+  reviewer_rule:
+    - "需要 review/verification 的 task 必须明确 reviewer 或 reviewer role"
+  qa_rule:
+    - "需要独立测试、回归、stage 验证或 prod smoke 的交付物，必须显式建模 QA/verification task 或 validation path"
+
+dependency_mapping:
+  sources:
+    - deliverables
+    - module dependencies
+    - interface dependencies
+    - environment dependencies
+    - release/test gates
+  rule:
+    - "depends_on 必须引用正式 task_id"
+    - "不可用自然语言替代依赖关系"
+
+trigger_mapping:
+  when_required:
+    - "long running task"
+    - "review pending task"
+    - "deadline-sensitive task"
+    - "release-critical task"
+  fields:
+    - trigger_mode
+    - check_interval_s
+    - timeout_policy
+    - escalation_policy
+
+conflict_mapping:
+  rule:
+    - "共享代码路径、共享环境、共享部署目标的 task 必须声明 conflict_keys"
+    - "未声明冲突控制的 task 默认保守处理，不进入高并发派发"
+
+parallelism_mapping:
+  rule:
+    - "无依赖且无 conflict 的 task 可同时进入 READY"
+    - "共享 reviewer/env/release gate 的 task 需受并发窗口限制"
+
+acceptance:
+  - "task modeling 输出必须可直接用于 READY set 计算"
+  - "task modeling 输出必须可直接用于 timer trigger 注册"
